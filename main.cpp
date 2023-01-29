@@ -546,22 +546,18 @@ void drawFrame(vk::Device const& device, vk::Fence const& fence, vk::SwapchainKH
 
 }
 
-int main()
+auto createInstance(bool validation_layers_on)
 {
-    auto window = setupGlfw();
-
     std::vector<const char*> const validation_layers
     {
         "VK_LAYER_KHRONOS_validation"
     };
 
-    bool const validation_layer_supported = checkValidationLayerSupport(validation_layers);
-
-    if (validation_layer_supported)
+    bool use_validation_layer = validation_layers_on && checkValidationLayerSupport(validation_layers);
+    if (use_validation_layer)
     {
-        std::cout << "Validation layers supported\n";
+        std::cout << "Using validation layers\n";
     }
-
 
     vk::ApplicationInfo app_info{};
 
@@ -581,7 +577,7 @@ int main()
 
     info.enabledExtensionCount = glfw_extensions_count;
     info.ppEnabledExtensionNames = glfw_extensions;
-    if (validation_layer_supported)
+    if (use_validation_layer)
     {
         info.setEnabledLayerCount(validation_layers.size());
         info.setPpEnabledLayerNames(validation_layers.data());
@@ -594,8 +590,14 @@ int main()
     std::cout << "Extension count: " << glfw_extensions_count << '\n';
     std::cout << "Extensaions " << *glfw_extensions << '\n';
 
-    auto instance = vk::createInstance(info, nullptr);
+    return  vk::createInstance(info, nullptr);
+}
 
+int main()
+{
+    auto window = setupGlfw();
+
+    auto const instance = createInstance(true);
 
     vk::SurfaceKHR surface;
     glfwCreateWindowSurface(instance, window, nullptr, reinterpret_cast<VkSurfaceKHR_T**>(&surface));
