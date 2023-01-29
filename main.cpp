@@ -27,6 +27,14 @@ struct SwapChainSupportDetails {
     std::vector<vk::PresentModeKHR> present_modes;
 };
 
+struct Semaphores
+{
+    vk::Fence in_flight_fence;
+    vk::Semaphore image_available_semaphore;
+    vk::Semaphore render_finished_semaphore;
+};
+
+
 SwapChainSupportDetails querySwapChainSupport(vk::PhysicalDevice const& device, vk::SurfaceKHR const& surface)
 {
     SwapChainSupportDetails details;
@@ -506,17 +514,17 @@ void recordCommandBuffer(vk::CommandBuffer command_buffer, uint32_t image_index,
     command_buffer.end();
 }
 
-void drawFrame(vk::Device const& device, vk::Fence const& fence, vk::SwapchainKHR const& swap_chain,
-               vk::Semaphore const& image_available_semaphore, vk::Semaphore const& render_finished_semaphore,
+void drawFrame(vk::Device const& device, vk::SwapchainKHR const& swap_chain,
+               Semaphores const& semaphores,
                vk::CommandBuffer const& command_buffer,
                vk::RenderPass const& render_pass, std::vector<vk::Framebuffer> const& framebuffers,
                vk::Extent2D const& swap_chain_extent,  vk::Pipeline const& pipeline,
                vk::Queue const& graphics_queue, vk::Queue const& present_queue)
 {
-    auto v = device.waitForFences(fence, true, ~0);
-    device.resetFences(fence);
+    auto v = device.waitForFences(semaphores.in_flight_fence, true, ~0);
+    device.resetFences(semaphores.in_flight_fence);
 
-    uint32_t image_index = device.acquireNextImageKHR(swap_chain, ~0, image_available_semaphore, VK_NULL_HANDLE).value;
+    uint32_t image_index = device.acquireNextImageKHR(swap_chain, ~0, semaphores.image_available_semaphore, VK_NULL_HANDLE).value;
 
     command_buffer.reset(static_cast<vk::CommandBufferResetFlags>(0));
     recordCommandBuffer(command_buffer, image_index, render_pass, framebuffers, swap_chain_extent, pipeline);
@@ -525,25 +533,24 @@ void drawFrame(vk::Device const& device, vk::Fence const& fence, vk::SwapchainKH
 
     vk::SubmitInfo submit_info{};
     submit_info.sType = vk::StructureType::eSubmitInfo;
-    submit_info.setWaitSemaphores(image_available_semaphore);
+    submit_info.setWaitSemaphores(semaphores.image_available_semaphore);
     submit_info.setWaitDstStageMask(wait_stages);
     submit_info.commandBufferCount = 1;
     submit_info.setCommandBuffers(command_buffer);
-    submit_info.setSignalSemaphores(render_finished_semaphore);
+    submit_info.setSignalSemaphores(semaphores.render_finished_semaphore);
 
 
-    graphics_queue.submit(submit_info, fence);
+    graphics_queue.submit(submit_info, semaphores.in_flight_fence);
 
     vk::PresentInfoKHR present_info{};
     present_info.sType = vk::StructureType::ePresentInfoKHR;
-    present_info.setWaitSemaphores(render_finished_semaphore);
+    present_info.setWaitSemaphores(semaphores.render_finished_semaphore);
     present_info.setResults(nullptr);
     present_info.swapchainCount = 1;
     present_info.pSwapchains = &swap_chain;
     present_info.setImageIndices(image_index);
 
     auto result = present_queue.presentKHR(present_info);
-
 }
 
 auto createInstance(bool validation_layers_on)
@@ -593,30 +600,33 @@ auto createInstance(bool validation_layers_on)
     return  vk::createInstance(info, nullptr);
 }
 
-int main()
+vk::SurfaceKHR createSurface(vk::Instance const& instance, GLFWwindow* window)
 {
-    auto window = setupGlfw();
-
-    auto const instance = createInstance(true);
-
     vk::SurfaceKHR surface;
     glfwCreateWindowSurface(instance, window, nullptr, reinterpret_cast<VkSurfaceKHR_T**>(&surface));
 
+    return surface;
+}
 
+vk::PhysicalDevice createPhysicalDevice(vk::Instance const& instance)
+{
     auto devices = instance.enumeratePhysicalDevices();
     if (devices.empty())
     {
         std::cout << "No GPU with vulkan support\n";
-        return 0;
+        return {};
     }
 
     std::sort(devices.begin(), devices.end(), [](auto const& lhs, auto const& rhs) {return scoreDevice(lhs) < scoreDevice(rhs);});
 
     std::cout << "GPU count: " << devices.size() << '\n';
     vk::PhysicalDevice physical_device = devices.back();
+    return physical_device;
+}
 
+vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device, QueueFamilyIndices const& indices)
+{
     // Local devices
-    auto indices = findQueueFamilies(physical_device, surface);
 
     float queue_priority = 1.0f;
 
@@ -653,10 +663,19 @@ int main()
     device_info.enabledLayerCount = 0;
 
     auto device = physical_device.createDevice(device_info, nullptr);
+    return device;
+}
 
-    auto graphics_queue = device.getQueue(*indices.graphics_family, 0);
-    auto present_queue = device.getQueue(*indices.present_family, 0);
+struct SwapChain
+{
+    vk::SwapchainKHR swap_chain;
+    std::vector<vk::Image> images;
+    vk::Format swap_chain_image_format;
+    vk::Extent2D extent;
+};
 
+SwapChain createSwapchain(vk::PhysicalDevice const& physical_device, vk::Device const& device, vk::SurfaceKHR const& surface, GLFWwindow* window, QueueFamilyIndices const& indices)
+{
     auto swap_chain_support = querySwapChainSupport(physical_device, surface);
 
     auto surface_format = chooseSwapSurfaceFoprmat(swap_chain_support.formats);
@@ -670,7 +689,6 @@ int main()
         image_count = swap_chain_support.capabilities.maxImageCount;
     }
 
-
     vk::SwapchainCreateInfoKHR swap_chain_create_info;
 
     swap_chain_create_info.sType = vk::StructureType::eSwapchainCreateInfoKHR;
@@ -681,7 +699,6 @@ int main()
     swap_chain_create_info.setImageExtent(extent);
     swap_chain_create_info.setImageArrayLayers(1);
     swap_chain_create_info.setImageUsage(vk::ImageUsageFlagBits::eColorAttachment);
-
 
     uint32_t queue_family_indices[] = {indices.graphics_family.value(), indices.present_family.value()};
 
@@ -705,24 +722,32 @@ int main()
     swap_chain_create_info.setOldSwapchain(VK_NULL_HANDLE);
 
     auto swap_chain = device.createSwapchainKHR(swap_chain_create_info);
-
     auto swap_chain_images = device.getSwapchainImagesKHR(swap_chain);
-
     auto swap_chain_image_format = surface_format.format;
     auto swap_chain_extent = extent;
 
+    SwapChain swap_chain_return {
+        swap_chain,
+        swap_chain_images,
+        swap_chain_image_format,
+        swap_chain_extent
+    };
 
+    return swap_chain_return;
+}
 
+auto createImageViews(SwapChain const& sc, vk::Device const& device)
+{
     std::vector<vk::ImageView> swap_chain_image_views;
 
-    for (uint32_t i = 0; i < swap_chain_images.size(); ++i)
+    for (uint32_t i = 0; i < sc.images.size(); ++i)
     {
         vk::ImageViewCreateInfo image_view_create_info {};
         image_view_create_info.sType = vk::StructureType::eImageViewCreateInfo;
-        image_view_create_info.setImage(swap_chain_images[i]);
+        image_view_create_info.setImage(sc.images[i]);
 
         image_view_create_info.setViewType(vk::ImageViewType::e2D);
-        image_view_create_info.setFormat(swap_chain_image_format);
+        image_view_create_info.setFormat(sc.swap_chain_image_format);
 
         image_view_create_info.components.r = vk::ComponentSwizzle::eIdentity;
         image_view_create_info.components.g = vk::ComponentSwizzle::eIdentity;
@@ -738,12 +763,11 @@ int main()
         swap_chain_image_views.push_back(device.createImageView(image_view_create_info));
     }
 
-    auto render_pass = createRenderPass(device, swap_chain_image_format);
-    auto graphic_pipeline = createGraphicsPipline(device, swap_chain_extent, render_pass);
-    auto swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, swap_chain_extent);
-    auto command_pool = createCommandPool(device, indices);
-    auto command_buffers = createCommandBuffer(device, command_pool);
+    return swap_chain_image_views;
+}
 
+Semaphores createSemaphores(vk::Device const& device)
+{
     vk::SemaphoreCreateInfo semaphore_info{};
     semaphore_info.sType = vk::StructureType::eSemaphoreCreateInfo;
 
@@ -751,30 +775,48 @@ int main()
     fence_info.sType = vk::StructureType::eFenceCreateInfo;
     fence_info.flags = vk::FenceCreateFlagBits::eSignaled;
 
-    auto image_available_semaphore = device.createSemaphore(semaphore_info);
-    auto render_finished_semaphore = device.createSemaphore(semaphore_info);
-    auto in_fight_fence = device.createFence(fence_info);
+    return {
+        .in_flight_fence = device.createFence(fence_info),
+        .image_available_semaphore = device.createSemaphore(semaphore_info),
+        .render_finished_semaphore = device.createSemaphore(semaphore_info)
+    };
+}
+
+int main()
+{
+    auto window = setupGlfw();
+
+    auto const instance = createInstance(true);
+
+    auto const surface = createSurface(instance, window);
+
+    auto const physical_device = createPhysicalDevice(instance);
+
+    auto const indices = findQueueFamilies(physical_device, surface);
+    auto const device = createLogicalDevice(physical_device, indices);
+
+    auto const sc = createSwapchain(physical_device, device, surface, window, indices);
+
+    auto const swap_chain_image_views = createImageViews(sc, device);
+
+    auto const render_pass = createRenderPass(device, sc.swap_chain_image_format);
+    auto const graphic_pipeline = createGraphicsPipline(device, sc.extent, render_pass);
+    auto const swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, sc.extent);
+    auto const command_pool = createCommandPool(device, indices);
+    auto const command_buffers = createCommandBuffer(device, command_pool);
+
+    auto const semaphores = createSemaphores(device);
+
+    auto const graphics_queue = device.getQueue(*indices.graphics_family, 0);
+    auto const present_queue = device.getQueue(*indices.present_family, 0);
 
     std::cout << "Graphic pipeline size: " << graphic_pipeline.size() << '\n';
 
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
-        drawFrame(device, in_fight_fence, swap_chain, image_available_semaphore, render_finished_semaphore,
-                command_buffers.at(0), render_pass, swap_chain_framebuffers, swap_chain_extent, graphic_pipeline.at(0),
+        drawFrame(device, sc.swap_chain, semaphores,
+                command_buffers.at(0), render_pass, swap_chain_framebuffers, sc.extent, graphic_pipeline.at(0),
                 graphics_queue, present_queue);
     }
-
-    /*
-
-    vk::XlibSurfaceCreateInfoKHR create_info;
-    create_info.sType = vk::StructureType::eXlibSurfaceCreateInfoKHR;
-    auto display = glfwGetX11Display();
-    create_info.setDpy(display);
-    create_info.setWindow(glfwGetX11Window(window));
-    */
-
-    //auto surface = instance.createXlibSurfaceKHR(create_info);
-
-    // loop(window);
 }
