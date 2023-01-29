@@ -20,6 +20,93 @@
 #include <limits>
 #include <fstream>
 
+#include <glm/glm.hpp>
+
+struct Vertex
+{
+    glm::vec2 pos;
+    glm::vec3 color;
+};
+
+template<typename Vertex>
+constexpr vk::VertexInputBindingDescription getBindingDescription()
+{
+    auto desc = vk::VertexInputBindingDescription{};
+    desc.binding = 0;
+    desc.stride = sizeof(Vertex);
+    desc.inputRate = vk::VertexInputRate::eVertex;
+
+    return desc;
+};
+
+template<typename Vertex>
+constexpr std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions()
+{
+    std::array<vk::VertexInputAttributeDescription, 2> desc;
+
+    desc[0].binding = 0;
+    desc[0].location = 0;
+    desc[0].format = vk::Format::eR32G32Sfloat;
+    desc[0].offset = offsetof(Vertex, pos);
+
+    desc[1].binding = 0;
+    desc[1].location = 1;
+    desc[1].format = vk::Format::eR32G32B32Sfloat;
+    desc[1].offset = offsetof(Vertex, color);
+
+    return  desc;
+}
+
+uint32_t findMemoryType(vk::PhysicalDevice const& physical_device, uint32_t type_filter, vk::MemoryPropertyFlags properties)
+{
+    auto mem_properties = physical_device.getMemoryProperties();
+
+    for (uint32_t i = 0; i < mem_properties.memoryTypes.size(); ++i)
+    {
+        if (type_filter & (1 << i) && (mem_properties.memoryTypes[i].propertyFlags & properties) == properties)
+        {
+            return i;
+        }
+    }
+
+    std::cout << "Missing memory type\n";
+    return 0;
+}
+
+vk::Buffer createVertexBuffer(vk::PhysicalDevice const& physical_device, vk::Device const& device, std::vector<Vertex> const& vertices)
+{
+    vk::BufferCreateInfo buffer_info{};
+    buffer_info.sType = vk::StructureType::eBufferCreateInfo;
+    buffer_info.size = sizeof(Vertex) * vertices.size();
+    buffer_info.usage = vk::BufferUsageFlagBits::eVertexBuffer;
+    buffer_info.sharingMode = vk::SharingMode::eExclusive;
+
+    auto vertex_buffer =  device.createBuffer(buffer_info);
+
+    auto buffer = vertex_buffer.value;
+
+
+    auto mem_reqs = device.getBufferMemoryRequirements(buffer);
+
+    vk::MemoryAllocateInfo alloc_info{};
+    alloc_info.sType = vk::StructureType::eMemoryAllocateInfo;
+    alloc_info.allocationSize = mem_reqs.size;
+    alloc_info.setMemoryTypeIndex(findMemoryType(physical_device, mem_reqs.memoryTypeBits,   vk::MemoryPropertyFlagBits::eHostVisible
+                                                                          | vk::MemoryPropertyFlagBits::eHostCoherent));
+
+    auto vertex_buffer_memory = device.allocateMemory(alloc_info);
+
+    auto vind_result = device.bindBufferMemory(buffer, vertex_buffer_memory.value, 0);
+
+    void* data;
+    auto map_memory_flags = device.mapMemory(vertex_buffer_memory.value, 0, buffer_info.size, static_cast<vk::MemoryMapFlagBits>(0), &data);
+    memcpy(data, vertices.data(), buffer_info.size);
+    device.unmapMemory(vertex_buffer_memory.value);
+
+    return buffer;
+}
+
+
 static const std::vector<const char*> device_extensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
@@ -280,12 +367,13 @@ std::vector<vk::Pipeline> createGraphicsPipline(vk::Device const& device, vk::Ex
 
 
     vk::PipelineVertexInputStateCreateInfo vertex_input_info {};
+
+    constexpr auto biding_descrition = getBindingDescription<Vertex>();
+    constexpr auto attrib_descriptions = getAttributeDescriptions<Vertex>();
+
     vertex_input_info.sType = vk::StructureType::ePipelineVertexInputStateCreateInfo;
-    vertex_input_info.vertexBindingDescriptionCount = 0;
-    vertex_input_info.pVertexBindingDescriptions = nullptr;
-    vertex_input_info.vertexAttributeDescriptionCount= 0;
-    vertex_input_info.pVertexAttributeDescriptions = nullptr;
-    
+    vertex_input_info.setVertexBindingDescriptions(biding_descrition);
+    vertex_input_info.setVertexAttributeDescriptions(attrib_descriptions);
 
     vk::PipelineInputAssemblyStateCreateInfo input_assembly{};
     input_assembly.sType = vk::StructureType::ePipelineInputAssemblyStateCreateInfo;
@@ -489,7 +577,7 @@ std::vector<vk::CommandBuffer> createCommandBuffer(vk::Device const& device, vk:
 
 void recordCommandBuffer(vk::CommandBuffer command_buffer, uint32_t image_index, vk::RenderPass const& render_pass,
                          std::vector<vk::Framebuffer> const& swap_chain_framebuffers, vk::Extent2D const& swap_chain_extent,
-                         vk::Pipeline const& graphics_pipeline)
+                         vk::Pipeline const& graphics_pipeline, vk::Buffer const& vertex_buffer)
 {
     vk::CommandBufferBeginInfo begin_info{};
     begin_info.sType = vk::StructureType::eCommandBufferBeginInfo;
@@ -528,7 +616,11 @@ void recordCommandBuffer(vk::CommandBuffer command_buffer, uint32_t image_index,
     scissor.extent = swap_chain_extent;
     command_buffer.setScissor(0,scissor);
 
-    command_buffer.draw(3,1,0,0);
+
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline);
+
+    command_buffer.bindVertexBuffers(0,vertex_buffer,{0});
+    command_buffer.draw(3,1,0,0); // Fix
 
     command_buffer.endRenderPass();
     result = command_buffer.end();
@@ -540,7 +632,7 @@ void drawFrame(vk::Device const& device, vk::SwapchainKHR const& swap_chain,
                std::vector<vk::CommandBuffer> const& command_buffer,
                vk::RenderPass const& render_pass, std::vector<vk::Framebuffer> const& framebuffers,
                vk::Extent2D const& swap_chain_extent,  vk::Pipeline const& pipeline,
-               vk::Queue const& graphics_queue, vk::Queue const& present_queue, uint32_t current_frame, Func recreateSwapchain, App& app)
+               vk::Queue const& graphics_queue, vk::Queue const& present_queue, uint32_t current_frame, Func recreateSwapchain, App& app, vk::Buffer const& vertex_buffer)
 {
     auto v = device.waitForFences(semaphores.in_flight_fence[current_frame], true, ~0);
 
@@ -563,7 +655,7 @@ void drawFrame(vk::Device const& device, vk::SwapchainKHR const& swap_chain,
     command_buffer[current_frame].reset(static_cast<vk::CommandBufferResetFlags>(0));
 
     auto image_index = next_image.value;
-    recordCommandBuffer(command_buffer[current_frame], image_index, render_pass, framebuffers, swap_chain_extent, pipeline);
+    recordCommandBuffer(command_buffer[current_frame], image_index, render_pass, framebuffers, swap_chain_extent, pipeline, vertex_buffer);
 
     vk::PipelineStageFlags wait_stages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
 
@@ -834,6 +926,15 @@ Semaphores createSemaphores(vk::Device const& device)
 int main()
 {
     App app{};
+
+
+    const std::vector<Vertex> vertices = {
+        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+    };
+
+
     auto window = setupGlfw(app);
 
     auto const instance = createInstance(true);
@@ -853,6 +954,7 @@ int main()
     auto const graphic_pipeline = createGraphicsPipline(device, sc.extent, render_pass);
     auto swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, sc.extent);
     auto const command_pool = createCommandPool(device, indices);
+    auto const vertex_buffer = createVertexBuffer(physical_device, device, vertices);
     auto const command_buffers = createCommandBuffer(device, command_pool);
 
     auto const semaphores = createSemaphores(device);
@@ -886,7 +988,7 @@ int main()
         glfwPollEvents();
         drawFrame(device, sc.swap_chain, semaphores,
                 command_buffers, render_pass, swap_chain_framebuffers, sc.extent, graphic_pipeline.at(0),
-                graphics_queue, present_queue, current_frame, recreateSwapchain, app);
+                graphics_queue, present_queue, current_frame, recreateSwapchain, app, vertex_buffer);
 
         current_frame = (current_frame + 1) % 2;
     }
