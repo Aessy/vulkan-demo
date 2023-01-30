@@ -28,6 +28,7 @@ struct Vertex
     glm::vec3 color;
 };
 
+
 template<typename Vertex>
 constexpr vk::VertexInputBindingDescription getBindingDescription()
 {
@@ -183,6 +184,58 @@ struct App
     bool window_resize = false;
 };
 
+struct SwapChain
+{
+    vk::SwapchainKHR swap_chain;
+    std::vector<vk::Image> images;
+    vk::Format swap_chain_image_format;
+    vk::Extent2D extent;
+};
+
+struct DrawableMesh
+{
+    vk::Buffer buffer;
+    uint32_t vertices{};
+};
+
+struct QueueFamilyIndices {
+    std::optional<unsigned int> graphics_family;
+    std::optional<unsigned int> present_family;
+};
+
+struct RenderingState
+{
+    App app;
+
+    GLFWwindow* window{nullptr};
+
+    vk::Instance instance;
+    vk::SurfaceKHR surface;
+    vk::Device device;
+    QueueFamilyIndices indices;
+    vk::PhysicalDevice physical_device;
+    vk::RenderPass render_pass;
+    std::vector<vk::Pipeline> pipelines;
+    std::vector<vk::ImageView> image_views;
+
+    SwapChain swap_chain;
+    Semaphores semaphores;
+
+    std::vector<vk::CommandBuffer> command_buffer;
+    std::vector<vk::Framebuffer> framebuffers;
+
+    vk::Queue graphics_queue;
+    vk::Queue present_queue;
+
+    std::vector<vk::Buffer> vbos;
+
+    uint32_t current_frame{};
+
+    DrawableMesh mesh;
+};
+
+
+
 static void framebufferResizeCallback(GLFWwindow* window, int, int)
 {
     auto app = reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
@@ -235,11 +288,6 @@ static int scoreDevice(vk::PhysicalDevice const& device)
 
     return score;
 }
-
-struct QueueFamilyIndices {
-    std::optional<unsigned int> graphics_family;
-    std::optional<unsigned int> present_family;
-};
 
 QueueFamilyIndices findQueueFamilies(vk::PhysicalDevice const& physical_device, vk::SurfaceKHR const& surface)
 {
@@ -575,10 +623,10 @@ std::vector<vk::CommandBuffer> createCommandBuffer(vk::Device const& device, vk:
     return command_buffers.value;
 }
 
-void recordCommandBuffer(vk::CommandBuffer command_buffer, uint32_t image_index, vk::RenderPass const& render_pass,
-                         std::vector<vk::Framebuffer> const& swap_chain_framebuffers, vk::Extent2D const& swap_chain_extent,
-                         vk::Pipeline const& graphics_pipeline, vk::Buffer const& vertex_buffer)
+void recordCommandBuffer(RenderingState& state, uint32_t image_index)
 {
+    auto& command_buffer = state.command_buffer[state.current_frame];
+
     vk::CommandBufferBeginInfo begin_info{};
     begin_info.sType = vk::StructureType::eCommandBufferBeginInfo;
     begin_info.setFlags(static_cast<vk::CommandBufferUsageFlags>(0));
@@ -588,10 +636,10 @@ void recordCommandBuffer(vk::CommandBuffer command_buffer, uint32_t image_index,
 
     vk::RenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
-    render_pass_info.setRenderPass(render_pass);
-    render_pass_info.setFramebuffer(swap_chain_framebuffers[image_index]);
+    render_pass_info.setRenderPass(state.render_pass);
+    render_pass_info.setFramebuffer(state.framebuffers[image_index]);
     render_pass_info.renderArea.offset = vk::Offset2D{0,0};
-    render_pass_info.renderArea.extent = swap_chain_extent;
+    render_pass_info.renderArea.extent = state.swap_chain.extent;
 
     vk::ClearValue clear_color(vk::ClearColorValue(std::array<float,4>{0,0,0,1}));
 
@@ -599,13 +647,13 @@ void recordCommandBuffer(vk::CommandBuffer command_buffer, uint32_t image_index,
     render_pass_info.setClearValues(clear_color);
 
     command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline);
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.pipelines[0]);
 
     vk::Viewport viewport{};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = static_cast<float>(swap_chain_extent.width);
-    viewport.height = static_cast<float>(swap_chain_extent.height);
+    viewport.width = static_cast<float>(state.swap_chain.extent.width);
+    viewport.height = static_cast<float>(state.swap_chain.extent.height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
@@ -613,80 +661,83 @@ void recordCommandBuffer(vk::CommandBuffer command_buffer, uint32_t image_index,
     
     vk::Rect2D scissor{};
     scissor.offset = vk::Offset2D{0,0};
-    scissor.extent = swap_chain_extent;
+    scissor.extent = state.swap_chain.extent;
     command_buffer.setScissor(0,scissor);
 
 
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline);
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.pipelines[0]);
 
-    command_buffer.bindVertexBuffers(0,vertex_buffer,{0});
-    command_buffer.draw(3,1,0,0); // Fix
+    command_buffer.bindVertexBuffers(0,state.mesh.buffer,{0});
+    command_buffer.draw(state.mesh.vertices,1,0,0); // Fix
 
     command_buffer.endRenderPass();
     result = command_buffer.end();
 }
 
-template<typename Func>
-void drawFrame(vk::Device const& device, vk::SwapchainKHR const& swap_chain,
-               Semaphores const& semaphores,
-               std::vector<vk::CommandBuffer> const& command_buffer,
-               vk::RenderPass const& render_pass, std::vector<vk::Framebuffer> const& framebuffers,
-               vk::Extent2D const& swap_chain_extent,  vk::Pipeline const& pipeline,
-               vk::Queue const& graphics_queue, vk::Queue const& present_queue, uint32_t current_frame, Func recreateSwapchain, App& app, vk::Buffer const& vertex_buffer)
+enum class DrawResult
 {
-    auto v = device.waitForFences(semaphores.in_flight_fence[current_frame], true, ~0);
+    SUCCESS,
+    RESIZE,
+    EXIT
+};
 
-    auto next_image = device.acquireNextImageKHR(swap_chain, ~0, semaphores.image_available_semaphore[current_frame], VK_NULL_HANDLE);
+DrawResult drawFrame(RenderingState& state)
+{
+    auto v = state.device.waitForFences(state.semaphores.in_flight_fence[state.current_frame], true, ~0);
+
+    auto next_image = state.device.acquireNextImageKHR(state.swap_chain.swap_chain, ~0,
+            state.semaphores.image_available_semaphore[state.current_frame], VK_NULL_HANDLE);
     if (   next_image.result == vk::Result::eErrorOutOfDateKHR
         || next_image.result == vk::Result::eSuboptimalKHR)
     {
-        recreateSwapchain();
-        return;
+        return DrawResult::RESIZE;
     }
     else if (   next_image.result != vk::Result::eSuccess
              && next_image.result != vk::Result::eSuboptimalKHR)
     {
         std::cout << "Failed to acquire swap chain image\n";
-        return;
+        return DrawResult::EXIT;
     }
 
-    device.resetFences(semaphores.in_flight_fence[current_frame]);
+    state.device.resetFences(state.semaphores.in_flight_fence[state.current_frame]);
 
-    command_buffer[current_frame].reset(static_cast<vk::CommandBufferResetFlags>(0));
+    state.command_buffer[state.current_frame].reset(static_cast<vk::CommandBufferResetFlags>(0));
 
     auto image_index = next_image.value;
-    recordCommandBuffer(command_buffer[current_frame], image_index, render_pass, framebuffers, swap_chain_extent, pipeline, vertex_buffer);
+    recordCommandBuffer(state, image_index);
 
     vk::PipelineStageFlags wait_stages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
 
     vk::SubmitInfo submit_info{};
     submit_info.sType = vk::StructureType::eSubmitInfo;
-    submit_info.setWaitSemaphores(semaphores.image_available_semaphore[current_frame]);
+    submit_info.setWaitSemaphores(state.semaphores.image_available_semaphore[state.current_frame]);
     submit_info.setWaitDstStageMask(wait_stages);
     submit_info.commandBufferCount = 1;
-    submit_info.setCommandBuffers(command_buffer[current_frame]);
-    submit_info.setSignalSemaphores(semaphores.render_finished_semaphore[current_frame]);
+    submit_info.setCommandBuffers(state.command_buffer[state.current_frame]);
+    submit_info.setSignalSemaphores(state.semaphores.render_finished_semaphore[state.current_frame]);
 
 
-    auto submit_result = graphics_queue.submit(submit_info, semaphores.in_flight_fence[current_frame]);
+    auto submit_result = state.graphics_queue.submit(submit_info, state.semaphores.in_flight_fence[state.current_frame]);
 
     vk::PresentInfoKHR present_info{};
     present_info.sType = vk::StructureType::ePresentInfoKHR;
-    present_info.setWaitSemaphores(semaphores.render_finished_semaphore[current_frame]);
+    present_info.setWaitSemaphores(state.semaphores.render_finished_semaphore[state.current_frame]);
     present_info.setResults(nullptr);
     present_info.swapchainCount = 1;
-    present_info.pSwapchains = &swap_chain;
+    present_info.pSwapchains = &state.swap_chain.swap_chain;
     present_info.setImageIndices(image_index);
 
-    auto result = present_queue.presentKHR(present_info);
+    auto result = state.present_queue.presentKHR(present_info);
 
     if (   result == vk::Result::eErrorOutOfDateKHR
         || result == vk::Result::eSuboptimalKHR
-        || app.window_resize)
+        || state.app.window_resize)
     {
-        app.window_resize = false;
-        recreateSwapchain();
+        state.app.window_resize = false;
+        return DrawResult::RESIZE;
     }
+
+    return DrawResult::SUCCESS;
 }
 
 auto createInstance(bool validation_layers_on)
@@ -802,14 +853,6 @@ vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device, QueueF
     return device.value;
 }
 
-struct SwapChain
-{
-    vk::SwapchainKHR swap_chain;
-    std::vector<vk::Image> images;
-    vk::Format swap_chain_image_format;
-    vk::Extent2D extent;
-};
-
 SwapChain createSwapchain(vk::PhysicalDevice const& physical_device, vk::Device const& device, vk::SurfaceKHR const& surface, GLFWwindow* window, QueueFamilyIndices const& indices)
 {
     auto swap_chain_support = querySwapChainSupport(physical_device, surface);
@@ -923,17 +966,9 @@ Semaphores createSemaphores(vk::Device const& device)
     return semaphores;
 }
 
-int main()
+RenderingState createVulkanRenderState()
 {
-    App app{};
-
-
-    const std::vector<Vertex> vertices = {
-        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
-    };
-
+    App app;
 
     auto window = setupGlfw(app);
 
@@ -954,7 +989,6 @@ int main()
     auto const graphic_pipeline = createGraphicsPipline(device, sc.extent, render_pass);
     auto swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, sc.extent);
     auto const command_pool = createCommandPool(device, indices);
-    auto const vertex_buffer = createVertexBuffer(physical_device, device, vertices);
     auto const command_buffers = createCommandBuffer(device, command_pool);
 
     auto const semaphores = createSemaphores(device);
@@ -962,8 +996,61 @@ int main()
     auto const graphics_queue = device.getQueue(*indices.graphics_family, 0);
     auto const present_queue = device.getQueue(*indices.present_family, 0);
 
-    std::cout << "Graphic pipeline size: " << graphic_pipeline.size() << '\n';
+    RenderingState render_state {
+        .app = app,
+        .window = window,
+        .instance = instance,
+        .surface = surface,
+        .device = device,
+        .indices = indices,
+        .physical_device = physical_device,
+        .render_pass = render_pass,
+        .pipelines = graphic_pipeline,
+        .image_views = swap_chain_image_views,
+        .swap_chain = sc,
+        .semaphores = semaphores,
+        .command_buffer = command_buffers,
+        .framebuffers = swap_chain_framebuffers,
+        .graphics_queue = graphics_queue,
+        .present_queue = present_queue,
+    };
 
+    return render_state;
+}
+
+void recreateSwapchain(RenderingState& state)
+{
+    std::cout << "Recreating swapchain" << '\n';
+    auto result = state.device.waitIdle();
+
+    // Destroy the swapchain
+    std::for_each(state.framebuffers.begin(), state.framebuffers.end(), [&](auto const& f) { state.device.destroyFramebuffer(f);});
+    std::for_each(state.image_views.begin(), state.image_views.end(), [&](auto const& f) { state.device.destroyImageView(f);});
+    state.device.destroySwapchainKHR(state.swap_chain.swap_chain);
+
+    // Create new swapchain
+    state.swap_chain = createSwapchain(state.physical_device, state.device, state.surface, state.window, state.indices);
+    state.image_views = createImageViews(state.swap_chain, state.device);
+    state.framebuffers= createFrameBuffers(state.device, state.image_views, state.render_pass,
+                                           state.swap_chain.extent);
+
+    std::cout << "Finish recreating\n";
+}
+
+int main()
+{
+    const std::vector<Vertex> vertices = {
+        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+    };
+
+    RenderingState rendering_state = createVulkanRenderState();
+    rendering_state.mesh.buffer = createVertexBuffer(
+            rendering_state.physical_device, rendering_state.device, vertices);
+    rendering_state.mesh.vertices = vertices.size();
+
+    /*
     auto recreateSwapchain = [&]()
     {
         std::cout << "Recreating swapchain" << '\n';
@@ -981,15 +1068,22 @@ int main()
 
         std::cout << "Finish recreating\n";
     };
+    */
     
-    uint32_t current_frame = 0;
-    while (!glfwWindowShouldClose(window))
+    while (!glfwWindowShouldClose(rendering_state.window))
     {
         glfwPollEvents();
-        drawFrame(device, sc.swap_chain, semaphores,
-                command_buffers, render_pass, swap_chain_framebuffers, sc.extent, graphic_pipeline.at(0),
-                graphics_queue, present_queue, current_frame, recreateSwapchain, app, vertex_buffer);
+        auto result = drawFrame(rendering_state);
 
-        current_frame = (current_frame + 1) % 2;
+        if (result == DrawResult::RESIZE)
+        {
+            recreateSwapchain(rendering_state);
+        }
+        else if (result == DrawResult::EXIT)
+        {
+            return 0;
+        }
+
+        rendering_state.current_frame = (rendering_state.current_frame + 1) % 2;
     }
 }
