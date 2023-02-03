@@ -14,13 +14,24 @@
 #include <vulkan/vulkan_funcs.hpp>
 #include <vulkan/vulkan_structs.hpp>
 
+#include <chrono>
 #include <iostream>
 #include <optional>
 #include <set>
 #include <limits>
 #include <fstream>
 
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+struct UniformBufferObject
+{
+    alignas(16) glm::mat4 model;
+    alignas(16) glm::mat4 view;
+    alignas(16) glm::mat4 proj;
+};
 
 struct Vertex
 {
@@ -43,8 +54,9 @@ struct SwapChain
 
 struct DrawableMesh
 {
-    vk::Buffer buffer;
-    uint32_t vertices{};
+    vk::Buffer vertex_buffer;
+    vk::Buffer index_buffer;
+    uint32_t indices_size{};
 };
 
 struct QueueFamilyIndices {
@@ -59,6 +71,13 @@ struct Semaphores
     std::vector<vk::Semaphore> render_finished_semaphore;
 };
 
+struct UniformBuffer
+{
+    vk::Buffer uniform_buffers;
+    vk::DeviceMemory uniform_device_memory;
+    void* uniform_buffers_mapped;
+};
+
 struct RenderingState
 {
     App app;
@@ -71,6 +90,8 @@ struct RenderingState
     QueueFamilyIndices indices;
     vk::PhysicalDevice physical_device;
     vk::RenderPass render_pass;
+    vk::DescriptorSetLayout descriptor_set_layout;
+    vk::PipelineLayout pipeline_layout;
     std::vector<vk::Pipeline> pipelines;
     std::vector<vk::ImageView> image_views;
 
@@ -89,7 +110,91 @@ struct RenderingState
     uint32_t current_frame{};
 
     DrawableMesh mesh;
+    std::vector<UniformBuffer> uniform_buffers{};
+
+    std::vector<vk::DescriptorSet> desc_sets;
 };
+
+template<typename T>
+void checkResult(T result)
+{
+    if (result != vk::Result::eSuccess)
+    {
+        std::cout << "Result error\n";
+    }
+}
+
+
+vk::DescriptorSetLayout createDescritptorSetLayout(vk::Device const& device)
+{
+    vk::DescriptorSetLayoutBinding  ubo_layout_binding;
+    ubo_layout_binding.binding = 0;
+    ubo_layout_binding.descriptorType = vk::DescriptorType::eUniformBuffer;
+    ubo_layout_binding.descriptorCount = 1;
+    ubo_layout_binding.stageFlags = vk::ShaderStageFlagBits::eVertex;
+    ubo_layout_binding.setPImmutableSamplers(nullptr);
+
+    vk::DescriptorSetLayoutCreateInfo  layout_info;
+    layout_info.sType = vk::StructureType::eDescriptorSetLayoutCreateInfo;
+    layout_info.pBindings = &ubo_layout_binding;
+    layout_info.setBindingCount(1);
+    
+    auto descriptor_set_layout = device.createDescriptorSetLayout(layout_info);
+    checkResult(descriptor_set_layout.result);
+
+    return descriptor_set_layout.value;
+}
+
+vk::DescriptorPool createDescriptionPool(vk::Device const& device)
+{
+    vk::DescriptorPoolSize pool_size{};
+    pool_size.type = vk::DescriptorType::eUniformBuffer;
+    pool_size.setDescriptorCount(2);
+
+    vk::DescriptorPoolCreateInfo pool_info;
+    pool_info.sType = vk::StructureType::eDescriptorPoolCreateInfo;
+    pool_info.setPoolSizes(pool_size);
+    pool_info.setMaxSets(2);
+
+    auto descriptor_pool = device.createDescriptorPool(pool_info);
+
+    return descriptor_pool.value;
+}
+
+std::vector<vk::DescriptorSet> createDescriptorSet(vk::Device const& device, vk::DescriptorSetLayout const& layout, vk::DescriptorPool const& pool, std::vector<UniformBuffer> const& buffers)
+{
+    std::vector<vk::DescriptorSetLayout> layouts(2, layout);
+
+    vk::DescriptorSetAllocateInfo alloc_info{};
+    alloc_info.sType = vk::StructureType::eDescriptorSetAllocateInfo;
+    alloc_info.setDescriptorPool(pool);
+    alloc_info.setDescriptorSetCount(2);
+    alloc_info.setSetLayouts(layouts);
+
+    auto sets = device.allocateDescriptorSets(alloc_info).value;
+
+    for (int i = 0; i < 2; ++i)
+    {
+        vk::DescriptorBufferInfo buffer_info{};
+        buffer_info.buffer = buffers[i].uniform_buffers;
+        buffer_info.offset = 0;
+        buffer_info.range = sizeof(UniformBufferObject);
+
+        vk::WriteDescriptorSet desc_write;
+        desc_write.sType = vk::StructureType::eWriteDescriptorSet;
+        desc_write.setDstSet(sets[i]);
+        desc_write.dstBinding = 0;
+        desc_write.dstArrayElement = 0;
+        desc_write.descriptorType = vk::DescriptorType::eUniformBuffer;
+        desc_write.descriptorCount = 1;
+        desc_write.setBufferInfo(buffer_info);
+
+        device.updateDescriptorSets(desc_write, nullptr);
+    }
+
+    return sets;
+}
+    
 
 
 template<typename Vertex>
@@ -135,15 +240,6 @@ uint32_t findMemoryType(vk::PhysicalDevice const& physical_device, uint32_t type
 
     std::cout << "Missing memory type\n";
     return 0;
-}
-
-template<typename T>
-void checkResult(T result)
-{
-    if (result != vk::Result::eSuccess)
-    {
-        std::cout << "Result error\n";
-    }
 }
 
 void copyBuffer(RenderingState const& state, vk::Buffer src_buffer, vk::Buffer dst_buffer, vk::DeviceSize size)
@@ -224,7 +320,7 @@ vk::Buffer createVertexBuffer(RenderingState const& state, std::vector<Vertex> c
                              | vk::MemoryPropertyFlagBits::eHostCoherent, staging_buffer_memory);
 
     void* data;
-    auto map_memory_flags = state.device.mapMemory(staging_buffer_memory, 0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0), &data);
+    checkResult(state.device.mapMemory(staging_buffer_memory, 0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0), &data));
     memcpy(data, vertices.data(), buffer_size);
     state.device.unmapMemory(staging_buffer_memory);
 
@@ -240,6 +336,53 @@ vk::Buffer createVertexBuffer(RenderingState const& state, std::vector<Vertex> c
     return vertex_buffer;
 }
 
+vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint16_t> indices)
+{
+    vk::DeviceSize buffer_size = sizeof(decltype(indices)::value_type) * indices.size();
+
+    vk::DeviceMemory staging_buffer_memory;
+    auto staging_buffer = createBuffer(state,
+                               buffer_size, vk::BufferUsageFlagBits::eTransferSrc,
+                               vk::MemoryPropertyFlagBits::eHostVisible
+                             | vk::MemoryPropertyFlagBits::eHostCoherent, staging_buffer_memory);
+
+    void* data;
+    checkResult(state.device.mapMemory(staging_buffer_memory, 0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0), &data));
+    memcpy(data, indices.data(), buffer_size);
+    state.device.unmapMemory(staging_buffer_memory);
+
+    vk::DeviceMemory indices_buffer_memory;
+    auto index_buffer = createBuffer(state, buffer_size,  vk::BufferUsageFlagBits::eTransferDst
+                                                  | vk::BufferUsageFlagBits::eIndexBuffer,
+                                      vk::MemoryPropertyFlagBits::eDeviceLocal, indices_buffer_memory);
+
+    copyBuffer(state, staging_buffer, index_buffer, buffer_size);
+
+    state.device.destroyBuffer(staging_buffer);
+    state.device.freeMemory(staging_buffer_memory);
+    return index_buffer;
+}
+
+auto createUniformBuffers(RenderingState const& state)
+{
+    vk::DeviceSize buffer_size = sizeof(UniformBufferObject);
+
+    std::vector<UniformBuffer> ubos;
+    size_t const max_frames_in_flight = 2;
+    for (size_t i = 0; i < max_frames_in_flight; ++i)
+    {
+        vk::DeviceMemory uniform_buffer_memory;
+        auto buffer = createBuffer(state, buffer_size, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible
+                                                                                 |vk::MemoryPropertyFlagBits::eHostCoherent,
+                                                                                 uniform_buffer_memory);
+        auto mapped = state.device.mapMemory(uniform_buffer_memory, 0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0));
+        checkResult(mapped.result);
+
+        ubos.push_back(UniformBuffer{buffer, uniform_buffer_memory, mapped.value});
+    }
+
+    return ubos;
+}
 
 static const std::vector<const char*> device_extensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME
@@ -451,7 +594,7 @@ std::vector<char> readFile(std::string const& path)
     return std::vector<char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 }
 
-std::vector<vk::Pipeline> createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass)
+std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, vk::DescriptorSetLayout const& desc_set_layout)
 {
     std::string path;
 
@@ -527,7 +670,7 @@ std::vector<vk::Pipeline> createGraphicsPipline(vk::Device const& device, vk::Ex
     rasterizer.polygonMode = vk::PolygonMode::eFill;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = vk::CullModeFlagBits::eBack;
-    rasterizer.frontFace = vk::FrontFace::eClockwise;
+    rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
     rasterizer.depthBiasEnable = false;
     rasterizer.depthBiasConstantFactor = 0.0f;
     rasterizer.depthBiasClamp = 0.0f;
@@ -569,10 +712,9 @@ std::vector<vk::Pipeline> createGraphicsPipline(vk::Device const& device, vk::Ex
 
     vk::PipelineLayoutCreateInfo pipeline_layout_info{};
     pipeline_layout_info.sType = vk::StructureType::ePipelineLayoutCreateInfo;
-    pipeline_layout_info.setLayoutCount = 0;
-    pipeline_layout_info.pSetLayouts = nullptr;
-    pipeline_layout_info.pushConstantRangeCount = 0;
-    pipeline_layout_info.pPushConstantRanges = nullptr;
+    pipeline_layout_info.setSetLayouts(desc_set_layout);
+    // pipeline_layout_info.pushConstantRangeCount = 0;
+    // pipeline_layout_info.pPushConstantRanges = nullptr;
 
 
     auto pipeline_layout = device.createPipelineLayout(pipeline_layout_info);
@@ -599,7 +741,7 @@ std::vector<vk::Pipeline> createGraphicsPipline(vk::Device const& device, vk::Ex
 
     auto pipelines = device.createGraphicsPipelines(VK_NULL_HANDLE, pipeline_info);
 
-    return pipelines.value;
+    return std::make_pair(pipelines.value, pipeline_layout.value);
 }
 
 vk::RenderPass createRenderPass(vk::Device const& device, vk::Format const& swap_chain_image_format)
@@ -738,11 +880,29 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
 
     command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.pipelines[0]);
 
-    command_buffer.bindVertexBuffers(0,state.mesh.buffer,{0});
-    command_buffer.draw(state.mesh.vertices,1,0,0); // Fix
+    command_buffer.bindVertexBuffers(0,state.mesh.vertex_buffer,{0});
+    command_buffer.bindIndexBuffer(state.mesh.index_buffer, 0, vk::IndexType::eUint16);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 0, 1, &state.desc_sets[state.current_frame], 0, nullptr);
+    command_buffer.drawIndexed(state.mesh.indices_size, 1, 0, 0, 0);
 
     command_buffer.endRenderPass();
     result = command_buffer.end();
+}
+
+void updateUniformBuffer(vk::Extent2D const& swap_chain_extent, UniformBuffer& uniform_buffer)
+{
+    static auto startTime = std::chrono::high_resolution_clock::now();
+
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+    UniformBufferObject ubo{};
+    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.proj = glm::perspective(glm::radians(45.0f), swap_chain_extent.width / (float)swap_chain_extent.height, 0.1f, 10.0f);
+
+    ubo.proj[1][1] *= -1;
+    memcpy(uniform_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
 }
 
 enum class DrawResult
@@ -769,6 +929,8 @@ DrawResult drawFrame(RenderingState& state)
         std::cout << "Failed to acquire swap chain image\n";
         return DrawResult::EXIT;
     }
+
+    updateUniformBuffer(state.swap_chain.extent, state.uniform_buffers[state.current_frame]);
 
     state.device.resetFences(state.semaphores.in_flight_fence[state.current_frame]);
 
@@ -1057,7 +1219,10 @@ RenderingState createVulkanRenderState()
     auto swap_chain_image_views = createImageViews(sc, device);
 
     auto const render_pass = createRenderPass(device, sc.swap_chain_image_format);
-    auto const graphic_pipeline = createGraphicsPipline(device, sc.extent, render_pass);
+
+    auto const descriptor_set_layout = createDescritptorSetLayout(device);
+
+    auto const graphic_pipeline = createGraphicsPipline(device, sc.extent, render_pass, descriptor_set_layout);
     auto swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, sc.extent);
     auto const command_pool = createCommandPool(device, indices);
     auto const command_buffers = createCommandBuffer(device, command_pool);
@@ -1076,7 +1241,9 @@ RenderingState createVulkanRenderState()
         .indices = indices,
         .physical_device = physical_device,
         .render_pass = render_pass,
-        .pipelines = graphic_pipeline,
+        .descriptor_set_layout = std::move(descriptor_set_layout),
+        .pipeline_layout = graphic_pipeline.second,
+        .pipelines = graphic_pipeline.first,
         .image_views = swap_chain_image_views,
         .swap_chain = sc,
         .semaphores = semaphores,
@@ -1112,14 +1279,24 @@ void recreateSwapchain(RenderingState& state)
 int main()
 {
     const std::vector<Vertex> vertices = {
-        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+    };
+
+    std::vector<uint16_t> indices = {
+        0,1,2,2,3,0
     };
 
     RenderingState rendering_state = createVulkanRenderState();
-    rendering_state.mesh.buffer = createVertexBuffer(rendering_state, vertices);
-    rendering_state.mesh.vertices = vertices.size();
+    rendering_state.mesh.vertex_buffer = createVertexBuffer(rendering_state, vertices);
+    rendering_state.mesh.index_buffer = createIndexBuffer(rendering_state, indices);
+    rendering_state.mesh.indices_size = indices.size();
+    rendering_state.uniform_buffers = createUniformBuffers(rendering_state);
+
+    auto desc_pool = createDescriptionPool(rendering_state.device);
+    rendering_state.desc_sets = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layout, desc_pool, rendering_state.uniform_buffers);
 
     while (!glfwWindowShouldClose(rendering_state.window))
     {
