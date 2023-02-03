@@ -28,6 +28,69 @@ struct Vertex
     glm::vec3 color;
 };
 
+struct App
+{
+    bool window_resize = false;
+};
+
+struct SwapChain
+{
+    vk::SwapchainKHR swap_chain;
+    std::vector<vk::Image> images;
+    vk::Format swap_chain_image_format;
+    vk::Extent2D extent;
+};
+
+struct DrawableMesh
+{
+    vk::Buffer buffer;
+    uint32_t vertices{};
+};
+
+struct QueueFamilyIndices {
+    std::optional<unsigned int> graphics_family;
+    std::optional<unsigned int> present_family;
+};
+
+struct Semaphores
+{
+    std::vector<vk::Fence> in_flight_fence;
+    std::vector<vk::Semaphore> image_available_semaphore;
+    std::vector<vk::Semaphore> render_finished_semaphore;
+};
+
+struct RenderingState
+{
+    App app;
+
+    GLFWwindow* window{nullptr};
+
+    vk::Instance instance;
+    vk::SurfaceKHR surface;
+    vk::Device device;
+    QueueFamilyIndices indices;
+    vk::PhysicalDevice physical_device;
+    vk::RenderPass render_pass;
+    std::vector<vk::Pipeline> pipelines;
+    std::vector<vk::ImageView> image_views;
+
+    SwapChain swap_chain;
+    Semaphores semaphores;
+
+    vk::CommandPool command_pool;
+    std::vector<vk::CommandBuffer> command_buffer;
+    std::vector<vk::Framebuffer> framebuffers;
+
+    vk::Queue graphics_queue;
+    vk::Queue present_queue;
+
+    std::vector<vk::Buffer> vbos;
+
+    uint32_t current_frame{};
+
+    DrawableMesh mesh;
+};
+
 
 template<typename Vertex>
 constexpr vk::VertexInputBindingDescription getBindingDescription()
@@ -74,37 +137,107 @@ uint32_t findMemoryType(vk::PhysicalDevice const& physical_device, uint32_t type
     return 0;
 }
 
-vk::Buffer createVertexBuffer(vk::PhysicalDevice const& physical_device, vk::Device const& device, std::vector<Vertex> const& vertices)
+template<typename T>
+void checkResult(T result)
+{
+    if (result != vk::Result::eSuccess)
+    {
+        std::cout << "Result error\n";
+    }
+}
+
+void copyBuffer(RenderingState const& state, vk::Buffer src_buffer, vk::Buffer dst_buffer, vk::DeviceSize size)
+{
+    vk::CommandBufferAllocateInfo alloc_info{};
+    alloc_info.sType = vk::StructureType::eCommandBufferAllocateInfo;
+    alloc_info.level = vk::CommandBufferLevel::ePrimary;
+    alloc_info.commandPool = state.command_pool;
+    alloc_info.commandBufferCount = 1;
+
+    auto cmd_buffer = state.device.allocateCommandBuffers(alloc_info).value[0];
+
+    vk::CommandBufferBeginInfo begin_info{};
+    begin_info.sType = vk::StructureType::eCommandBufferBeginInfo;
+    begin_info.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
+
+    checkResult(cmd_buffer.begin(begin_info));
+
+    vk::BufferCopy copy_region{};
+    copy_region.srcOffset = 0;
+    copy_region.dstOffset = 0;
+    copy_region.size = size;
+
+    cmd_buffer.copyBuffer(src_buffer, dst_buffer, 1, &copy_region);
+
+    checkResult(cmd_buffer.end());
+
+    vk::SubmitInfo submit_info{};
+    submit_info.sType = vk::StructureType::eSubmitInfo;
+    submit_info.commandBufferCount = 1;
+    submit_info.setCommandBuffers(cmd_buffer);
+
+    checkResult(state.graphics_queue.submit(submit_info));
+
+    checkResult(state.graphics_queue.waitIdle());
+
+    state.device.freeCommandBuffers(state.command_pool, cmd_buffer);
+
+
+}
+
+vk::Buffer createBuffer(RenderingState const& state,
+                        vk::DeviceSize size, vk::BufferUsageFlags usage,
+                        vk::MemoryPropertyFlags properties, vk::DeviceMemory& buffer_memory)
 {
     vk::BufferCreateInfo buffer_info{};
     buffer_info.sType = vk::StructureType::eBufferCreateInfo;
-    buffer_info.size = sizeof(Vertex) * vertices.size();
-    buffer_info.usage = vk::BufferUsageFlagBits::eVertexBuffer;
+    buffer_info.size = size;
+    buffer_info.usage = usage;
     buffer_info.sharingMode = vk::SharingMode::eExclusive;
 
-    auto vertex_buffer =  device.createBuffer(buffer_info);
+    auto vertex_buffer =  state.device.createBuffer(buffer_info);
 
     auto buffer = vertex_buffer.value;
 
 
-    auto mem_reqs = device.getBufferMemoryRequirements(buffer);
+    auto mem_reqs = state.device.getBufferMemoryRequirements(buffer);
 
     vk::MemoryAllocateInfo alloc_info{};
     alloc_info.sType = vk::StructureType::eMemoryAllocateInfo;
     alloc_info.allocationSize = mem_reqs.size;
-    alloc_info.setMemoryTypeIndex(findMemoryType(physical_device, mem_reqs.memoryTypeBits,   vk::MemoryPropertyFlagBits::eHostVisible
-                                                                          | vk::MemoryPropertyFlagBits::eHostCoherent));
+    alloc_info.setMemoryTypeIndex(findMemoryType(state.physical_device, mem_reqs.memoryTypeBits, properties));
 
-    auto vertex_buffer_memory = device.allocateMemory(alloc_info);
+    buffer_memory = state.device.allocateMemory(alloc_info).value;
 
-    auto vind_result = device.bindBufferMemory(buffer, vertex_buffer_memory.value, 0);
-
-    void* data;
-    auto map_memory_flags = device.mapMemory(vertex_buffer_memory.value, 0, buffer_info.size, static_cast<vk::MemoryMapFlagBits>(0), &data);
-    memcpy(data, vertices.data(), buffer_info.size);
-    device.unmapMemory(vertex_buffer_memory.value);
+    checkResult(state.device.bindBufferMemory(buffer, buffer_memory, 0));
 
     return buffer;
+}
+
+vk::Buffer createVertexBuffer(RenderingState const& state, std::vector<Vertex> const& vertices)
+{
+    vk::DeviceSize buffer_size = sizeof(Vertex) * vertices.size();
+    vk::DeviceMemory staging_buffer_memory;
+    auto staging_buffer = createBuffer(state,
+                               buffer_size, vk::BufferUsageFlagBits::eTransferSrc,
+                               vk::MemoryPropertyFlagBits::eHostVisible
+                             | vk::MemoryPropertyFlagBits::eHostCoherent, staging_buffer_memory);
+
+    void* data;
+    auto map_memory_flags = state.device.mapMemory(staging_buffer_memory, 0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0), &data);
+    memcpy(data, vertices.data(), buffer_size);
+    state.device.unmapMemory(staging_buffer_memory);
+
+    vk::DeviceMemory vertex_buffer_memory;
+    auto vertex_buffer = createBuffer(state, buffer_size,  vk::BufferUsageFlagBits::eTransferDst
+                                                  | vk::BufferUsageFlagBits::eVertexBuffer,
+                                      vk::MemoryPropertyFlagBits::eDeviceLocal, vertex_buffer_memory);
+
+    copyBuffer(state, staging_buffer, vertex_buffer, buffer_size);
+
+    state.device.destroyBuffer(staging_buffer);
+    state.device.freeMemory(staging_buffer_memory);
+    return vertex_buffer;
 }
 
 
@@ -116,13 +249,6 @@ struct SwapChainSupportDetails {
     vk::SurfaceCapabilitiesKHR capabilities;
     std::vector<vk::SurfaceFormatKHR> formats;
     std::vector<vk::PresentModeKHR> present_modes;
-};
-
-struct Semaphores
-{
-    std::vector<vk::Fence> in_flight_fence;
-    std::vector<vk::Semaphore> image_available_semaphore;
-    std::vector<vk::Semaphore> render_finished_semaphore;
 };
 
 
@@ -178,61 +304,6 @@ vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities, GL
         return vk::Extent2D { static_cast<uint32_t>(width), static_cast<uint32_t>(height) };
     }
 }
-
-struct App
-{
-    bool window_resize = false;
-};
-
-struct SwapChain
-{
-    vk::SwapchainKHR swap_chain;
-    std::vector<vk::Image> images;
-    vk::Format swap_chain_image_format;
-    vk::Extent2D extent;
-};
-
-struct DrawableMesh
-{
-    vk::Buffer buffer;
-    uint32_t vertices{};
-};
-
-struct QueueFamilyIndices {
-    std::optional<unsigned int> graphics_family;
-    std::optional<unsigned int> present_family;
-};
-
-struct RenderingState
-{
-    App app;
-
-    GLFWwindow* window{nullptr};
-
-    vk::Instance instance;
-    vk::SurfaceKHR surface;
-    vk::Device device;
-    QueueFamilyIndices indices;
-    vk::PhysicalDevice physical_device;
-    vk::RenderPass render_pass;
-    std::vector<vk::Pipeline> pipelines;
-    std::vector<vk::ImageView> image_views;
-
-    SwapChain swap_chain;
-    Semaphores semaphores;
-
-    std::vector<vk::CommandBuffer> command_buffer;
-    std::vector<vk::Framebuffer> framebuffers;
-
-    vk::Queue graphics_queue;
-    vk::Queue present_queue;
-
-    std::vector<vk::Buffer> vbos;
-
-    uint32_t current_frame{};
-
-    DrawableMesh mesh;
-};
 
 
 
@@ -1009,6 +1080,7 @@ RenderingState createVulkanRenderState()
         .image_views = swap_chain_image_views,
         .swap_chain = sc,
         .semaphores = semaphores,
+        .command_pool = command_pool,
         .command_buffer = command_buffers,
         .framebuffers = swap_chain_framebuffers,
         .graphics_queue = graphics_queue,
@@ -1046,30 +1118,9 @@ int main()
     };
 
     RenderingState rendering_state = createVulkanRenderState();
-    rendering_state.mesh.buffer = createVertexBuffer(
-            rendering_state.physical_device, rendering_state.device, vertices);
+    rendering_state.mesh.buffer = createVertexBuffer(rendering_state, vertices);
     rendering_state.mesh.vertices = vertices.size();
 
-    /*
-    auto recreateSwapchain = [&]()
-    {
-        std::cout << "Recreating swapchain" << '\n';
-        auto result = device.waitIdle();
-
-        // Destroy the swapchain
-        std::for_each(swap_chain_framebuffers.begin(), swap_chain_framebuffers.end(), [&](auto const& f) { device.destroyFramebuffer(f);});
-        std::for_each(swap_chain_image_views.begin(), swap_chain_image_views.end(), [&](auto const& f) { device.destroyImageView(f);});
-        device.destroySwapchainKHR(sc.swap_chain);
-
-        // Create new swapchain
-        sc = createSwapchain(physical_device, device, surface, window, indices);
-        swap_chain_image_views = createImageViews(sc, device);
-        swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, sc.extent);
-
-        std::cout << "Finish recreating\n";
-    };
-    */
-    
     while (!glfwWindowShouldClose(rendering_state.window))
     {
         glfwPollEvents();
