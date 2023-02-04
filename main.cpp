@@ -14,17 +14,20 @@
 #include <vulkan/vulkan_funcs.hpp>
 #include <vulkan/vulkan_structs.hpp>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
+
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <chrono>
 #include <iostream>
 #include <optional>
 #include <set>
 #include <limits>
 #include <fstream>
-
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 
 struct UniformBufferObject
 {
@@ -242,7 +245,7 @@ uint32_t findMemoryType(vk::PhysicalDevice const& physical_device, uint32_t type
     return 0;
 }
 
-void copyBuffer(RenderingState const& state, vk::Buffer src_buffer, vk::Buffer dst_buffer, vk::DeviceSize size)
+vk::CommandBuffer beginSingleTimeCommands(RenderingState const& state)
 {
     vk::CommandBufferAllocateInfo alloc_info{};
     alloc_info.sType = vk::StructureType::eCommandBufferAllocateInfo;
@@ -258,13 +261,11 @@ void copyBuffer(RenderingState const& state, vk::Buffer src_buffer, vk::Buffer d
 
     checkResult(cmd_buffer.begin(begin_info));
 
-    vk::BufferCopy copy_region{};
-    copy_region.srcOffset = 0;
-    copy_region.dstOffset = 0;
-    copy_region.size = size;
+    return cmd_buffer;
+}
 
-    cmd_buffer.copyBuffer(src_buffer, dst_buffer, 1, &copy_region);
-
+void endSingleTimeCommands(RenderingState const& state, vk::CommandBuffer const& cmd_buffer)
+{
     checkResult(cmd_buffer.end());
 
     vk::SubmitInfo submit_info{};
@@ -277,8 +278,87 @@ void copyBuffer(RenderingState const& state, vk::Buffer src_buffer, vk::Buffer d
     checkResult(state.graphics_queue.waitIdle());
 
     state.device.freeCommandBuffers(state.command_pool, cmd_buffer);
+}
 
+void copyBuffer(RenderingState const& state, vk::Buffer src_buffer, vk::Buffer dst_buffer, vk::DeviceSize size)
+{
+    auto cmd_buffer = beginSingleTimeCommands(state);
 
+    vk::BufferCopy copy_region{};
+    copy_region.size = size;
+    cmd_buffer.copyBuffer(src_buffer, dst_buffer, 1, &copy_region);
+
+    endSingleTimeCommands(state, cmd_buffer);
+}
+
+void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout)
+{
+    auto cmd_buffer = beginSingleTimeCommands(state);
+
+    vk::ImageMemoryBarrier barrier{};
+    barrier.sType = vk::StructureType::eImageMemoryBarrier;
+    barrier.oldLayout = old_layout;
+    barrier.newLayout = new_layout;
+    barrier.srcQueueFamilyIndex = 0;
+    barrier.dstQueueFamilyIndex = 0;
+    barrier.image = image;
+    barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.srcAccessMask = static_cast<vk::AccessFlagBits>(0); // TODO
+    barrier.dstAccessMask = static_cast<vk::AccessFlagBits>(0); // TODO
+                                                                //
+    vk::PipelineStageFlagBits src_stage;
+    vk::PipelineStageFlagBits dest_stage;
+
+    if (old_layout == vk::ImageLayout::eUndefined && new_layout == vk::ImageLayout::eTransferDstOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlags{};
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+
+        src_stage = vk::PipelineStageFlagBits::eTopOfPipe;
+        dest_stage = vk::PipelineStageFlagBits::eTransfer;
+    }
+    else if (old_layout == vk::ImageLayout::eTransferDstOptimal && new_layout == vk::ImageLayout::eShaderReadOnlyOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+        src_stage = vk::PipelineStageFlagBits::eTransfer;
+        dest_stage = vk::PipelineStageFlagBits::eFragmentShader;
+    }
+    else
+    {
+        std::cout << "Error transition image\n";
+        return;
+    }
+
+    cmd_buffer.pipelineBarrier(src_stage, dest_stage, vk::DependencyFlags{}, {}, {}, barrier);
+
+    endSingleTimeCommands(state, cmd_buffer);
+}
+
+void copyBufferToImage(RenderingState const& state, vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height)
+{
+    auto cmd_buffer = beginSingleTimeCommands(state);
+
+    vk::BufferImageCopy region {};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+
+    region.imageOffset = vk::Offset3D(0,0,0);
+    region.imageExtent = vk::Extent3D(width,height,1);
+
+    cmd_buffer.copyBufferToImage(buffer, image, vk::ImageLayout::eTransferDstOptimal, region);
+
+    endSingleTimeCommands(state, cmd_buffer);
 }
 
 vk::Buffer createBuffer(RenderingState const& state,
@@ -382,6 +462,128 @@ auto createUniformBuffers(RenderingState const& state)
     }
 
     return ubos;
+}
+
+std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties)
+{
+    vk::ImageCreateInfo image_info;
+    image_info.sType = vk::StructureType::eImageCreateInfo;
+    image_info.imageType = vk::ImageType::e2D;
+    image_info.extent.width = width;
+    image_info.extent.height = height;
+    image_info.extent.depth = 1;
+    image_info.mipLevels = 1;
+    image_info.arrayLayers = 1;
+    image_info.format = format;
+    image_info.tiling = tiling;
+    image_info.initialLayout = vk::ImageLayout::eUndefined;
+    image_info.usage = usage;
+    image_info.sharingMode = vk::SharingMode::eExclusive;
+    image_info.samples = vk::SampleCountFlagBits::e1;
+    image_info.flags = static_cast<vk::ImageCreateFlagBits>(0);
+
+    auto texture_image = state.device.createImage(image_info);
+
+    auto mem_reqs = state.device.getImageMemoryRequirements(texture_image.value);
+
+    vk::MemoryAllocateInfo alloc_info{0};
+    alloc_info.sType = vk::StructureType::eMemoryAllocateInfo;
+    alloc_info.allocationSize = mem_reqs.size;
+    alloc_info.memoryTypeIndex = findMemoryType(state.physical_device, mem_reqs.memoryTypeBits, properties);
+
+    auto texture_image_memory = state.device.allocateMemory(alloc_info);
+
+    checkResult(state.device.bindImageMemory(texture_image.value, texture_image_memory.value,0));
+
+    return std::make_pair(texture_image.value, texture_image_memory.value);
+}
+
+std::pair<vk::Image, vk::DeviceMemory> createTextureImage(RenderingState const& state)
+{
+    int width, height, channels {};
+
+    auto pixels = stbi_load("textures/texture.jpg", &width, &height, &channels, STBI_rgb_alpha);
+
+    if (!pixels)
+    {
+        std::cout << "Could not load texture\n";
+    }
+
+    vk::DeviceSize image_size = width * height * 4;
+    vk::DeviceMemory staging_buffer_memory;
+
+    auto staging_buffer = createBuffer(state, image_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, staging_buffer_memory);
+
+    auto data = state.device.mapMemory(staging_buffer_memory, 0, image_size, static_cast<vk::MemoryMapFlagBits>(0));
+    memcpy(data.value, pixels, static_cast<size_t>(image_size));
+    state.device.unmapMemory(staging_buffer_memory);
+    stbi_image_free(pixels);
+
+    auto image = createImage(state, width, height, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    transitionImageLayout(state, image.first, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+    copyBufferToImage(state, staging_buffer, image.first, width, height);
+    transitionImageLayout(state, image.first, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    state.device.destroyBuffer(staging_buffer);
+    state.device.freeMemory(staging_buffer_memory);
+
+    return image;
+}
+
+vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format)
+{
+    vk::ImageViewCreateInfo view_info;
+    view_info.sType = vk::StructureType::eImageViewCreateInfo;
+    view_info.image = image;
+    view_info.viewType = vk::ImageViewType::e2D;
+    view_info.format = format;
+    view_info.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+    view_info.subresourceRange.baseMipLevel = 0;
+    view_info.subresourceRange.levelCount = 1;
+    view_info.subresourceRange.baseArrayLayer = 0;
+    view_info.subresourceRange.layerCount = 1;
+
+    auto texture_image_view = device.createImageView(view_info);
+    checkResult(texture_image_view.result);
+    return texture_image_view.value;
+}
+
+vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image)
+{
+    auto texture_image_view = createImageView(state.device, texture_image, vk::Format::eR8G8B8A8Srgb);
+    return texture_image_view;
+}
+
+vk::Sampler createTextureSampler(RenderingState const& state)
+{
+    vk::SamplerCreateInfo sampler_info;
+    sampler_info.sType = vk::StructureType::eSamplerCreateInfo;
+    sampler_info.magFilter = vk::Filter::eLinear;
+    sampler_info.minFilter = vk::Filter::eLinear;
+    sampler_info.addressModeU = vk::SamplerAddressMode::eRepeat;
+    sampler_info.addressModeV = vk::SamplerAddressMode::eRepeat;
+    sampler_info.addressModeW = vk::SamplerAddressMode::eRepeat;
+    
+    sampler_info.anisotropyEnable = true;
+
+    auto properties = state.physical_device.getProperties();
+
+    sampler_info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+    sampler_info.borderColor = vk::BorderColor::eIntOpaqueBlack;
+    sampler_info.unnormalizedCoordinates = false;
+    sampler_info.compareEnable = false;
+    sampler_info.compareOp = vk::CompareOp::eAlways;
+    sampler_info.mipmapMode = vk::SamplerMipmapMode::eLinear;
+    sampler_info.mipLodBias = 0.0f;
+    sampler_info.minLod = 0.0f;
+    sampler_info.maxLod = 0.0f;
+
+    auto sampler = state.device.createSampler(sampler_info);
+    checkResult(sampler.result);
+
+    return sampler.value;
+
 }
 
 static const std::vector<const char*> device_extensions = {
@@ -1070,7 +1272,10 @@ vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device, QueueF
         queue_create_infos.push_back(queue_create_info);
     }
 
-    auto device_features = physical_device.getFeatures();
+    vk::PhysicalDeviceFeatures device_features{};
+    device_features.samplerAnisotropy = true;
+
+    // auto device_features = physical_device.getFeatures();
 
     vk::DeviceCreateInfo device_info;
     device_info.sType = vk::StructureType::eDeviceCreateInfo;
@@ -1290,6 +1495,11 @@ int main()
     };
 
     RenderingState rendering_state = createVulkanRenderState();
+
+    auto image = createTextureImage(rendering_state);
+    auto image_view = createTextureImageView(rendering_state, image.first);
+    auto sampler = createTextureSampler(rendering_state);
+
     rendering_state.mesh.vertex_buffer = createVertexBuffer(rendering_state, vertices);
     rendering_state.mesh.index_buffer = createIndexBuffer(rendering_state, indices);
     rendering_state.mesh.indices_size = indices.size();
