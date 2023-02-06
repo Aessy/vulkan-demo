@@ -23,6 +23,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tiny_obj_loader.h>
+
 #include <chrono>
 #include <iostream>
 #include <optional>
@@ -71,6 +74,14 @@ struct DrawableMesh
     vk::Buffer vertex_buffer;
     vk::Buffer index_buffer;
     uint32_t indices_size{};
+};
+
+struct Draw
+{
+    DrawableMesh mesh;
+    glm::mat4 model;
+
+    vk::Pipeline pipeline;
 };
 
 struct QueueFamilyIndices {
@@ -129,6 +140,54 @@ struct RenderingState
 
     std::vector<vk::DescriptorSet> desc_sets;
 };
+
+struct Model
+{
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+};
+
+Model loadModel()
+{
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::string warn, err;
+
+    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "models/viking_room.obj"))
+    {
+        std::cout << "Failed loading model\n";
+        return {};
+    }
+
+    Model model;
+
+    for (auto const& shape : shapes)
+    {
+        for (auto const& index : shape.mesh.indices)
+        {
+            Vertex vertex;
+
+            vertex.pos = {
+                  attrib.vertices[3 * index.vertex_index + 0]
+                , attrib.vertices[3 * index.vertex_index + 1]
+                , attrib.vertices[3 * index.vertex_index + 2]
+            };
+
+            vertex.tex_coord = {
+                  attrib.texcoords[2 * index.texcoord_index + 0]
+                , 1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+            };
+
+            vertex.color = {1.0f, 1.0f, 1.0f};
+            
+            model.vertices.push_back(vertex);
+            model.indices.push_back(model.indices.size());
+        }
+    }
+
+    return model;
+}
 
 template<typename T>
 void checkResult(T result)
@@ -466,7 +525,7 @@ vk::Buffer createVertexBuffer(RenderingState const& state, std::vector<Vertex> c
     return vertex_buffer;
 }
 
-vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint16_t> indices)
+vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> indices)
 {
     vk::DeviceSize buffer_size = sizeof(decltype(indices)::value_type) * indices.size();
 
@@ -548,11 +607,12 @@ std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, 
     return std::make_pair(texture_image.value, texture_image_memory.value);
 }
 
-std::pair<vk::Image, vk::DeviceMemory> createTextureImage(RenderingState const& state)
+std::pair<vk::Image, vk::DeviceMemory> createTextureImage(RenderingState const& state, std::string const& path)
 {
     int width, height, channels {};
 
-    auto pixels = stbi_load("textures/far.jpg", &width, &height, &channels, STBI_rgb_alpha);
+    //auto pixels = stbi_load("textures/far.jpg", &width, &height, &channels, STBI_rgb_alpha);
+    auto pixels = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
 
     if (!pixels)
     {
@@ -1141,8 +1201,6 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
     render_pass_info.clearValueCount = clear_values.size();
     render_pass_info.setClearValues(clear_values);
 
-    command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.pipelines[0]);
 
     vk::Viewport viewport{};
     viewport.x = 0.0f;
@@ -1159,11 +1217,10 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
     scissor.extent = state.swap_chain.extent;
     command_buffer.setScissor(0,scissor);
 
-
+    command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
     command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.pipelines[0]);
-
     command_buffer.bindVertexBuffers(0,state.mesh.vertex_buffer,{0});
-    command_buffer.bindIndexBuffer(state.mesh.index_buffer, 0, vk::IndexType::eUint16);
+    command_buffer.bindIndexBuffer(state.mesh.index_buffer, 0, vk::IndexType::eUint32);
     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 0, 1, &state.desc_sets[state.current_frame], 0, nullptr);
     command_buffer.drawIndexed(state.mesh.indices_size, 1, 0, 0, 0);
 
@@ -1547,7 +1604,6 @@ RenderingState createVulkanRenderState()
         .semaphores = semaphores,
         .command_pool = command_pool,
         .command_buffer = command_buffers,
-        //.framebuffers = swap_chain_framebuffers,
         .graphics_queue = graphics_queue,
         .present_queue = present_queue,
     };
@@ -1581,8 +1637,33 @@ void recreateSwapchain(RenderingState& state)
     std::cout << "Finish recreating\n";
 }
 
+DrawableMesh loadMesh(RenderingState const& state, Model const& model)
+{
+    DrawableMesh mesh;
+    mesh.vertex_buffer = createVertexBuffer(state, model.vertices);
+    mesh.index_buffer = createIndexBuffer(state, model.indices);
+    mesh.indices_size = model.indices.size();
+
+    return mesh;
+}
+
+DrawableMesh loadMesh(RenderingState const& state, std::vector<Vertex> const& vertices,
+                                                   std::vector<uint32_t> const& indices)
+{
+    DrawableMesh mesh;
+    mesh.vertex_buffer = createVertexBuffer(state, vertices);
+    mesh.vertex_buffer = createIndexBuffer(state, indices);
+    mesh.indices_size = indices.size();
+
+    return mesh;
+}
+
 int main()
 {
+
+    std::cout << "Buffer: " << sizeof(vk::Buffer) << '\n';
+    std::cout << "Buffer: " << sizeof(vk::Pipeline) << '\n';
+
     const std::vector<Vertex> vertices = {
         {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
         {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
@@ -1600,16 +1681,19 @@ int main()
         4, 5, 6, 6, 7, 4
     };
 
+    auto model = loadModel();
+
     RenderingState rendering_state = createVulkanRenderState();
 
 
-    auto image = createTextureImage(rendering_state);
+    auto image = createTextureImage(rendering_state, "textures/viking_room.png");
     auto image_view = createTextureImageView(rendering_state, image.first);
     auto sampler = createTextureSampler(rendering_state);
 
-    rendering_state.mesh.vertex_buffer = createVertexBuffer(rendering_state, vertices);
-    rendering_state.mesh.index_buffer = createIndexBuffer(rendering_state, indices);
-    rendering_state.mesh.indices_size = indices.size();
+
+    rendering_state.mesh.vertex_buffer = createVertexBuffer(rendering_state, model.vertices);
+    rendering_state.mesh.index_buffer = createIndexBuffer(rendering_state, model.indices);
+    rendering_state.mesh.indices_size = model.indices.size();
     rendering_state.uniform_buffers = createUniformBuffers(rendering_state);
 
     auto desc_pool = createDescriptionPool(rendering_state.device);
