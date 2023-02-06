@@ -40,6 +40,7 @@ struct Vertex
 {
     glm::vec2 pos;
     glm::vec3 color;
+    glm::vec2 tex_coord;
 };
 
 struct App
@@ -137,10 +138,17 @@ vk::DescriptorSetLayout createDescritptorSetLayout(vk::Device const& device)
     ubo_layout_binding.stageFlags = vk::ShaderStageFlagBits::eVertex;
     ubo_layout_binding.setPImmutableSamplers(nullptr);
 
+    vk::DescriptorSetLayoutBinding sampler_layout_binding{};
+    sampler_layout_binding.binding = 1;
+    sampler_layout_binding.descriptorCount = 1;
+    sampler_layout_binding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    sampler_layout_binding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+    std::array<vk::DescriptorSetLayoutBinding, 2> bindings{ubo_layout_binding, sampler_layout_binding};
+
     vk::DescriptorSetLayoutCreateInfo  layout_info;
     layout_info.sType = vk::StructureType::eDescriptorSetLayoutCreateInfo;
-    layout_info.pBindings = &ubo_layout_binding;
-    layout_info.setBindingCount(1);
+    layout_info.setBindings(bindings);
     
     auto descriptor_set_layout = device.createDescriptorSetLayout(layout_info);
     checkResult(descriptor_set_layout.result);
@@ -150,21 +158,25 @@ vk::DescriptorSetLayout createDescritptorSetLayout(vk::Device const& device)
 
 vk::DescriptorPool createDescriptionPool(vk::Device const& device)
 {
-    vk::DescriptorPoolSize pool_size{};
-    pool_size.type = vk::DescriptorType::eUniformBuffer;
-    pool_size.setDescriptorCount(2);
+    std::array<vk::DescriptorPoolSize, 2> pool_sizes{};
+
+    pool_sizes[0].type = vk::DescriptorType::eUniformBuffer;
+    pool_sizes[0].setDescriptorCount(2);
+    pool_sizes[1].type = vk::DescriptorType::eCombinedImageSampler;
+    pool_sizes[1].setDescriptorCount(2);
 
     vk::DescriptorPoolCreateInfo pool_info;
     pool_info.sType = vk::StructureType::eDescriptorPoolCreateInfo;
-    pool_info.setPoolSizes(pool_size);
-    pool_info.setMaxSets(2);
+    pool_info.setPoolSizes(pool_sizes);
+    pool_info.maxSets = 2;
 
     auto descriptor_pool = device.createDescriptorPool(pool_info);
 
     return descriptor_pool.value;
 }
 
-std::vector<vk::DescriptorSet> createDescriptorSet(vk::Device const& device, vk::DescriptorSetLayout const& layout, vk::DescriptorPool const& pool, std::vector<UniformBuffer> const& buffers)
+std::vector<vk::DescriptorSet> createDescriptorSet(vk::Device const& device, vk::DescriptorSetLayout const& layout, vk::DescriptorPool const& pool, std::vector<UniformBuffer> const& buffers,
+                                                   vk::ImageView const& texture_image_view, vk::Sampler const& texture_sampler)
 {
     std::vector<vk::DescriptorSetLayout> layouts(2, layout);
 
@@ -183,16 +195,30 @@ std::vector<vk::DescriptorSet> createDescriptorSet(vk::Device const& device, vk:
         buffer_info.offset = 0;
         buffer_info.range = sizeof(UniformBufferObject);
 
-        vk::WriteDescriptorSet desc_write;
-        desc_write.sType = vk::StructureType::eWriteDescriptorSet;
-        desc_write.setDstSet(sets[i]);
-        desc_write.dstBinding = 0;
-        desc_write.dstArrayElement = 0;
-        desc_write.descriptorType = vk::DescriptorType::eUniformBuffer;
-        desc_write.descriptorCount = 1;
-        desc_write.setBufferInfo(buffer_info);
+        vk::DescriptorImageInfo image_info{};
+        image_info.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+        image_info.imageView = texture_image_view;
+        image_info.sampler = texture_sampler;
 
-        device.updateDescriptorSets(desc_write, nullptr);
+        std::array<vk::WriteDescriptorSet, 2> desc_writes{};
+
+        desc_writes[0].sType = vk::StructureType::eWriteDescriptorSet;
+        desc_writes[0].setDstSet(sets[i]);
+        desc_writes[0].dstBinding = 0;
+        desc_writes[0].dstArrayElement = 0;
+        desc_writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
+        desc_writes[0].descriptorCount = 1;
+        desc_writes[0].setBufferInfo(buffer_info);
+
+        desc_writes[1].sType = vk::StructureType::eWriteDescriptorSet;
+        desc_writes[1].setDstSet(sets[i]);
+        desc_writes[1].dstBinding = 1;
+        desc_writes[1].dstArrayElement = 0;
+        desc_writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+        desc_writes[1].descriptorCount = 1;
+        desc_writes[1].setImageInfo(image_info);
+
+        device.updateDescriptorSets(desc_writes, nullptr);
     }
 
     return sets;
@@ -212,9 +238,9 @@ constexpr vk::VertexInputBindingDescription getBindingDescription()
 };
 
 template<typename Vertex>
-constexpr std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions()
+constexpr std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescriptions()
 {
-    std::array<vk::VertexInputAttributeDescription, 2> desc;
+    std::array<vk::VertexInputAttributeDescription, 3> desc;
 
     desc[0].binding = 0;
     desc[0].location = 0;
@@ -225,6 +251,13 @@ constexpr std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescrip
     desc[1].location = 1;
     desc[1].format = vk::Format::eR32G32B32Sfloat;
     desc[1].offset = offsetof(Vertex, color);
+
+    desc[2].binding = 0;
+    desc[2].location = 2;
+    desc[2].format = vk::Format::eR32G32Sfloat;
+    desc[2].offset = offsetof(Vertex, tex_coord);
+
+
 
     return  desc;
 }
@@ -502,7 +535,7 @@ std::pair<vk::Image, vk::DeviceMemory> createTextureImage(RenderingState const& 
 {
     int width, height, channels {};
 
-    auto pixels = stbi_load("textures/texture.jpg", &width, &height, &channels, STBI_rgb_alpha);
+    auto pixels = stbi_load("textures/far.jpg", &width, &height, &channels, STBI_rgb_alpha);
 
     if (!pixels)
     {
@@ -1099,7 +1132,7 @@ void updateUniformBuffer(vk::Extent2D const& swap_chain_extent, UniformBuffer& u
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
     UniformBufferObject ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 1.0f));
     ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     ubo.proj = glm::perspective(glm::radians(45.0f), swap_chain_extent.width / (float)swap_chain_extent.height, 0.1f, 10.0f);
 
@@ -1484,10 +1517,10 @@ void recreateSwapchain(RenderingState& state)
 int main()
 {
     const std::vector<Vertex> vertices = {
-        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+        {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
     };
 
     std::vector<uint16_t> indices = {
@@ -1506,7 +1539,7 @@ int main()
     rendering_state.uniform_buffers = createUniformBuffers(rendering_state);
 
     auto desc_pool = createDescriptionPool(rendering_state.device);
-    rendering_state.desc_sets = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layout, desc_pool, rendering_state.uniform_buffers);
+    rendering_state.desc_sets = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layout, desc_pool, rendering_state.uniform_buffers, image_view, sampler);
 
     while (!glfwWindowShouldClose(rendering_state.window))
     {
