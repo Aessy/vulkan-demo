@@ -1,3 +1,4 @@
+#include <glm/ext/matrix_transform.hpp>
 #define VK_USE_PLATFORM_XLIB_KHR
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
@@ -45,6 +46,7 @@ struct Vertex
     glm::vec3 pos;
     glm::vec3 color;
     glm::vec2 tex_coord;
+    glm::vec3 uv;
 };
 
 struct App
@@ -79,9 +81,12 @@ struct DrawableMesh
 struct Draw
 {
     DrawableMesh mesh;
-    glm::mat4 model;
+    glm::vec3 position;
+    glm::vec3 rotation;
+    float angel;
 
     vk::Pipeline pipeline;
+    std::vector<vk::DescriptorSet> descriptor_set;
 };
 
 struct QueueFamilyIndices {
@@ -101,6 +106,12 @@ struct UniformBuffer
     vk::Buffer uniform_buffers;
     vk::DeviceMemory uniform_device_memory;
     void* uniform_buffers_mapped;
+};
+
+struct Camera
+{
+    glm::mat4 proj;
+    glm::mat4 view;
 };
 
 struct RenderingState
@@ -139,6 +150,10 @@ struct RenderingState
     std::vector<UniformBuffer> uniform_buffers{};
 
     std::vector<vk::DescriptorSet> desc_sets;
+
+    std::vector<Draw> drawables;
+
+    Camera camera;
 };
 
 struct Model
@@ -147,14 +162,14 @@ struct Model
     std::vector<uint32_t> indices;
 };
 
-Model loadModel()
+Model loadModel(std::string const& model_path)
 {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
     std::string warn, err;
 
-    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "models/viking_room.obj"))
+    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, model_path.c_str()))
     {
         std::cout << "Failed loading model\n";
         return {};
@@ -179,8 +194,14 @@ Model loadModel()
                 , 1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
             };
 
+            vertex.uv = {
+                  attrib.normals[2 * index.normal_index + 0]
+                , attrib.normals[2 * index.normal_index + 1]
+                , attrib.normals[2 * index.normal_index + 2]
+            };
+
             vertex.color = {1.0f, 1.0f, 1.0f};
-            
+
             model.vertices.push_back(vertex);
             model.indices.push_back(model.indices.size());
         }
@@ -314,9 +335,9 @@ constexpr vk::VertexInputBindingDescription getBindingDescription()
 };
 
 template<typename Vertex>
-constexpr std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescriptions()
+constexpr std::array<vk::VertexInputAttributeDescription, 4> getAttributeDescriptions()
 {
-    std::array<vk::VertexInputAttributeDescription, 3> desc;
+    std::array<vk::VertexInputAttributeDescription, 4> desc;
 
     desc[0].binding = 0;
     desc[0].location = 0;
@@ -332,6 +353,11 @@ constexpr std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescrip
     desc[2].location = 2;
     desc[2].format = vk::Format::eR32G32Sfloat;
     desc[2].offset = offsetof(Vertex, tex_coord);
+
+    desc[3].binding = 0;
+    desc[3].location = 3;
+    desc[3].format = vk::Format::eR32G32Sfloat;
+    desc[3].offset = offsetof(Vertex, uv);
 
 
 
@@ -481,9 +507,9 @@ vk::Buffer createBuffer(RenderingState const& state,
     buffer_info.sharingMode = vk::SharingMode::eExclusive;
 
     auto vertex_buffer =  state.device.createBuffer(buffer_info);
+    checkResult(vertex_buffer.result);
 
     auto buffer = vertex_buffer.value;
-
 
     auto mem_reqs = state.device.getBufferMemoryRequirements(buffer);
 
@@ -1176,6 +1202,34 @@ std::vector<vk::CommandBuffer> createCommandBuffer(vk::Device const& device, vk:
     return command_buffers.value;
 }
 
+void updateUniformBuffer(UniformBuffer& uniform_buffer,  Camera const& camera, Draw const& drawable)
+{
+    static auto startTime = std::chrono::high_resolution_clock::now();
+
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+    UniformBufferObject ubo{};
+    //ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+    auto rotation = glm::rotate(glm::mat4(1.0f), drawable.angel, drawable.rotation);
+    auto translation = glm::translate(glm::mat4(1.0f), drawable.position);
+    ubo.model = translation * rotation;
+
+    // ubo.model =  glm::rotate(glm::mat4(1.0f), drawable.angel, drawable.rotation) * glm::translate(glm::mat4(1.0f), drawable.position);
+    // ubo.model =  glm::mat4(1.0f) * glm::translate(glm::mat4(1.0f), drawable.position);
+    ubo.view = camera.view;
+    ubo.proj = camera.proj;
+    // ubo.model = //glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));   // 
+    /*
+    ubo.view = glm::lookAt(glm::vec3(0.0f, 5.0f, 18.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    ubo.proj = glm::perspective(glm::radians(45.0f), swap_chain_extent.width / (float)swap_chain_extent.height, 0.1f, 100.0f);
+
+    */
+    ubo.proj[1][1] *= -1;
+    memcpy(uniform_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
+}
+
 void recordCommandBuffer(RenderingState& state, uint32_t image_index)
 {
     auto& command_buffer = state.command_buffer[state.current_frame];
@@ -1217,31 +1271,20 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
     scissor.extent = state.swap_chain.extent;
     command_buffer.setScissor(0,scissor);
 
-    command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.pipelines[0]);
-    command_buffer.bindVertexBuffers(0,state.mesh.vertex_buffer,{0});
-    command_buffer.bindIndexBuffer(state.mesh.index_buffer, 0, vk::IndexType::eUint32);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 0, 1, &state.desc_sets[state.current_frame], 0, nullptr);
-    command_buffer.drawIndexed(state.mesh.indices_size, 1, 0, 0, 0);
+    for (auto const& drawable : state.drawables)
+    {
+        updateUniformBuffer(state.uniform_buffers[state.current_frame], state.camera, drawable);
 
-    command_buffer.endRenderPass();
+        command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
+        command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.pipelines[0]);
+        command_buffer.bindVertexBuffers(0,drawable.mesh.vertex_buffer,{0});
+        command_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
+        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 0, 1, &state.desc_sets[state.current_frame], 0, nullptr);
+        command_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0, 0, 0);
+
+        command_buffer.endRenderPass();
+    }
     result = command_buffer.end();
-}
-
-void updateUniformBuffer(vk::Extent2D const& swap_chain_extent, UniformBuffer& uniform_buffer)
-{
-    static auto startTime = std::chrono::high_resolution_clock::now();
-
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-    UniformBufferObject ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 1.0f));
-    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.proj = glm::perspective(glm::radians(45.0f), swap_chain_extent.width / (float)swap_chain_extent.height, 0.1f, 10.0f);
-
-    ubo.proj[1][1] *= -1;
-    memcpy(uniform_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
 }
 
 enum class DrawResult
@@ -1268,8 +1311,6 @@ DrawResult drawFrame(RenderingState& state)
         std::cout << "Failed to acquire swap chain image\n";
         return DrawResult::EXIT;
     }
-
-    updateUniformBuffer(state.swap_chain.extent, state.uniform_buffers[state.current_frame]);
 
     state.device.resetFences(state.semaphores.in_flight_fence[state.current_frame]);
 
@@ -1658,6 +1699,19 @@ DrawableMesh loadMesh(RenderingState const& state, std::vector<Vertex> const& ve
     return mesh;
 }
 
+Draw createDraw(DrawableMesh const& mesh, vk::Pipeline const& pipeline, std::vector<vk::DescriptorSet> const& set)
+{
+    Draw draw;
+    draw.mesh = mesh;
+    draw.position = glm::vec3(0,0,0);
+    draw.rotation = glm::vec3(0,1,0);
+    draw.angel = 0;
+    draw.pipeline = pipeline;
+    draw.descriptor_set = set;
+
+    return draw;
+}
+
 int main()
 {
 
@@ -1676,34 +1730,69 @@ int main()
         {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
     };
 
-    const std::vector<uint16_t> indices = {
+    std::vector<Vertex> vertices_cube = {
+
+        //POS       Color      Tex coord   Normal
+         {{-0.5, -0.5, 0},   {0,0,0},   {0,0},      {0,0,0}}
+        ,{{-0.5,  0.5, 0},   {0,0,0},   {0,0},      {0,0,0}}
+        ,{{ 0.5,  0.5, 0},   {0,0,0},   {0,0},      {0,0,0}}
+    };
+    std::vector<uint32_t> indices_cube = {
+        0,1,2
+    };
+
+    const std::vector<uint32_t> indices = {
         0, 1, 2, 2, 3, 0,
         4, 5, 6, 6, 7, 4
     };
 
-    auto model = loadModel();
+    auto model = loadModel("models/ridley.obj");
 
     RenderingState rendering_state = createVulkanRenderState();
 
+    Camera camera;
+    camera.view = glm::lookAt(glm::vec3(0.0f, 5.0f, 18.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    camera.proj = glm::perspective(glm::radians(45.0f), rendering_state.swap_chain.extent.width / (float)rendering_state.swap_chain.extent.height, 0.1f, 100.0f);
 
-    auto image = createTextureImage(rendering_state, "textures/viking_room.png");
+    rendering_state.camera = camera;
+
+    auto image = createTextureImage(rendering_state, "textures/ridley.png");
     auto image_view = createTextureImageView(rendering_state, image.first);
     auto sampler = createTextureSampler(rendering_state);
 
 
-    rendering_state.mesh.vertex_buffer = createVertexBuffer(rendering_state, model.vertices);
-    rendering_state.mesh.index_buffer = createIndexBuffer(rendering_state, model.indices);
-    rendering_state.mesh.indices_size = model.indices.size();
+    rendering_state.mesh.vertex_buffer = createVertexBuffer(rendering_state, vertices);
+    rendering_state.mesh.index_buffer = createIndexBuffer(rendering_state, indices);
+    rendering_state.mesh.indices_size = indices.size();
     rendering_state.uniform_buffers = createUniformBuffers(rendering_state);
 
-    auto desc_pool = createDescriptionPool(rendering_state.device);
-    rendering_state.desc_sets = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layout, desc_pool, rendering_state.uniform_buffers, image_view, sampler);
 
+    auto desc_pool = createDescriptionPool(rendering_state.device);
+
+    auto desc_sets = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layout, desc_pool, rendering_state.uniform_buffers, image_view, sampler);
+    rendering_state.desc_sets = desc_sets;
+
+    auto const drawable = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_sets);
+    auto const drawable_cube = createDraw(loadMesh(rendering_state, vertices, indices), rendering_state.pipelines[0], desc_sets);
+
+    rendering_state.drawables.push_back(std::move(drawable));
+    // rendering_state.drawables.push_back(createDraw(rendering_state.mesh, rendering_state.pipelines[0], desc_sets));
+
+    static auto start_time = std::chrono::high_resolution_clock::now();
     while (!glfwWindowShouldClose(rendering_state.window))
     {
         glfwPollEvents();
-        auto result = drawFrame(rendering_state);
 
+        auto current_time = std::chrono::high_resolution_clock::now();
+        float delta = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+        start_time = current_time;
+
+        for (auto& drawable : rendering_state.drawables)
+        {
+            drawable.angel += delta;
+        }
+
+        auto result = drawFrame(rendering_state);
         if (result == DrawResult::RESIZE)
         {
             recreateSwapchain(rendering_state);
