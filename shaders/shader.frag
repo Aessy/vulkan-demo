@@ -19,5 +19,5 @@ void main()
 
     float diffuse = max(dot(normal, light_dir), 0.0);
 
-    out_color = texture(texSampler, frag_tex_coord) * light_color * diffuse;
+    out_color = texture(texSampler, frag_tex_coord);
 }

@@ -1704,7 +1704,7 @@ Draw createDraw(DrawableMesh const& mesh, vk::Pipeline const& pipeline, std::vec
     Draw draw;
     draw.mesh = mesh;
     draw.position = glm::vec3(0,0,0);
-    draw.rotation = glm::vec3(0,1,0);
+    draw.rotation = glm::vec3(1,1,1);
     draw.angel = 0;
     draw.pipeline = pipeline;
     draw.descriptor_set = set;
@@ -1714,36 +1714,71 @@ Draw createDraw(DrawableMesh const& mesh, vk::Pipeline const& pipeline, std::vec
 
 int main()
 {
-
     std::cout << "Buffer: " << sizeof(vk::Buffer) << '\n';
     std::cout << "Buffer: " << sizeof(vk::Pipeline) << '\n';
 
-    const std::vector<Vertex> vertices = {
-        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-        {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-        {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-        {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
+    std::vector<Vertex> vertices {
+        // Front
+        {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}}, //0  0
+        {{ 0.5, -0.5, 0.5},  {0.0f, 1.0f, 0.0f}, {1, 0}}, //1  1  
+        {{-0.5,  0.5, 0.5},  {0.0f, 0.0f, 1.0f}, {0, 1}}, //2  2
+        {{ 0.5,  0.5, 0.5},  {1.0f, 1.0f, 0.0f}, {1, 1}}, //3  3
+                                                          //
+        // Up
+        {{-0.5,  0.5, 0.5},  {0.0f, 0.0f, 1.0f}, {0, 0}}, //2  4
+        {{ 0.5,  0.5, 0.5},  {1.0f, 1.0f, 0.0f}, {1, 0}}, //3  5
+        {{-0.5,  0.5, -0.5}, {1.0f, 1.0f, 1.0f}, {0, 1}}, //6  6
+        {{ 0.5,  0.5, -0.5}, {0.0f, 0.0f, 0.0f}, {1, 1}}, //7  7
+                                                          //
+        // Down 
+        {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}}, //0  8
+        {{ 0.5, -0.5, 0.5},  {0.0f, 1.0f, 0.0f}, {1, 0}}, //1  9
+        {{-0.5, -0.5, -0.5}, {0.0f, 1.0f, 1.0f}, {0, 1}}, //4 10
+        {{ 0.5, -0.5, -0.5}, {1.0f, 0.0f, 1.0f}, {1, 1}}, //5 11
+                                                          //
+        // Left
+        {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}}, //0 12
+        {{-0.5, -0.5, -0.5}, {0.0f, 1.0f, 1.0f}, {1, 0}}, //4 13
+        {{-0.5,  0.5, 0.5},  {0.0f, 0.0f, 1.0f}, {0, 1}}, //2 14
+        {{-0.5,  0.5, -0.5}, {1.0f, 1.0f, 1.0f}, {1, 1}}, //6 15
+                                                          //
+        // Right
+        {{ 0.5, -0.5, 0.5},  {0.0f, 1.0f, 0.0f}, {1, 0}}, //1 16
+        {{ 0.5, -0.5, -0.5}, {1.0f, 0.0f, 1.0f}, {0, 0}}, //5 17
+        {{ 0.5,  0.5, 0.5},  {1.0f, 1.0f, 0.0f}, {1, 1}}, //3 18
+        {{ 0.5,  0.5, -0.5}, {0.0f, 0.0f, 0.0f}, {0, 1}}, //7 19
 
-        {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-        {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-        {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-        {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
-    };
-
-    std::vector<Vertex> vertices_cube = {
-
-        //POS       Color      Tex coord   Normal
-         {{-0.5, -0.5, 0},   {0,0,0},   {0,0},      {0,0,0}}
-        ,{{-0.5,  0.5, 0},   {0,0,0},   {0,0},      {0,0,0}}
-        ,{{ 0.5,  0.5, 0},   {0,0,0},   {0,0},      {0,0,0}}
-    };
-    std::vector<uint32_t> indices_cube = {
-        0,1,2
+        // Back
+        {{-0.5, -0.5, -0.5}, {0.0f, 1.0f, 1.0f}, {1, 0}}, //4 20
+        {{ 0.5, -0.5, -0.5}, {1.0f, 0.0f, 1.0f}, {0, 0}}, //5 21
+        {{-0.5,  0.5, -0.5}, {1.0f, 1.0f, 1.0f}, {1, 1}}, //6 22
+        {{ 0.5,  0.5, -0.5}, {0.0f, 0.0f, 0.0f}, {0, 1}}, //7 23
     };
 
     const std::vector<uint32_t> indices = {
-        0, 1, 2, 2, 3, 0,
-        4, 5, 6, 6, 7, 4
+        // Front
+        0, 1, 3,
+        3, 2, 0,
+
+        // Top
+        7, 6, 4,
+        4, 5, 7,
+
+        // Bottom
+        11, 9, 8,
+        8, 10, 11,
+
+        // Left
+        12, 14, 15,
+        15, 13, 12,
+
+        // Right
+        16, 17, 19,
+        19, 18, 16,
+
+        // Back
+        20, 22, 23,
+        23, 21, 20
     };
 
     auto model = loadModel("models/ridley.obj");
@@ -1751,12 +1786,12 @@ int main()
     RenderingState rendering_state = createVulkanRenderState();
 
     Camera camera;
-    camera.view = glm::lookAt(glm::vec3(0.0f, 5.0f, 18.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    camera.view = glm::lookAt(glm::vec3(-2.0f, 3.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     camera.proj = glm::perspective(glm::radians(45.0f), rendering_state.swap_chain.extent.width / (float)rendering_state.swap_chain.extent.height, 0.1f, 100.0f);
 
     rendering_state.camera = camera;
 
-    auto image = createTextureImage(rendering_state, "textures/ridley.png");
+    auto image = createTextureImage(rendering_state, "textures/create.jpg");
     auto image_view = createTextureImageView(rendering_state, image.first);
     auto sampler = createTextureSampler(rendering_state);
 
@@ -1775,8 +1810,8 @@ int main()
     auto const drawable = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_sets);
     auto const drawable_cube = createDraw(loadMesh(rendering_state, vertices, indices), rendering_state.pipelines[0], desc_sets);
 
-    rendering_state.drawables.push_back(std::move(drawable));
-    // rendering_state.drawables.push_back(createDraw(rendering_state.mesh, rendering_state.pipelines[0], desc_sets));
+    // rendering_state.drawables.push_back(std::move(drawable));
+    rendering_state.drawables.push_back(createDraw(rendering_state.mesh, rendering_state.pipelines[0], desc_sets));
 
     static auto start_time = std::chrono::high_resolution_clock::now();
     while (!glfwWindowShouldClose(rendering_state.window))
