@@ -41,6 +41,11 @@ struct UniformBufferObject
     alignas(16) glm::mat4 proj;
 };
 
+struct LightBufferObject
+{
+    alignas(16) glm::vec3 position;
+};
+
 struct Vertex
 {
     glm::vec3 pos;
@@ -148,6 +153,7 @@ struct RenderingState
 
     DrawableMesh mesh;
     std::vector<UniformBuffer> uniform_buffers{};
+    std::vector<UniformBuffer> light_buffers{};
 
     std::vector<vk::DescriptorSet> desc_sets;
 
@@ -241,7 +247,15 @@ vk::DescriptorSetLayout createDescritptorSetLayout(vk::Device const& device)
     sampler_layout_binding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
     sampler_layout_binding.stageFlags = vk::ShaderStageFlagBits::eFragment;
 
-    std::array<vk::DescriptorSetLayoutBinding, 2> bindings{ubo_layout_binding, sampler_layout_binding};
+    vk::DescriptorSetLayoutBinding lights_layout_binding{};
+    lights_layout_binding.binding = 2;
+    lights_layout_binding.descriptorType = vk::DescriptorType::eUniformBuffer;
+    lights_layout_binding.descriptorCount = 1;
+    lights_layout_binding.stageFlags = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eVertex;
+
+
+    std::array<vk::DescriptorSetLayoutBinding, 3> bindings{ubo_layout_binding, sampler_layout_binding,
+                                                           lights_layout_binding};
 
     vk::DescriptorSetLayoutCreateInfo  layout_info;
     layout_info.sType = vk::StructureType::eDescriptorSetLayoutCreateInfo;
@@ -255,12 +269,14 @@ vk::DescriptorSetLayout createDescritptorSetLayout(vk::Device const& device)
 
 vk::DescriptorPool createDescriptionPool(vk::Device const& device)
 {
-    std::array<vk::DescriptorPoolSize, 2> pool_sizes{};
+    std::array<vk::DescriptorPoolSize, 3> pool_sizes{};
 
     pool_sizes[0].type = vk::DescriptorType::eUniformBuffer;
     pool_sizes[0].setDescriptorCount(2);
     pool_sizes[1].type = vk::DescriptorType::eCombinedImageSampler;
     pool_sizes[1].setDescriptorCount(2);
+    pool_sizes[2].type = vk::DescriptorType::eUniformBuffer;
+    pool_sizes[2].setDescriptorCount(2);
 
     vk::DescriptorPoolCreateInfo pool_info;
     pool_info.sType = vk::StructureType::eDescriptorPoolCreateInfo;
@@ -273,14 +289,14 @@ vk::DescriptorPool createDescriptionPool(vk::Device const& device)
 }
 
 std::vector<vk::DescriptorSet> createDescriptorSet(vk::Device const& device, vk::DescriptorSetLayout const& layout, vk::DescriptorPool const& pool, std::vector<UniformBuffer> const& buffers,
-                                                   vk::ImageView const& texture_image_view, vk::Sampler const& texture_sampler)
+                                                   std::vector<UniformBuffer> const& light_buffers, vk::ImageView const& texture_image_view, vk::Sampler const& texture_sampler)
 {
     std::vector<vk::DescriptorSetLayout> layouts(2, layout);
 
     vk::DescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = vk::StructureType::eDescriptorSetAllocateInfo;
     alloc_info.setDescriptorPool(pool);
-    alloc_info.setDescriptorSetCount(2);
+    alloc_info.setDescriptorSetCount(3);
     alloc_info.setSetLayouts(layouts);
 
     auto sets = device.allocateDescriptorSets(alloc_info).value;
@@ -292,12 +308,17 @@ std::vector<vk::DescriptorSet> createDescriptorSet(vk::Device const& device, vk:
         buffer_info.offset = 0;
         buffer_info.range = sizeof(UniformBufferObject);
 
+        vk::DescriptorBufferInfo light_buffer_info{};
+        light_buffer_info = light_buffers[i].uniform_buffers;
+        light_buffer_info.offset = 0;
+        light_buffer_info.range = sizeof(LightBufferObject);
+
         vk::DescriptorImageInfo image_info{};
         image_info.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
         image_info.imageView = texture_image_view;
         image_info.sampler = texture_sampler;
 
-        std::array<vk::WriteDescriptorSet, 2> desc_writes{};
+        std::array<vk::WriteDescriptorSet, 3> desc_writes{};
 
         desc_writes[0].sType = vk::StructureType::eWriteDescriptorSet;
         desc_writes[0].setDstSet(sets[i]);
@@ -314,6 +335,14 @@ std::vector<vk::DescriptorSet> createDescriptorSet(vk::Device const& device, vk:
         desc_writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
         desc_writes[1].descriptorCount = 1;
         desc_writes[1].setImageInfo(image_info);
+
+        desc_writes[2].sType = vk::StructureType::eWriteDescriptorSet;
+        desc_writes[2].setDstSet(sets[i]);
+        desc_writes[2].dstBinding = 2;
+        desc_writes[2].dstArrayElement = 0;
+        desc_writes[2].descriptorType = vk::DescriptorType::eUniformBuffer;
+        desc_writes[2].descriptorCount = 1;
+        desc_writes[2].setBufferInfo(light_buffer_info);
 
         device.updateDescriptorSets(desc_writes, nullptr);
     }
@@ -578,9 +607,10 @@ vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> 
     return index_buffer;
 }
 
+template<typename BufferObject>
 auto createUniformBuffers(RenderingState const& state)
 {
-    vk::DeviceSize buffer_size = sizeof(UniformBufferObject);
+    vk::DeviceSize buffer_size = sizeof(BufferObject);
 
     std::vector<UniformBuffer> ubos;
     size_t const max_frames_in_flight = 2;
@@ -1202,7 +1232,7 @@ std::vector<vk::CommandBuffer> createCommandBuffer(vk::Device const& device, vk:
     return command_buffers.value;
 }
 
-void updateUniformBuffer(UniformBuffer& uniform_buffer,  Camera const& camera, Draw const& drawable)
+void updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBuffer& light_buffer, Camera const& camera, Draw const& drawable)
 {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -1228,6 +1258,11 @@ void updateUniformBuffer(UniformBuffer& uniform_buffer,  Camera const& camera, D
     */
     ubo.proj[1][1] *= -1;
     memcpy(uniform_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
+
+    // Update light uniform
+    glm::vec3 light_pos = glm::vec3(-2+time,0,1);
+    LightBufferObject light { light_pos };
+    memcpy(light_buffer.uniform_buffers_mapped, &light, sizeof(light));
 }
 
 void recordCommandBuffer(RenderingState& state, uint32_t image_index)
@@ -1273,7 +1308,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
 
     for (auto const& drawable : state.drawables)
     {
-        updateUniformBuffer(state.uniform_buffers[state.current_frame], state.camera, drawable);
+        updateUniformBuffer(state.uniform_buffers[state.current_frame], state.light_buffers[state.current_frame], state.camera, drawable);
 
         command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
         command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.pipelines[0]);
@@ -1799,12 +1834,14 @@ int main()
     rendering_state.mesh.vertex_buffer = createVertexBuffer(rendering_state, vertices);
     rendering_state.mesh.index_buffer = createIndexBuffer(rendering_state, indices);
     rendering_state.mesh.indices_size = indices.size();
-    rendering_state.uniform_buffers = createUniformBuffers(rendering_state);
+    rendering_state.uniform_buffers = createUniformBuffers<UniformBufferObject>(rendering_state);
+
+    rendering_state.light_buffers = createUniformBuffers<LightBufferObject>(rendering_state);
 
 
     auto desc_pool = createDescriptionPool(rendering_state.device);
 
-    auto desc_sets = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layout, desc_pool, rendering_state.uniform_buffers, image_view, sampler);
+    auto desc_sets = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layout, desc_pool, rendering_state.uniform_buffers, rendering_state.light_buffers, image_view, sampler);
     rendering_state.desc_sets = desc_sets;
 
     auto const drawable = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_sets);
@@ -1824,7 +1861,7 @@ int main()
 
         for (auto& drawable : rendering_state.drawables)
         {
-            drawable.angel += delta;
+            //drawable.angel += delta;
         }
 
         auto result = drawFrame(rendering_state);

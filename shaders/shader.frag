@@ -1,6 +1,10 @@
 #version 450
 
-layout(binding = 1) uniform sampler2D texSampler;
+layout(set = 0, binding = 1) uniform sampler2D texSampler;
+
+layout(set = 0, binding = 2) uniform UniformLight {
+    vec3 light_pos;
+} light;
 
 layout(location = 0) in vec2 uv;
 layout(location = 1) in vec3 position_worldspace;
@@ -22,7 +26,7 @@ void main()
     vec3 material_ambient_color = vec3(0.1, 0.1, 0.1) * material_diffuse_color;
     vec3 material_speccular_color = vec3(0.3, 0.3, 0.3);
 
-    float distance = length(light_position_worldspace - position_worldspace);
+    float distance = length(light.light_pos - position_worldspace);
 
     vec3 n = normalize(normal_cameraspace);
 
@@ -40,7 +44,4 @@ void main()
                  material_speccular_color * light_color * light_power * pow(cos_alpha,5) / (distance*distance);
     
     out_color = vec4(color, 1);
-
-    //vec4 result = vec4(frag_color, 1) * texture(texSampler, frag_tex_coord);
-    //out_color = result;
 }
