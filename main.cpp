@@ -221,7 +221,8 @@ void checkResult(T result)
 {
     if (result != vk::Result::eSuccess)
     {
-        std::cout << "Result error\n";
+        std::cout << "Result error: " << static_cast<int>(result) << '\n';
+
     }
 }
 
@@ -752,10 +753,6 @@ vk::Sampler createTextureSampler(RenderingState const& state)
 
 }
 
-static const std::vector<const char*> device_extensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME
-};
-
 struct SwapChainSupportDetails {
     vk::SurfaceCapabilitiesKHR capabilities;
     std::vector<vk::SurfaceFormatKHR> formats;
@@ -861,6 +858,7 @@ static int scoreDevice(vk::PhysicalDevice const& device)
     score += properties.limits.maxImageDimension2D;
 
     auto const device_features = device.getFeatures();
+    
     if (!device_features.geometryShader)
     {
         return 0;
@@ -1408,7 +1406,7 @@ auto createInstance(bool validation_layers_on)
     app_info.applicationVersion = VK_MAKE_VERSION(1,0,0);
     app_info.pEngineName = "No Engine";
     app_info.engineVersion = VK_MAKE_VERSION(1,0,0);
-    app_info.apiVersion = VK_API_VERSION_1_0;
+    app_info.apiVersion = VK_API_VERSION_1_1;
 
     vk::InstanceCreateInfo info{};
     info.sType = vk::StructureType::eInstanceCreateInfo;
@@ -1461,8 +1459,16 @@ vk::PhysicalDevice createPhysicalDevice(vk::Instance const& instance)
 
 vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device, QueueFamilyIndices const& indices)
 {
+    //
     // Local devices
+    //
 
+
+    auto result = physical_device.enumerateDeviceExtensionProperties();
+    for (auto const& extension : result.value)
+    {
+        std::cout << "Extension: " << extension.extensionName << '\n';
+    }
     float queue_priority = 1.0f;
 
     vk::DeviceQueueCreateInfo queue_create_info{};
@@ -1487,20 +1493,32 @@ vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device, QueueF
 
     vk::PhysicalDeviceFeatures device_features{};
     device_features.samplerAnisotropy = true;
+    
+    vk::PhysicalDeviceDescriptorIndexingFeatures desc_indexing_features {};
+    desc_indexing_features.sType = vk::StructureType::ePhysicalDeviceDescriptorIndexingFeatures;
+    desc_indexing_features.shaderSampledImageArrayNonUniformIndexing = true;
+    desc_indexing_features.runtimeDescriptorArray = true;
+    desc_indexing_features.descriptorBindingVariableDescriptorCount = true;
+    desc_indexing_features.descriptorBindingPartiallyBound = true;
 
-    // auto device_features = physical_device.getFeatures();
+    static const std::vector<const char*> device_extensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
+    };
 
     vk::DeviceCreateInfo device_info;
+    device_info.enabledExtensionCount = device_extensions.size();
+    device_info.setPpEnabledExtensionNames(device_extensions.data());
+    device_info.enabledLayerCount = 0;
+
     device_info.sType = vk::StructureType::eDeviceCreateInfo;
     device_info.pQueueCreateInfos = &queue_create_info;
     device_info.queueCreateInfoCount = queue_create_infos.size();
     device_info.pEnabledFeatures = &device_features;
-
-    device_info.enabledExtensionCount = device_extensions.size();
-    device_info.ppEnabledExtensionNames = device_extensions.data();
-    device_info.enabledLayerCount = 0;
+    device_info.pNext = &desc_indexing_features;
 
     auto device = physical_device.createDevice(device_info, nullptr);
+    checkResult(device.result);
     return device.value;
 }
 
