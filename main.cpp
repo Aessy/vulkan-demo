@@ -242,25 +242,38 @@ vk::DescriptorSetLayout createDescritptorSetLayout(vk::Device const& device)
     ubo_layout_binding.stageFlags = vk::ShaderStageFlagBits::eVertex;
     ubo_layout_binding.setPImmutableSamplers(nullptr);
 
-    vk::DescriptorSetLayoutBinding sampler_layout_binding{};
-    sampler_layout_binding.binding = 1;
-    sampler_layout_binding.descriptorCount = 1;
-    sampler_layout_binding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-    sampler_layout_binding.stageFlags = vk::ShaderStageFlagBits::eFragment;
-
     vk::DescriptorSetLayoutBinding lights_layout_binding{};
-    lights_layout_binding.binding = 2;
+    lights_layout_binding.binding = 1;
     lights_layout_binding.descriptorType = vk::DescriptorType::eUniformBuffer;
     lights_layout_binding.descriptorCount = 1;
     lights_layout_binding.stageFlags = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eVertex;
 
+    vk::DescriptorSetLayoutBinding sampler_layout_binding{};
+    sampler_layout_binding.binding = 2;
+    sampler_layout_binding.descriptorCount = 32;
+    sampler_layout_binding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+    sampler_layout_binding.stageFlags = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eVertex;
 
-    std::array<vk::DescriptorSetLayoutBinding, 3> bindings{ubo_layout_binding, sampler_layout_binding,
-                                                           lights_layout_binding};
+
+
+    std::array<vk::DescriptorSetLayoutBinding, 3> bindings{ubo_layout_binding, lights_layout_binding,
+                                                           sampler_layout_binding};
+
+    vk::DescriptorBindingFlags flags[3] {
+        vk::DescriptorBindingFlags{},
+        vk::DescriptorBindingFlags{},
+        vk::DescriptorBindingFlagBits::eVariableDescriptorCount | vk::DescriptorBindingFlagBits::ePartiallyBound
+    };
+
+    vk::DescriptorSetLayoutBindingFlagsCreateInfo binding_flags{};
+    binding_flags.sType = vk::StructureType::eDescriptorSetLayoutBindingFlagsCreateInfo;
+    binding_flags.pBindingFlags = flags;
+    binding_flags.setBindingCount(3);
 
     vk::DescriptorSetLayoutCreateInfo  layout_info;
     layout_info.sType = vk::StructureType::eDescriptorSetLayoutCreateInfo;
     layout_info.setBindings(bindings);
+    layout_info.pNext = &binding_flags;
     
     auto descriptor_set_layout = device.createDescriptorSetLayout(layout_info);
     checkResult(descriptor_set_layout.result);
@@ -274,9 +287,9 @@ vk::DescriptorPool createDescriptionPool(vk::Device const& device)
 
     pool_sizes[0].type = vk::DescriptorType::eUniformBuffer;
     pool_sizes[0].setDescriptorCount(2);
-    pool_sizes[1].type = vk::DescriptorType::eCombinedImageSampler;
+    pool_sizes[1].type = vk::DescriptorType::eUniformBuffer;
     pool_sizes[1].setDescriptorCount(2);
-    pool_sizes[2].type = vk::DescriptorType::eUniformBuffer;
+    pool_sizes[2].type = vk::DescriptorType::eCombinedImageSampler;
     pool_sizes[2].setDescriptorCount(2);
 
     vk::DescriptorPoolCreateInfo pool_info;
@@ -290,17 +303,27 @@ vk::DescriptorPool createDescriptionPool(vk::Device const& device)
 }
 
 std::vector<vk::DescriptorSet> createDescriptorSet(vk::Device const& device, vk::DescriptorSetLayout const& layout, vk::DescriptorPool const& pool, std::vector<UniformBuffer> const& buffers,
-                                                   std::vector<UniformBuffer> const& light_buffers, vk::ImageView const& texture_image_view, vk::Sampler const& texture_sampler)
+                                                   std::vector<UniformBuffer> const& light_buffers, std::vector<std::pair<vk::ImageView, vk::Sampler>> const& texture_image_view)
 {
     std::vector<vk::DescriptorSetLayout> layouts(2, layout);
+
+    uint32_t variable_desc_count[] = {32,32};
+
+    vk::DescriptorSetVariableDescriptorCountAllocateInfo variable_desc_count_alloc_info{};
+    variable_desc_count_alloc_info.sType = vk::StructureType::eDescriptorSetVariableDescriptorCountAllocateInfo;
+    variable_desc_count_alloc_info.descriptorSetCount = 2;
+    variable_desc_count_alloc_info.pDescriptorCounts = variable_desc_count;
 
     vk::DescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = vk::StructureType::eDescriptorSetAllocateInfo;
     alloc_info.setDescriptorPool(pool);
-    alloc_info.setDescriptorSetCount(3);
     alloc_info.setSetLayouts(layouts);
+    alloc_info.setPNext(&variable_desc_count_alloc_info);
+    alloc_info.setDescriptorSetCount(2);
 
-    auto sets = device.allocateDescriptorSets(alloc_info).value;
+    auto allocate_sets = device.allocateDescriptorSets(alloc_info);
+    checkResult(allocate_sets.result);
+    auto sets = allocate_sets.value;
 
     for (int i = 0; i < 2; ++i)
     {
@@ -314,10 +337,14 @@ std::vector<vk::DescriptorSet> createDescriptorSet(vk::Device const& device, vk:
         light_buffer_info.offset = 0;
         light_buffer_info.range = sizeof(LightBufferObject);
 
-        vk::DescriptorImageInfo image_info{};
-        image_info.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-        image_info.imageView = texture_image_view;
-        image_info.sampler = texture_sampler;
+        std::vector<vk::DescriptorImageInfo> image_info{};
+        std::transform(texture_image_view.begin(), texture_image_view.end(), std::back_inserter(image_info), [](auto const& view) {
+                vk::DescriptorImageInfo image_info{};
+                    image_info.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                    image_info.imageView = view.first;
+                    image_info.sampler = view.second;
+                    return image_info;
+                });
 
         std::array<vk::WriteDescriptorSet, 3> desc_writes{};
 
@@ -333,17 +360,18 @@ std::vector<vk::DescriptorSet> createDescriptorSet(vk::Device const& device, vk:
         desc_writes[1].setDstSet(sets[i]);
         desc_writes[1].dstBinding = 1;
         desc_writes[1].dstArrayElement = 0;
-        desc_writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+        desc_writes[1].descriptorType = vk::DescriptorType::eUniformBuffer;
         desc_writes[1].descriptorCount = 1;
-        desc_writes[1].setImageInfo(image_info);
+        desc_writes[1].setBufferInfo(light_buffer_info);
 
         desc_writes[2].sType = vk::StructureType::eWriteDescriptorSet;
         desc_writes[2].setDstSet(sets[i]);
         desc_writes[2].dstBinding = 2;
         desc_writes[2].dstArrayElement = 0;
-        desc_writes[2].descriptorType = vk::DescriptorType::eUniformBuffer;
-        desc_writes[2].descriptorCount = 1;
-        desc_writes[2].setBufferInfo(light_buffer_info);
+        desc_writes[2].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+        desc_writes[2].descriptorCount = image_info.size();
+        desc_writes[2].setImageInfo(image_info);
+
 
         device.updateDescriptorSets(desc_writes, nullptr);
     }
@@ -1844,10 +1872,11 @@ int main()
 
     rendering_state.camera = camera;
 
-    auto image = createTextureImage(rendering_state, "textures/create.jpg");
-    auto image_view = createTextureImageView(rendering_state, image.first);
+    auto create_image = createTextureImage(rendering_state, "textures/create.jpg");
+    auto far_image = createTextureImage(rendering_state, "textures/far.jpg");
+    auto create_image_view = createTextureImageView(rendering_state, create_image.first);
+    auto far_image_view = createTextureImageView(rendering_state, far_image.first);
     auto sampler = createTextureSampler(rendering_state);
-
 
     rendering_state.mesh.vertex_buffer = createVertexBuffer(rendering_state, vertices);
     rendering_state.mesh.index_buffer = createIndexBuffer(rendering_state, indices);
@@ -1856,10 +1885,12 @@ int main()
 
     rendering_state.light_buffers = createUniformBuffers<LightBufferObject>(rendering_state);
 
+    std::cout << "Light buffers: " << rendering_state.light_buffers.size() << '\n';
 
     auto desc_pool = createDescriptionPool(rendering_state.device);
 
-    auto desc_sets = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layout, desc_pool, rendering_state.uniform_buffers, rendering_state.light_buffers, image_view, sampler);
+    auto desc_sets = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layout, desc_pool, rendering_state.uniform_buffers, rendering_state.light_buffers,
+            {{create_image_view, sampler}, {far_image_view, sampler}});
     rendering_state.desc_sets = desc_sets;
 
     auto const drawable = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_sets);

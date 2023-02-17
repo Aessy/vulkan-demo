@@ -1,8 +1,8 @@
 #version 450
 
-layout(set = 0, binding = 1) uniform sampler2D texSampler;
+layout(set = 0, binding = 2) uniform sampler2D texSampler[];
 
-layout(set = 0, binding = 2) uniform UniformLight {
+layout(set = 0, binding = 1) uniform UniformLight {
     vec3 light_pos;
 } light;
 
@@ -14,15 +14,13 @@ layout(location = 4) in vec3 light_direction_cameraspace;
 
 layout(location = 0) out vec4 out_color;
 
-const vec3 light_position_worldspace = vec3(1, 0, 1);
-
 void main()
 {
     vec3 light_color = vec3(1,1,1);
     float light_power = 50.0f;
 
 
-    vec3 material_diffuse_color = texture(texSampler, uv).rgb;
+    vec3 material_diffuse_color = texture(texSampler[0], uv).rgb;
     vec3 material_ambient_color = vec3(0.1, 0.1, 0.1) * material_diffuse_color;
     vec3 material_speccular_color = vec3(0.3, 0.3, 0.3);
 

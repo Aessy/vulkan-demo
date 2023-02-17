@@ -6,7 +6,7 @@ layout(set = 0, binding = 0) uniform UniformBufferObject {
     mat4 proj;
 } ubo;
 
-layout(set = 0, binding = 2) uniform UniformLight {
+layout(set = 0, binding = 1) uniform UniformLight {
     vec3 light_pos;
 } light;
 
@@ -20,8 +20,6 @@ layout(location = 1) out vec3 position_worldspace;
 layout(location = 2) out vec3 normal_cameraspace;
 layout(location = 3) out vec3 eye_direction_cameraspace;
 layout(location = 4) out vec3 light_direction_cameraspace;
-
-//const vec3 light_position_worldspace = vec3(1, 0, 1);
 
 void main() {
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
