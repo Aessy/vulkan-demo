@@ -34,6 +34,8 @@
 #include <limits>
 #include <fstream>
 
+#include "descriptor_set.h"
+
 struct UniformBufferObject
 {
     alignas(16) glm::mat4 model;
@@ -58,6 +60,30 @@ struct App
 {
     bool window_resize = false;
 };
+
+struct DescriptionPoolAndSet
+{
+    vk::DescriptorPool pool;
+    std::vector<vk::DescriptorSet> set;
+
+    vk::DescriptorSetLayout layout;
+    std::vector<vk::DescriptorSetLayoutBinding> layout_bindings;
+};
+
+DescriptionPoolAndSet createDescriptorSet(vk::Device const& device, vk::DescriptorSetLayout const& layout,
+                                          std::vector<vk::DescriptorSetLayoutBinding> const& layout_bindings)
+{
+    auto pool = createDescriptorPoolInfo(device, layout_bindings);
+    auto set = createSets(device, pool, layout, layout_bindings);
+
+    return DescriptionPoolAndSet
+    {
+        pool,
+        set,
+        layout,
+        layout_bindings
+    };
+}
 
 struct SwapChain
 {
@@ -131,7 +157,7 @@ struct RenderingState
     QueueFamilyIndices indices;
     vk::PhysicalDevice physical_device;
     vk::RenderPass render_pass;
-    vk::DescriptorSetLayout descriptor_set_layout;
+    std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
     vk::PipelineLayout pipeline_layout;
     std::vector<vk::Pipeline> pipelines;
     std::vector<vk::ImageView> image_views;
@@ -160,6 +186,8 @@ struct RenderingState
     std::vector<Draw> drawables;
 
     Camera camera;
+
+    std::vector<DescriptionPoolAndSet> descriptor_sets;
 };
 
 struct Model
@@ -233,152 +261,6 @@ vk::Format getDepthFormat()
 }
 
 
-vk::DescriptorSetLayout createDescritptorSetLayout(vk::Device const& device)
-{
-    vk::DescriptorSetLayoutBinding  ubo_layout_binding;
-    ubo_layout_binding.binding = 0;
-    ubo_layout_binding.descriptorType = vk::DescriptorType::eUniformBuffer;
-    ubo_layout_binding.descriptorCount = 1;
-    ubo_layout_binding.stageFlags = vk::ShaderStageFlagBits::eVertex;
-    ubo_layout_binding.setPImmutableSamplers(nullptr);
-
-    vk::DescriptorSetLayoutBinding lights_layout_binding{};
-    lights_layout_binding.binding = 1;
-    lights_layout_binding.descriptorType = vk::DescriptorType::eUniformBuffer;
-    lights_layout_binding.descriptorCount = 1;
-    lights_layout_binding.stageFlags = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eVertex;
-
-    vk::DescriptorSetLayoutBinding sampler_layout_binding{};
-    sampler_layout_binding.binding = 2;
-    sampler_layout_binding.descriptorCount = 32;
-    sampler_layout_binding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-    sampler_layout_binding.stageFlags = vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eVertex;
-
-
-
-    std::array<vk::DescriptorSetLayoutBinding, 3> bindings{ubo_layout_binding, lights_layout_binding,
-                                                           sampler_layout_binding};
-
-    vk::DescriptorBindingFlags flags[3] {
-        vk::DescriptorBindingFlags{},
-        vk::DescriptorBindingFlags{},
-        vk::DescriptorBindingFlagBits::eVariableDescriptorCount | vk::DescriptorBindingFlagBits::ePartiallyBound
-    };
-
-    vk::DescriptorSetLayoutBindingFlagsCreateInfo binding_flags{};
-    binding_flags.sType = vk::StructureType::eDescriptorSetLayoutBindingFlagsCreateInfo;
-    binding_flags.pBindingFlags = flags;
-    binding_flags.setBindingCount(3);
-
-    vk::DescriptorSetLayoutCreateInfo  layout_info;
-    layout_info.sType = vk::StructureType::eDescriptorSetLayoutCreateInfo;
-    layout_info.setBindings(bindings);
-    layout_info.pNext = &binding_flags;
-    
-    auto descriptor_set_layout = device.createDescriptorSetLayout(layout_info);
-    checkResult(descriptor_set_layout.result);
-
-    return descriptor_set_layout.value;
-}
-
-vk::DescriptorPool createDescriptionPool(vk::Device const& device)
-{
-    std::array<vk::DescriptorPoolSize, 3> pool_sizes{};
-
-    pool_sizes[0].type = vk::DescriptorType::eUniformBuffer;
-    pool_sizes[0].setDescriptorCount(2);
-    pool_sizes[1].type = vk::DescriptorType::eUniformBuffer;
-    pool_sizes[1].setDescriptorCount(2);
-    pool_sizes[2].type = vk::DescriptorType::eCombinedImageSampler;
-    pool_sizes[2].setDescriptorCount(2);
-
-    vk::DescriptorPoolCreateInfo pool_info;
-    pool_info.sType = vk::StructureType::eDescriptorPoolCreateInfo;
-    pool_info.setPoolSizes(pool_sizes);
-    pool_info.maxSets = 2;
-
-    auto descriptor_pool = device.createDescriptorPool(pool_info);
-
-    return descriptor_pool.value;
-}
-
-std::vector<vk::DescriptorSet> createDescriptorSet(vk::Device const& device, vk::DescriptorSetLayout const& layout, vk::DescriptorPool const& pool, std::vector<UniformBuffer> const& buffers,
-                                                   std::vector<UniformBuffer> const& light_buffers, std::vector<std::pair<vk::ImageView, vk::Sampler>> const& texture_image_view)
-{
-    std::vector<vk::DescriptorSetLayout> layouts(2, layout);
-
-    uint32_t variable_desc_count[] = {32,32};
-
-    vk::DescriptorSetVariableDescriptorCountAllocateInfo variable_desc_count_alloc_info{};
-    variable_desc_count_alloc_info.sType = vk::StructureType::eDescriptorSetVariableDescriptorCountAllocateInfo;
-    variable_desc_count_alloc_info.descriptorSetCount = 2;
-    variable_desc_count_alloc_info.pDescriptorCounts = variable_desc_count;
-
-    vk::DescriptorSetAllocateInfo alloc_info{};
-    alloc_info.sType = vk::StructureType::eDescriptorSetAllocateInfo;
-    alloc_info.setDescriptorPool(pool);
-    alloc_info.setSetLayouts(layouts);
-    alloc_info.setPNext(&variable_desc_count_alloc_info);
-    alloc_info.setDescriptorSetCount(2);
-
-    auto allocate_sets = device.allocateDescriptorSets(alloc_info);
-    checkResult(allocate_sets.result);
-    auto sets = allocate_sets.value;
-
-    for (int i = 0; i < 2; ++i)
-    {
-        vk::DescriptorBufferInfo buffer_info{};
-        buffer_info.buffer = buffers[i].uniform_buffers;
-        buffer_info.offset = 0;
-        buffer_info.range = sizeof(UniformBufferObject);
-
-        vk::DescriptorBufferInfo light_buffer_info{};
-        light_buffer_info = light_buffers[i].uniform_buffers;
-        light_buffer_info.offset = 0;
-        light_buffer_info.range = sizeof(LightBufferObject);
-
-        std::vector<vk::DescriptorImageInfo> image_info{};
-        std::transform(texture_image_view.begin(), texture_image_view.end(), std::back_inserter(image_info), [](auto const& view) {
-                vk::DescriptorImageInfo image_info{};
-                    image_info.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-                    image_info.imageView = view.first;
-                    image_info.sampler = view.second;
-                    return image_info;
-                });
-
-        std::array<vk::WriteDescriptorSet, 3> desc_writes{};
-
-        desc_writes[0].sType = vk::StructureType::eWriteDescriptorSet;
-        desc_writes[0].setDstSet(sets[i]);
-        desc_writes[0].dstBinding = 0;
-        desc_writes[0].dstArrayElement = 0;
-        desc_writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
-        desc_writes[0].descriptorCount = 1;
-        desc_writes[0].setBufferInfo(buffer_info);
-
-        desc_writes[1].sType = vk::StructureType::eWriteDescriptorSet;
-        desc_writes[1].setDstSet(sets[i]);
-        desc_writes[1].dstBinding = 1;
-        desc_writes[1].dstArrayElement = 0;
-        desc_writes[1].descriptorType = vk::DescriptorType::eUniformBuffer;
-        desc_writes[1].descriptorCount = 1;
-        desc_writes[1].setBufferInfo(light_buffer_info);
-
-        desc_writes[2].sType = vk::StructureType::eWriteDescriptorSet;
-        desc_writes[2].setDstSet(sets[i]);
-        desc_writes[2].dstBinding = 2;
-        desc_writes[2].dstArrayElement = 0;
-        desc_writes[2].descriptorType = vk::DescriptorType::eCombinedImageSampler;
-        desc_writes[2].descriptorCount = image_info.size();
-        desc_writes[2].setImageInfo(image_info);
-
-
-        device.updateDescriptorSets(desc_writes, nullptr);
-    }
-
-    return sets;
-}
-    
 
 
 template<typename Vertex>
@@ -988,7 +870,7 @@ std::vector<char> readFile(std::string const& path)
     return std::vector<char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 }
 
-std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, vk::DescriptorSetLayout const& desc_set_layout)
+std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout)
 {
     std::string path;
 
@@ -1102,7 +984,6 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     color_blending.blendConstants[1] = 0.0f;
     color_blending.blendConstants[2] = 0.0f;
     color_blending.blendConstants[3] = 0.0f;
-
 
     vk::PipelineLayoutCreateInfo pipeline_layout_info{};
     pipeline_layout_info.sType = vk::StructureType::ePipelineLayoutCreateInfo;
@@ -1340,7 +1221,14 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
         command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.pipelines[0]);
         command_buffer.bindVertexBuffers(0,drawable.mesh.vertex_buffer,{0});
         command_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
-        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 0, 1, &state.desc_sets[state.current_frame], 0, nullptr);
+
+        int i = 0;
+        for (auto const& descriptor_set : state.descriptor_sets)
+        {
+            command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, i, 1, &descriptor_set.set[state.current_frame], 0, nullptr);
+            ++i;
+        }
+
         command_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0, 0, 0);
 
         command_buffer.endRenderPass();
@@ -1677,7 +1565,7 @@ DepthResources createDepth(RenderingState const& state)
 }
 
 
-RenderingState createVulkanRenderState()
+RenderingState createVulkanRenderState(std::vector<std::vector<vk::DescriptorSetLayoutBinding>> bindings)
 {
     App app;
 
@@ -1698,9 +1586,14 @@ RenderingState createVulkanRenderState()
 
     auto const render_pass = createRenderPass(device, sc.swap_chain_image_format);
 
-    auto const descriptor_set_layout = createDescritptorSetLayout(device);
+    std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
+    for (auto const& binding : bindings)
+    {
+        auto const descriptor_set_layout = createDescriptorSetLayout(device, binding);
+        descriptor_set_layouts.push_back(descriptor_set_layout);
+    }
 
-    auto const graphic_pipeline = createGraphicsPipline(device, sc.extent, render_pass, descriptor_set_layout);
+    auto const graphic_pipeline = createGraphicsPipline(device, sc.extent, render_pass, descriptor_set_layouts);
     auto const command_pool = createCommandPool(device, indices);
     auto const command_buffers = createCommandBuffer(device, command_pool);
 
@@ -1718,7 +1611,7 @@ RenderingState createVulkanRenderState()
         .indices = indices,
         .physical_device = physical_device,
         .render_pass = render_pass,
-        .descriptor_set_layout = std::move(descriptor_set_layout),
+        .descriptor_set_layouts = std::move(descriptor_set_layouts),
         .pipeline_layout = graphic_pipeline.second,
         .pipelines = graphic_pipeline.first,
         .image_views = swap_chain_image_views,
@@ -1793,6 +1686,7 @@ Draw createDraw(DrawableMesh const& mesh, vk::Pipeline const& pipeline, std::vec
     return draw;
 }
 
+
 int main()
 {
     std::cout << "Buffer: " << sizeof(vk::Buffer) << '\n';
@@ -1862,9 +1756,28 @@ int main()
         23, 21, 20
     };
 
+    std::vector<vk::DescriptorSetLayoutBinding> descriptor_bindings_textures
+    {
+        createTextureSamplerBinding(0, 32, vk::ShaderStageFlagBits::eFragment),
+    };
+
+    std::vector<vk::DescriptorSetLayoutBinding> descriptor_bindings_per_frame
+    {
+        createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment),
+    };
+
+    std::vector<vk::DescriptorSetLayoutBinding> descriptor_bindings_per_draw
+    {
+        createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment)
+    };
+
+    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layouts{descriptor_bindings_textures,
+                                                                                    descriptor_bindings_per_frame,
+                                                                                    descriptor_bindings_per_draw};
+
     auto model = loadModel("models/ridley.obj");
 
-    RenderingState rendering_state = createVulkanRenderState();
+    RenderingState rendering_state = createVulkanRenderState(descriptor_set_layouts);
 
     Camera camera;
     camera.view = glm::lookAt(glm::vec3(0.0f, 3.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -1887,17 +1800,21 @@ int main()
 
     std::cout << "Light buffers: " << rendering_state.light_buffers.size() << '\n';
 
-    auto desc_pool = createDescriptionPool(rendering_state.device);
+    auto desc_textures = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[0], descriptor_bindings_textures);
+    auto desc_per_frame = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[1], descriptor_bindings_per_frame);
+    auto desc_per_draw  = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[2], descriptor_bindings_per_draw);
 
-    auto desc_sets = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layout, desc_pool, rendering_state.uniform_buffers, rendering_state.light_buffers,
-            {{create_image_view, sampler}, {far_image_view, sampler}});
-    rendering_state.desc_sets = desc_sets;
+    updateUniformBuffer<UniformBuffer, LightBufferObject>(rendering_state.device, rendering_state.light_buffers, desc_per_frame.set, desc_per_frame.layout_bindings[0]);
+    updateUniformBuffer<UniformBuffer, UniformBufferObject>(rendering_state.device, rendering_state.uniform_buffers, desc_per_draw.set, desc_per_draw.layout_bindings[0]);
+    updateImageSampler(rendering_state.device, {{create_image_view, sampler}}, desc_textures.set, desc_textures.layout_bindings[0]);
 
-    auto const drawable = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_sets);
-    auto const drawable_cube = createDraw(loadMesh(rendering_state, vertices, indices), rendering_state.pipelines[0], desc_sets);
+    rendering_state.descriptor_sets = { desc_textures, desc_per_frame, desc_per_draw };
+
+    auto const drawable = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_per_draw.set);
+    auto const drawable_cube = createDraw(loadMesh(rendering_state, vertices, indices), rendering_state.pipelines[0], desc_per_draw.set);
 
     // rendering_state.drawables.push_back(std::move(drawable));
-    rendering_state.drawables.push_back(createDraw(rendering_state.mesh, rendering_state.pipelines[0], desc_sets));
+    rendering_state.drawables.push_back(createDraw(rendering_state.mesh, rendering_state.pipelines[0], desc_per_draw.set));
 
     static auto start_time = std::chrono::high_resolution_clock::now();
     while (!glfwWindowShouldClose(rendering_state.window))

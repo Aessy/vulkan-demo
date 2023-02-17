@@ -1,12 +1,12 @@
 #version 450
 
-layout(set = 0, binding = 0) uniform UniformBufferObject {
+layout(set = 2, binding = 0) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
 } ubo;
 
-layout(set = 0, binding = 1) uniform UniformLight {
+layout(set = 1, binding = 0) uniform UniformLight {
     vec3 light_pos;
 } light;
 
