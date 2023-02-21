@@ -42,6 +42,7 @@ struct UniformBufferObject
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
+    alignas(16) uint32_t texture_index;
 };
 
 struct LightBufferObject
@@ -116,6 +117,8 @@ struct Draw
     glm::vec3 position;
     glm::vec3 rotation;
     float angel;
+
+    int texture_index;
 
     vk::Pipeline pipeline;
     std::vector<vk::DescriptorSet> descriptor_set;
@@ -1166,13 +1169,17 @@ void updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBuffer& light_buf
     ubo.proj = glm::perspective(glm::radians(45.0f), swap_chain_extent.width / (float)swap_chain_extent.height, 0.1f, 100.0f);
 
     */
+
+    ubo.texture_index = 1;
     ubo.proj[1][1] *= -1;
     memcpy(uniform_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
 
     // Update light uniform
     glm::vec3 light_pos = glm::vec3(-2+time,0,1);
     LightBufferObject light { light_pos };
+
     memcpy(light_buffer.uniform_buffers_mapped, &light, sizeof(light));
+
 }
 
 void recordCommandBuffer(RenderingState& state, uint32_t image_index)
@@ -1674,7 +1681,7 @@ DrawableMesh loadMesh(RenderingState const& state, std::vector<Vertex> const& ve
 {
     DrawableMesh mesh;
     mesh.vertex_buffer = createVertexBuffer(state, vertices);
-    mesh.vertex_buffer = createIndexBuffer(state, indices);
+    mesh.index_buffer = createIndexBuffer(state, indices);
     mesh.indices_size = indices.size();
 
     return mesh;
@@ -1687,19 +1694,12 @@ Draw createDraw(DrawableMesh const& mesh, vk::Pipeline const& pipeline, std::vec
     draw.position = glm::vec3(0,0,0);
     draw.rotation = glm::vec3(1,1,1);
     draw.angel = 0;
+    draw.texture_index = 0;
     draw.pipeline = pipeline;
     draw.descriptor_set = set;
 
     return draw;
 }
-
-struct Texture
-{
-    vk::Image image;
-    vk::DeviceMemory memory;
-    vk::ImageView view;
-    vk::Sampler sampler;
-};
 
 Texture createTexture(RenderingState const& state, std::string const& path, vk::Sampler sampler)
 {
@@ -1712,6 +1712,17 @@ Texture createTexture(RenderingState const& state, std::string const& path, vk::
         .view = image_view,
         .sampler = sampler
     };
+}
+
+std::vector<Texture> loadTextures(RenderingState const& state, vk::Sampler const& sampler, std::vector<std::string> const& paths)
+{
+    std::vector<Texture> textures;
+    for (auto const& path : paths)
+    {
+        textures.push_back(createTexture(state, path, sampler));
+    }
+
+    return textures;
 }
 
 int main()
@@ -1793,20 +1804,14 @@ int main()
 
     RenderingState rendering_state = createVulkanRenderState(descriptor_set_layouts);
 
-    auto create_image = createTextureImage(rendering_state, "textures/create.jpg");
-    auto far_image = createTextureImage(rendering_state, "textures/far.jpg");
-    auto create_image_view = createTextureImageView(rendering_state, create_image.first);
-    auto far_image_view = createTextureImageView(rendering_state, far_image.first);
     auto sampler = createTextureSampler(rendering_state);
 
-    rendering_state.mesh.vertex_buffer = createVertexBuffer(rendering_state, vertices);
-    rendering_state.mesh.index_buffer = createIndexBuffer(rendering_state, indices);
-    rendering_state.mesh.indices_size = indices.size();
+    auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg"});
+
+    auto mesh = loadMesh(rendering_state, vertices, indices);
+
     rendering_state.uniform_buffers = createUniformBuffers<UniformBufferObject>(rendering_state);
-
     rendering_state.light_buffers = createUniformBuffers<LightBufferObject>(rendering_state);
-
-    std::cout << "Light buffers: " << rendering_state.light_buffers.size() << '\n';
 
     auto desc_textures = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[0], {textures_descriptor_binding});
     auto desc_per_frame = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[1], {lights_descriptor_binding});
@@ -1814,15 +1819,10 @@ int main()
 
     updateUniformBuffer<LightBufferObject>(rendering_state.device, rendering_state.light_buffers, desc_per_frame.set, desc_per_frame.layout_bindings[0]);
     updateUniformBuffer<UniformBufferObject>(rendering_state.device, rendering_state.uniform_buffers, desc_per_draw.set, desc_per_draw.layout_bindings[0]);
-    updateImageSampler(rendering_state.device, {{create_image_view, sampler}, {far_image_view, sampler}}, desc_textures.set, desc_textures.layout_bindings[0]);
+    updateImageSampler(rendering_state.device, textures, desc_textures.set, desc_textures.layout_bindings[0]);
 
     rendering_state.descriptor_sets = { desc_textures, desc_per_frame, desc_per_draw };
-
-    auto const drawable_cube = createDraw(loadMesh(rendering_state, vertices, indices), rendering_state.pipelines[0], desc_per_draw.set);
-
-    // rendering_state.drawables.push_back(std::move(drawable));
-    rendering_state.drawables.push_back(createDraw(rendering_state.mesh, rendering_state.pipelines[0], desc_per_draw.set));
-
+    rendering_state.drawables.push_back(createDraw(mesh, rendering_state.pipelines[0], desc_per_draw.set));
 
     static auto start_time = std::chrono::high_resolution_clock::now();
     while (!glfwWindowShouldClose(rendering_state.window))

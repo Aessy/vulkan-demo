@@ -1,4 +1,12 @@
 #version 450
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout(set = 2, binding = 0) uniform UniformBufferObject {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+    uint texture_index;
+} ubo;
 
 layout(set = 0, binding = 0) uniform sampler2D texSampler[];
 
@@ -20,7 +28,7 @@ void main()
     float light_power = 50.0f;
 
 
-    vec3 material_diffuse_color = texture(texSampler[1], uv).rgb;
+    vec3 material_diffuse_color = texture(texSampler[ubo.texture_index], uv).rgb;
     vec3 material_ambient_color = vec3(0.1, 0.1, 0.1) * material_diffuse_color;
     vec3 material_speccular_color = vec3(0.3, 0.3, 0.3);
 
