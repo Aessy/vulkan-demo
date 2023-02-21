@@ -1,4 +1,5 @@
 #include <glm/ext/matrix_transform.hpp>
+#include <iterator>
 #define VK_USE_PLATFORM_XLIB_KHR
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
@@ -188,6 +189,8 @@ struct RenderingState
     Camera camera;
 
     std::vector<DescriptionPoolAndSet> descriptor_sets;
+
+
 };
 
 struct Model
@@ -1183,6 +1186,12 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
 
     auto result = command_buffer.begin(begin_info);
 
+    auto desc_set = state.descriptor_sets[0].set[0];
+    auto desc_set_2 = state.descriptor_sets[0].set[1];
+
+    state.command_buffer[state.current_frame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 0, 1, &state.descriptor_sets[0].set[state.current_frame], 0, nullptr);
+
+
     vk::RenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
     render_pass_info.setRenderPass(state.render_pass);
@@ -1222,12 +1231,8 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
         command_buffer.bindVertexBuffers(0,drawable.mesh.vertex_buffer,{0});
         command_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
 
-        int i = 0;
-        for (auto const& descriptor_set : state.descriptor_sets)
-        {
-            command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, i, 1, &descriptor_set.set[state.current_frame], 0, nullptr);
-            ++i;
-        }
+        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 1, 1, &state.descriptor_sets[1].set[state.current_frame], 0, nullptr);
+        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 2, 1, &state.descriptor_sets[2].set[state.current_frame], 0, nullptr);
 
         command_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0, 0, 0);
 
@@ -1587,11 +1592,8 @@ RenderingState createVulkanRenderState(std::vector<std::vector<vk::DescriptorSet
     auto const render_pass = createRenderPass(device, sc.swap_chain_image_format);
 
     std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
-    for (auto const& binding : bindings)
-    {
-        auto const descriptor_set_layout = createDescriptorSetLayout(device, binding);
-        descriptor_set_layouts.push_back(descriptor_set_layout);
-    }
+    std::transform(bindings.begin(), bindings.end(), std::back_inserter(descriptor_set_layouts),
+            [&device](auto const& set){return createDescriptorSetLayout(device, set);});
 
     auto const graphic_pipeline = createGraphicsPipline(device, sc.extent, render_pass, descriptor_set_layouts);
     auto const command_pool = createCommandPool(device, indices);
@@ -1601,6 +1603,10 @@ RenderingState createVulkanRenderState(std::vector<std::vector<vk::DescriptorSet
 
     auto const graphics_queue = device.getQueue(*indices.graphics_family, 0);
     auto const present_queue = device.getQueue(*indices.present_family, 0);
+
+    Camera camera;
+    camera.view = glm::lookAt(glm::vec3(0.0f, 3.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    camera.proj = glm::perspective(glm::radians(45.0f), sc.extent.width / (float)sc.extent.height, 0.1f, 100.0f);
 
     RenderingState render_state {
         .app = app,
@@ -1621,6 +1627,7 @@ RenderingState createVulkanRenderState(std::vector<std::vector<vk::DescriptorSet
         .command_buffer = command_buffers,
         .graphics_queue = graphics_queue,
         .present_queue = present_queue,
+        .camera = camera
     };
 
     auto depth_image = createDepth(render_state);
@@ -1686,6 +1693,26 @@ Draw createDraw(DrawableMesh const& mesh, vk::Pipeline const& pipeline, std::vec
     return draw;
 }
 
+struct Texture
+{
+    vk::Image image;
+    vk::DeviceMemory memory;
+    vk::ImageView view;
+    vk::Sampler sampler;
+};
+
+Texture createTexture(RenderingState const& state, std::string const& path, vk::Sampler sampler)
+{
+    auto image = createTextureImage(state, path);
+    auto image_view = createTextureImageView(state, image.first);
+
+    return Texture {
+        .image = image.first,
+        .memory = image.second,
+        .view = image_view,
+        .sampler = sampler
+    };
+}
 
 int main()
 {
@@ -1756,34 +1783,15 @@ int main()
         23, 21, 20
     };
 
-    std::vector<vk::DescriptorSetLayoutBinding> descriptor_bindings_textures
-    {
-        createTextureSamplerBinding(0, 32, vk::ShaderStageFlagBits::eFragment),
-    };
+    auto textures_descriptor_binding = createTextureSamplerBinding(0, 32, vk::ShaderStageFlagBits::eFragment);
+    auto lights_descriptor_binding = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
+    auto mvp_descriptor_binding = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
 
-    std::vector<vk::DescriptorSetLayoutBinding> descriptor_bindings_per_frame
-    {
-        createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment),
-    };
-
-    std::vector<vk::DescriptorSetLayoutBinding> descriptor_bindings_per_draw
-    {
-        createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment)
-    };
-
-    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layouts{descriptor_bindings_textures,
-                                                                                    descriptor_bindings_per_frame,
-                                                                                    descriptor_bindings_per_draw};
-
-    auto model = loadModel("models/ridley.obj");
+    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layouts{{textures_descriptor_binding}, // Set 0 binding 0
+                                                                                    {lights_descriptor_binding},   // Set 1 binding 0
+                                                                                    {mvp_descriptor_binding}};     // Set 2 binding 0
 
     RenderingState rendering_state = createVulkanRenderState(descriptor_set_layouts);
-
-    Camera camera;
-    camera.view = glm::lookAt(glm::vec3(0.0f, 3.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    camera.proj = glm::perspective(glm::radians(45.0f), rendering_state.swap_chain.extent.width / (float)rendering_state.swap_chain.extent.height, 0.1f, 100.0f);
-
-    rendering_state.camera = camera;
 
     auto create_image = createTextureImage(rendering_state, "textures/create.jpg");
     auto far_image = createTextureImage(rendering_state, "textures/far.jpg");
@@ -1800,21 +1808,21 @@ int main()
 
     std::cout << "Light buffers: " << rendering_state.light_buffers.size() << '\n';
 
-    auto desc_textures = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[0], descriptor_bindings_textures);
-    auto desc_per_frame = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[1], descriptor_bindings_per_frame);
-    auto desc_per_draw  = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[2], descriptor_bindings_per_draw);
+    auto desc_textures = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[0], {textures_descriptor_binding});
+    auto desc_per_frame = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[1], {lights_descriptor_binding});
+    auto desc_per_draw  = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[2], {mvp_descriptor_binding});
 
-    updateUniformBuffer<UniformBuffer, LightBufferObject>(rendering_state.device, rendering_state.light_buffers, desc_per_frame.set, desc_per_frame.layout_bindings[0]);
-    updateUniformBuffer<UniformBuffer, UniformBufferObject>(rendering_state.device, rendering_state.uniform_buffers, desc_per_draw.set, desc_per_draw.layout_bindings[0]);
-    updateImageSampler(rendering_state.device, {{create_image_view, sampler}}, desc_textures.set, desc_textures.layout_bindings[0]);
+    updateUniformBuffer<LightBufferObject>(rendering_state.device, rendering_state.light_buffers, desc_per_frame.set, desc_per_frame.layout_bindings[0]);
+    updateUniformBuffer<UniformBufferObject>(rendering_state.device, rendering_state.uniform_buffers, desc_per_draw.set, desc_per_draw.layout_bindings[0]);
+    updateImageSampler(rendering_state.device, {{create_image_view, sampler}, {far_image_view, sampler}}, desc_textures.set, desc_textures.layout_bindings[0]);
 
     rendering_state.descriptor_sets = { desc_textures, desc_per_frame, desc_per_draw };
 
-    auto const drawable = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_per_draw.set);
     auto const drawable_cube = createDraw(loadMesh(rendering_state, vertices, indices), rendering_state.pipelines[0], desc_per_draw.set);
 
     // rendering_state.drawables.push_back(std::move(drawable));
     rendering_state.drawables.push_back(createDraw(rendering_state.mesh, rendering_state.pipelines[0], desc_per_draw.set));
+
 
     static auto start_time = std::chrono::high_resolution_clock::now();
     while (!glfwWindowShouldClose(rendering_state.window))
