@@ -25,12 +25,12 @@ layout(location = 0) out vec4 out_color;
 void main()
 {
     vec3 light_color = vec3(1,1,1);
-    float light_power = 50.0f;
+    float light_power = 500.0f;
 
 
     vec3 material_diffuse_color = texture(texSampler[ubo.texture_index], uv).rgb;
-    vec3 material_ambient_color = vec3(0.5, 0.5, 0.5) * material_diffuse_color;
-    vec3 material_speccular_color = vec3(0.3, 0.3, 0.3);
+    vec3 material_ambient_color = vec3(0.1, 0.1, 0.1) * material_diffuse_color;
+    vec3 material_speccular_color = vec3(1.0, 1.0, 1.0);
 
     float distance = length(light.light_pos - position_worldspace);
 

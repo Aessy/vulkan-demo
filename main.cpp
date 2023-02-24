@@ -34,6 +34,8 @@
 #include <set>
 #include <limits>
 #include <fstream>
+#include <memory>
+#include <queue>
 
 #include "descriptor_set.h"
 
@@ -58,9 +60,28 @@ struct Vertex
     glm::vec3 normal;
 };
 
+struct Event
+{
+    int key{};
+    int scancode{};
+    int action{};
+    int mods{};
+};
+struct Keyboard
+{
+    bool up = false;
+    bool down = false;
+    bool left = false;
+    bool right = false;
+};
+
 struct App
 {
     bool window_resize = false;
+    std::queue<Event> events;
+    Keyboard keyboard{};
+
+    int test = 100;
 };
 
 struct DescriptionPoolAndSet
@@ -147,11 +168,13 @@ struct Camera
 {
     glm::mat4 proj;
     glm::mat4 view;
+
+    glm::vec3 pos;
 };
 
 struct RenderingState
 {
-    App app;
+    std::unique_ptr<App> app;
 
     GLFWwindow* window{nullptr};
 
@@ -736,7 +759,15 @@ vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities, GL
 static void framebufferResizeCallback(GLFWwindow* window, int, int)
 {
     auto app = reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
+
+    std::cout << app->test << '\n';
     app->window_resize = true;
+}
+
+static void keyPressedCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    auto app = reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
+    app->events.push(Event{.key=key,.scancode=scancode,.action=action,.mods=mods});
 }
 
 GLFWwindow* setupGlfw(App& app)
@@ -750,6 +781,7 @@ GLFWwindow* setupGlfw(App& app)
     auto window = glfwCreateWindow(800, 600, "Vulkan", nullptr, nullptr);
     glfwSetWindowUserPointer(window, &app);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+    glfwSetKeyCallback(window, keyPressedCallback);
 
     return window;
 }
@@ -1154,7 +1186,7 @@ std::vector<vk::CommandBuffer> createCommandBuffer(vk::Device const& device, vk:
     return command_buffers.value;
 }
 
-UniformBufferObject updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBuffer& light_buffer, Camera const& camera, Draw const& drawable)
+UniformBufferObject updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBuffer& light_buffer, Camera const& camera, Draw const& drawable, vk::Extent2D extent)
 {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -1170,8 +1202,15 @@ UniformBufferObject updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBu
 
     // ubo.model =  glm::rotate(glm::mat4(1.0f), drawable.angel, drawable.rotation) * glm::translate(glm::mat4(1.0f), drawable.position);
     // ubo.model =  glm::mat4(1.0f) * glm::translate(glm::mat4(1.0f), drawable.position);
-    ubo.view = camera.view;
+
+    // ubo.view = glm::lookAt(glm::vec3(camera.pos), glm::vec3(30.0f, 12.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    ubo.proj = glm::perspective(glm::radians(45.0f), extent.width / (float)extent.height, 0.1f, 100.0f);
+
+    ubo.view = glm::translate(glm::mat4(1.0f), camera.pos) * camera.view;
     ubo.proj = camera.proj;
+
+
+
     // ubo.model = //glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));   // 
     /*
     ubo.view = glm::lookAt(glm::vec3(0.0f, 5.0f, 18.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -1185,7 +1224,8 @@ UniformBufferObject updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBu
     memcpy(uniform_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
 
     // Update light uniform
-    glm::vec3 light_pos = glm::vec3(-2+time,0,1);
+    glm::vec3 light_pos = glm::vec3(0,-2,2-time);
+    //glm::vec3 light_pos = glm::vec3(0,0,0);
     LightBufferObject light { light_pos };
 
     memcpy(light_buffer.uniform_buffers_mapped, &light, sizeof(light));
@@ -1249,7 +1289,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
 
     for (auto const& drawable : state.drawables)
     {
-        auto ubo = updateUniformBuffer(state.uniform_buffers[state.current_frame], state.light_buffers[state.current_frame], state.camera, drawable);
+        auto ubo = updateUniformBuffer(state.uniform_buffers[state.current_frame], state.light_buffers[state.current_frame], state.camera, drawable, state.swap_chain.extent);
 
         command_buffer.pushConstants(state.pipeline_layout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0,
                 sizeof(UniformBufferObject), &ubo);
@@ -1322,9 +1362,9 @@ DrawResult drawFrame(RenderingState& state)
 
     if (   result == vk::Result::eErrorOutOfDateKHR
         || result == vk::Result::eSuboptimalKHR
-        || state.app.window_resize)
+        || state.app->window_resize)
     {
-        state.app.window_resize = false;
+        state.app->window_resize = false;
         return DrawResult::RESIZE;
     }
 
@@ -1596,9 +1636,9 @@ DepthResources createDepth(RenderingState const& state)
 
 RenderingState createVulkanRenderState(std::vector<std::vector<vk::DescriptorSetLayoutBinding>> bindings)
 {
-    App app;
+    auto app = std::make_unique<App>();
 
-    auto window = setupGlfw(app);
+    auto window = setupGlfw(*app);
 
     auto const instance = createInstance(false);
 
@@ -1633,7 +1673,7 @@ RenderingState createVulkanRenderState(std::vector<std::vector<vk::DescriptorSet
     camera.proj = glm::perspective(glm::radians(45.0f), sc.extent.width / (float)sc.extent.height, 0.1f, 100.0f);
 
     RenderingState render_state {
-        .app = app,
+        .app = std::move(app),
         .window = window,
         .instance = instance,
         .surface = surface,
@@ -1826,7 +1866,7 @@ int main()
 
     auto sampler = createTextureSampler(rendering_state);
 
-    auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg"});
+    auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg", "textures/ridley.png"});
 
     auto mesh = loadMesh(rendering_state, vertices, indices);
 
@@ -1843,29 +1883,123 @@ int main()
 
     rendering_state.descriptor_sets = { desc_textures, desc_per_frame, desc_per_draw };
 
-    for (int i = 0; i < 1000; ++i)
+    auto model = loadModel("models/ridley.obj");
+    auto ridley = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_per_draw.set,  {0,-5,-10});
+    ridley.texture_index = 2;
+
+    for (int i = 0; i < 500; ++i)
     {
         glm::vec3 pos;
         pos.x = (rand() % 10) - 5;
         pos.y = (rand() % 10) - 10;
         pos.z = (rand() % 40) - 40;
 
-        std::cout << pos.x << " " << pos.y << " " << pos.z <<'\n';
         rendering_state.drawables.push_back(createDraw(mesh, rendering_state.pipelines[0], desc_per_draw.set, pos));
     }
-
-    rendering_state.drawables[0].texture_index = 0;
-    rendering_state.drawables[1].texture_index = 0;
-    rendering_state.drawables[2].texture_index = 0;
 
     static auto start_time = std::chrono::high_resolution_clock::now();
 
     uint32_t fps = 0;
     float total_time = 0;
 
+    std::cout << "Starting rendering loop\n";
+
+    float camera_speed = 5;
+    glm::vec3 camera_move{0,0,0};
+    glm::vec3 camera_position{0,0,0};
     while (!glfwWindowShouldClose(rendering_state.window))
     {
         glfwPollEvents();
+
+        while (rendering_state.app->events.size())
+        {
+            auto& app = *rendering_state.app;
+            auto event = app.events.front();
+            app.events.pop();
+
+            std::cout << "Event\n";
+
+            if (event.key == GLFW_KEY_W && event.action == GLFW_PRESS)
+            {
+                if (!app.keyboard.up)
+                {
+                    camera_move.z = 1;
+                }
+                app.keyboard.up = true;
+            }
+            else if (event.key == GLFW_KEY_W && event.action == GLFW_RELEASE)
+            {
+                if (app.keyboard.down)
+                {
+                    camera_move.z = -1;
+                }
+                else
+                {
+                    camera_move.z = 0;
+                }
+                app.keyboard.up = false;
+            }
+            else if (event.key == GLFW_KEY_S && event.action == GLFW_PRESS)
+            {
+                if (!app.keyboard.down)
+                {
+                    camera_move.z = -1;
+                }
+                app.keyboard.down = true;
+            }
+            else if (event.key == GLFW_KEY_S && event.action == GLFW_RELEASE)
+            {
+                if (app.keyboard.up)
+                {
+                    camera_move.z = 1;
+                }
+                else
+                {
+                    camera_move.z = 0;
+                }
+                app.keyboard.down = false;
+            }
+            else if (event.key == GLFW_KEY_A && event.action == GLFW_PRESS)
+            {
+                if (!app.keyboard.left)
+                {
+                    camera_move.x = 1;
+                }
+                app.keyboard.left= true;
+            }
+            else if (event.key == GLFW_KEY_A && event.action == GLFW_RELEASE)
+            {
+                if (app.keyboard.right)
+                {
+                    camera_move.x = -1;
+                }
+                else
+                {
+                    camera_move.x = 0;
+                }
+                app.keyboard.left= false;
+            }
+            else if (event.key == GLFW_KEY_D && event.action == GLFW_PRESS)
+            {
+                if (!app.keyboard.right)
+                {
+                    camera_move.x = -1;
+                }
+                app.keyboard.right = true;
+            }
+            else if (event.key == GLFW_KEY_D && event.action == GLFW_RELEASE)
+            {
+                if (app.keyboard.left)
+                {
+                    camera_move.x = 1;
+                }
+                else
+                {
+                    camera_move.x = 0;
+                }
+                app.keyboard.right = false;
+            }
+        }
 
         auto current_time = std::chrono::high_resolution_clock::now();
         float delta = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
@@ -1882,11 +2016,13 @@ int main()
         }
 
         start_time = current_time;
+        camera_position += camera_move * camera_speed * delta;
 
+        rendering_state.camera.pos = camera_position;
 
         for (auto& drawable : rendering_state.drawables)
         {
-            //drawable.angel += delta;
+            drawable.angel += delta;
         }
 
         auto result = drawFrame(rendering_state);
