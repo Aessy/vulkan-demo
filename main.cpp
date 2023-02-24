@@ -704,13 +704,15 @@ vk::PresentModeKHR chooseSwapPresentMode(std::vector<vk::PresentModeKHR>const& p
 {
     for (auto const& available_present_mode : present_modes)
     {
+        std::cout << "Present mode: " << vk::to_string(available_present_mode) << '\n';
         if (available_present_mode == vk::PresentModeKHR::eMailbox)
         {
             return available_present_mode;
         }
     }
 
-    return vk::PresentModeKHR::eFifo;
+    std::cout << "Using fifo present mode\n";
+    return vk::PresentModeKHR::eImmediate;
 }
 
 vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities, GLFWwindow* window)
@@ -994,6 +996,13 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     vk::PipelineLayoutCreateInfo pipeline_layout_info{};
     pipeline_layout_info.sType = vk::StructureType::ePipelineLayoutCreateInfo;
     pipeline_layout_info.setSetLayouts(desc_set_layout);
+    //
+    vk::PushConstantRange range;
+    range.setStageFlags(vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
+    range.setSize(sizeof(UniformBufferObject));
+    range.setOffset(0);
+
+    pipeline_layout_info.setPushConstantRanges(range);
     // pipeline_layout_info.pushConstantRangeCount = 0;
     // pipeline_layout_info.pPushConstantRanges = nullptr;
 
@@ -1145,7 +1154,7 @@ std::vector<vk::CommandBuffer> createCommandBuffer(vk::Device const& device, vk:
     return command_buffers.value;
 }
 
-void updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBuffer& light_buffer, Camera const& camera, Draw const& drawable)
+UniformBufferObject updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBuffer& light_buffer, Camera const& camera, Draw const& drawable)
 {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -1170,7 +1179,8 @@ void updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBuffer& light_buf
 
     */
 
-    ubo.texture_index = 1;
+    ubo.texture_index = drawable.texture_index;
+
     ubo.proj[1][1] *= -1;
     memcpy(uniform_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
 
@@ -1180,6 +1190,7 @@ void updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBuffer& light_buf
 
     memcpy(light_buffer.uniform_buffers_mapped, &light, sizeof(light));
 
+    return ubo;
 }
 
 void recordCommandBuffer(RenderingState& state, uint32_t image_index)
@@ -1188,7 +1199,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
 
     vk::CommandBufferBeginInfo begin_info{};
     begin_info.sType = vk::StructureType::eCommandBufferBeginInfo;
-    begin_info.setFlags(static_cast<vk::CommandBufferUsageFlags>(0));
+    begin_info.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
     begin_info.pInheritanceInfo = nullptr;
 
     auto result = command_buffer.begin(begin_info);
@@ -1196,7 +1207,6 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
     auto desc_set = state.descriptor_sets[0].set[0];
     auto desc_set_2 = state.descriptor_sets[0].set[1];
 
-    state.command_buffer[state.current_frame].bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 0, 1, &state.descriptor_sets[0].set[state.current_frame], 0, nullptr);
 
 
     vk::RenderPassBeginInfo render_pass_info{};
@@ -1229,22 +1239,29 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
     scissor.extent = state.swap_chain.extent;
     command_buffer.setScissor(0,scissor);
 
+    command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
+    uint32_t offset = 0;
+
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 0, 1, &state.descriptor_sets[0].set[state.current_frame], 0, nullptr);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 1, 1, &state.descriptor_sets[1].set[state.current_frame], 1, &offset);
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.pipelines[0]);
+//    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 2, 1, &state.descriptor_sets[2].set[state.current_frame], 1, &offset);
+
     for (auto const& drawable : state.drawables)
     {
-        updateUniformBuffer(state.uniform_buffers[state.current_frame], state.light_buffers[state.current_frame], state.camera, drawable);
+        auto ubo = updateUniformBuffer(state.uniform_buffers[state.current_frame], state.light_buffers[state.current_frame], state.camera, drawable);
 
-        command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
-        command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.pipelines[0]);
+        command_buffer.pushConstants(state.pipeline_layout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0,
+                sizeof(UniformBufferObject), &ubo);
+
         command_buffer.bindVertexBuffers(0,drawable.mesh.vertex_buffer,{0});
         command_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
 
-        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 1, 1, &state.descriptor_sets[1].set[state.current_frame], 0, nullptr);
-        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 2, 1, &state.descriptor_sets[2].set[state.current_frame], 0, nullptr);
 
         command_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0, 0, 0);
-
-        command_buffer.endRenderPass();
     }
+    command_buffer.endRenderPass();
+
     result = command_buffer.end();
 }
 
@@ -1583,7 +1600,7 @@ RenderingState createVulkanRenderState(std::vector<std::vector<vk::DescriptorSet
 
     auto window = setupGlfw(app);
 
-    auto const instance = createInstance(true);
+    auto const instance = createInstance(false);
 
     auto const surface = createSurface(instance, window);
 
@@ -1687,11 +1704,12 @@ DrawableMesh loadMesh(RenderingState const& state, std::vector<Vertex> const& ve
     return mesh;
 }
 
-Draw createDraw(DrawableMesh const& mesh, vk::Pipeline const& pipeline, std::vector<vk::DescriptorSet> const& set)
+Draw createDraw(DrawableMesh const& mesh, vk::Pipeline const& pipeline, std::vector<vk::DescriptorSet> const& set,
+        glm::vec3 const& pos = glm::vec3(1,1,1))
 {
     Draw draw;
     draw.mesh = mesh;
-    draw.position = glm::vec3(0,0,0);
+    draw.position = pos;
     draw.rotation = glm::vec3(1,1,1);
     draw.angel = 0;
     draw.texture_index = 0;
@@ -1727,6 +1745,8 @@ std::vector<Texture> loadTextures(RenderingState const& state, vk::Sampler const
 
 int main()
 {
+    srand (time(NULL));
+
     std::cout << "Buffer: " << sizeof(vk::Buffer) << '\n';
     std::cout << "Buffer: " << sizeof(vk::Pipeline) << '\n';
 
@@ -1822,16 +1842,47 @@ int main()
     updateImageSampler(rendering_state.device, textures, desc_textures.set, desc_textures.layout_bindings[0]);
 
     rendering_state.descriptor_sets = { desc_textures, desc_per_frame, desc_per_draw };
-    rendering_state.drawables.push_back(createDraw(mesh, rendering_state.pipelines[0], desc_per_draw.set));
+
+    for (int i = 0; i < 1000; ++i)
+    {
+        glm::vec3 pos;
+        pos.x = (rand() % 10) - 5;
+        pos.y = (rand() % 10) - 10;
+        pos.z = (rand() % 40) - 40;
+
+        std::cout << pos.x << " " << pos.y << " " << pos.z <<'\n';
+        rendering_state.drawables.push_back(createDraw(mesh, rendering_state.pipelines[0], desc_per_draw.set, pos));
+    }
+
+    rendering_state.drawables[0].texture_index = 0;
+    rendering_state.drawables[1].texture_index = 0;
+    rendering_state.drawables[2].texture_index = 0;
 
     static auto start_time = std::chrono::high_resolution_clock::now();
+
+    uint32_t fps = 0;
+    float total_time = 0;
+
     while (!glfwWindowShouldClose(rendering_state.window))
     {
         glfwPollEvents();
 
         auto current_time = std::chrono::high_resolution_clock::now();
         float delta = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+        total_time += delta;
+        if (total_time > 1)
+        {
+            std::cout << "FPS: " << fps << '\n';
+            fps = 0;
+            total_time = 0;
+        }
+        else
+        {
+            fps += 1;
+        }
+
         start_time = current_time;
+
 
         for (auto& drawable : rendering_state.drawables)
         {

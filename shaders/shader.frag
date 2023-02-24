@@ -1,7 +1,7 @@
 #version 450
 #extension GL_EXT_nonuniform_qualifier : require
 
-layout(set = 2, binding = 0) uniform UniformBufferObject {
+layout(  push_constant ) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
@@ -29,7 +29,7 @@ void main()
 
 
     vec3 material_diffuse_color = texture(texSampler[ubo.texture_index], uv).rgb;
-    vec3 material_ambient_color = vec3(0.1, 0.1, 0.1) * material_diffuse_color;
+    vec3 material_ambient_color = vec3(0.5, 0.5, 0.5) * material_diffuse_color;
     vec3 material_speccular_color = vec3(0.3, 0.3, 0.3);
 
     float distance = length(light.light_pos - position_worldspace);
