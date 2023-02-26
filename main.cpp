@@ -1,4 +1,6 @@
 #include <glm/ext/matrix_transform.hpp>
+#include <glm/geometric.hpp>
+#include <glm/trigonometric.hpp>
 #include <iterator>
 #define VK_USE_PLATFORM_XLIB_KHR
 #define GLFW_INCLUDE_VULKAN
@@ -24,6 +26,7 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include "glm/gtx/string_cast.hpp"
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
@@ -75,11 +78,19 @@ struct Keyboard
     bool right = false;
 };
 
+struct CursorPos
+{
+    uint32_t x{};
+    uint32_t y{};
+};
+
 struct App
 {
     bool window_resize = false;
     std::queue<Event> events;
     Keyboard keyboard{};
+
+    CursorPos cursor_pos{};
 
     int test = 100;
 };
@@ -168,8 +179,10 @@ struct Camera
 {
     glm::mat4 proj;
     glm::mat4 view;
-
     glm::vec3 pos;
+    glm::vec3 camera_front;
+    glm::vec3 up;
+    glm::vec2 pitch_yawn{};
 };
 
 struct RenderingState
@@ -770,6 +783,13 @@ static void keyPressedCallback(GLFWwindow* window, int key, int scancode, int ac
     app->events.push(Event{.key=key,.scancode=scancode,.action=action,.mods=mods});
 }
 
+static void cursorMovedCallback(GLFWwindow* window, double x_pos, double y_pos)
+{
+    auto app = reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
+
+    app->cursor_pos = CursorPos{uint32_t(x_pos), uint32_t(y_pos)};
+}
+
 GLFWwindow* setupGlfw(App& app)
 {
     glfwInit();
@@ -782,6 +802,8 @@ GLFWwindow* setupGlfw(App& app)
     glfwSetWindowUserPointer(window, &app);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     glfwSetKeyCallback(window, keyPressedCallback);
+    glfwSetCursorPosCallback(window, cursorMovedCallback);
+
 
     return window;
 }
@@ -1203,10 +1225,16 @@ UniformBufferObject updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBu
     // ubo.model =  glm::rotate(glm::mat4(1.0f), drawable.angel, drawable.rotation) * glm::translate(glm::mat4(1.0f), drawable.position);
     // ubo.model =  glm::mat4(1.0f) * glm::translate(glm::mat4(1.0f), drawable.position);
 
-    // ubo.view = glm::lookAt(glm::vec3(camera.pos), glm::vec3(30.0f, 12.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    ubo.view = glm::lookAt(camera.pos, (camera.pos + camera.camera_front), camera.up);
     ubo.proj = glm::perspective(glm::radians(45.0f), extent.width / (float)extent.height, 0.1f, 100.0f);
 
-    ubo.view = glm::translate(glm::mat4(1.0f), camera.pos) * camera.view;
+    /*
+    auto rotate =   glm::rotate(glm::mat4(1.0f), camera.x_angle, glm::vec3(1,0,0))
+                  * glm::rotate(glm::mat4(1.0f), camera.z_angle, glm::vec3(0,0,1))
+                  * glm::rotate(glm::mat4(1.0f), camera.y_angle, glm::vec3(0,1,0));
+    ubo.view = glm::translate(glm::mat4(1.0f), camera.pos) * rotate * camera.view;
+    */
+
     ubo.proj = camera.proj;
 
 
@@ -1669,8 +1697,11 @@ RenderingState createVulkanRenderState(std::vector<std::vector<vk::DescriptorSet
     auto const present_queue = device.getQueue(*indices.present_family, 0);
 
     Camera camera;
-    camera.view = glm::lookAt(glm::vec3(0.0f, 3.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     camera.proj = glm::perspective(glm::radians(45.0f), sc.extent.width / (float)sc.extent.height, 0.1f, 100.0f);
+    camera.camera_front = glm::vec3(0,0,-1);
+    camera.pitch_yawn = glm::vec2(-90, 0);
+    camera.up = glm::vec3(0,1,0);
+    camera.pos = glm::vec3(0,0,0);
 
     RenderingState render_state {
         .app = std::move(app),
@@ -1783,6 +1814,95 @@ std::vector<Texture> loadTextures(RenderingState const& state, vk::Sampler const
     return textures;
 }
 
+bool processEvent(Event const& event, App& app)
+{
+    std::cout << "Event\n";
+
+    if (event.key == GLFW_KEY_W && event.action == GLFW_PRESS)
+    {
+        app.keyboard.up = true;
+    }
+    else if (event.key == GLFW_KEY_W && event.action == GLFW_RELEASE)
+    {
+        app.keyboard.up = false;
+    }
+    else if (event.key == GLFW_KEY_S && event.action == GLFW_PRESS)
+    {
+        app.keyboard.down = true;
+    }
+    else if (event.key == GLFW_KEY_S && event.action == GLFW_RELEASE)
+    {
+        app.keyboard.down = false;
+    }
+    else if (event.key == GLFW_KEY_A && event.action == GLFW_PRESS)
+    {
+        app.keyboard.left= true;
+    }
+    else if (event.key == GLFW_KEY_A && event.action == GLFW_RELEASE)
+    {
+        app.keyboard.left= false;
+    }
+    else if (event.key == GLFW_KEY_D && event.action == GLFW_PRESS)
+    {
+        app.keyboard.right = true;
+    }
+    else if (event.key == GLFW_KEY_D && event.action == GLFW_RELEASE)
+    {
+        app.keyboard.right = false;
+    }
+    else if (event.key == GLFW_KEY_ESCAPE && event.action == GLFW_PRESS)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, Camera& camera, App& app, GLFWwindow* window)
+{
+    if (app.keyboard.up)
+    {
+        camera.pos += camera_speed * camera.camera_front * delta;
+    }
+    if (app.keyboard.down)
+    {
+        camera.pos -= camera_speed * camera.camera_front * delta;
+    }
+    if (app.keyboard.right)
+    {
+        camera.pos += camera_speed * glm::normalize(glm::cross(camera.camera_front, camera.up)) * delta;
+    }
+    if (app.keyboard.left)
+    {
+        camera.pos -= camera_speed * glm::normalize(glm::cross(camera.camera_front, camera.up)) * delta;
+    }
+
+    if (app.cursor_pos.x != uint32_t(extent.width/2) || app.cursor_pos.y != uint32_t(extent.height/2))
+    {
+        std::cout << "x: " << app.cursor_pos.x << "y: " << app.cursor_pos.y << '\n';
+
+        glm::vec2 center = glm::vec2(extent.width/2, extent.height/2);
+        glm::vec2 diff = glm::vec2(app.cursor_pos.x, app.cursor_pos.y) - center;
+        diff.y = -diff.y;
+
+        std::cout << "diffx: " << diff.x << "diffy: " << diff.y << '\n';
+
+        camera.pitch_yawn += diff * camera_speed * delta;
+
+        glm::vec3 direction;
+        direction.x = std::cos(glm::radians(camera.pitch_yawn.x)) * cos(glm::radians(camera.pitch_yawn.y));
+        direction.y = std::sin(glm::radians(camera.pitch_yawn.y));
+        direction.z = std::sin(glm::radians(camera.pitch_yawn.x)) * cos(glm::radians(camera.pitch_yawn.y));
+
+        camera.camera_front = glm::normalize(direction);
+
+        std::cout << "New camera front: " << glm::to_string(camera.camera_front) << '\n';
+
+        app.cursor_pos = CursorPos{uint32_t(extent.width/2), uint32_t(extent.height/2)};
+        glfwSetCursorPos(window, app.cursor_pos.x, app.cursor_pos.y);
+    }
+}
+
 int main()
 {
     srand (time(NULL));
@@ -1791,6 +1911,7 @@ int main()
     std::cout << "Buffer: " << sizeof(vk::Pipeline) << '\n';
 
     std::vector<Vertex> vertices {
+        //Position           // Color            // UV   // Normal
         // Front
         {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {0,0,1}}, //0  0
         {{ 0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {0,0,1}}, //1  1  
@@ -1887,6 +2008,7 @@ int main()
     auto ridley = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_per_draw.set,  {0,-5,-10});
     ridley.texture_index = 2;
 
+    // Add 500 boxes to the scene
     for (int i = 0; i < 500; ++i)
     {
         glm::vec3 pos;
@@ -1901,105 +2023,31 @@ int main()
 
     uint32_t fps = 0;
     float total_time = 0;
+    bool first_frame = true;
 
     std::cout << "Starting rendering loop\n";
 
     float camera_speed = 5;
-    glm::vec3 camera_move{0,0,0};
-    glm::vec3 camera_position{0,0,0};
+
+    rendering_state.app->cursor_pos = {rendering_state.swap_chain.extent.width/2, rendering_state.swap_chain.extent.height/2};
+    glfwSetCursorPos(rendering_state.window, rendering_state.app->cursor_pos.x, rendering_state.app->cursor_pos.y);
+
     while (!glfwWindowShouldClose(rendering_state.window))
     {
         glfwPollEvents();
 
+        auto& app = *rendering_state.app;
         while (rendering_state.app->events.size())
         {
-            auto& app = *rendering_state.app;
             auto event = app.events.front();
             app.events.pop();
 
-            std::cout << "Event\n";
-
-            if (event.key == GLFW_KEY_W && event.action == GLFW_PRESS)
+            if (!processEvent(event, app))
             {
-                if (!app.keyboard.up)
-                {
-                    camera_move.z = 1;
-                }
-                app.keyboard.up = true;
-            }
-            else if (event.key == GLFW_KEY_W && event.action == GLFW_RELEASE)
-            {
-                if (app.keyboard.down)
-                {
-                    camera_move.z = -1;
-                }
-                else
-                {
-                    camera_move.z = 0;
-                }
-                app.keyboard.up = false;
-            }
-            else if (event.key == GLFW_KEY_S && event.action == GLFW_PRESS)
-            {
-                if (!app.keyboard.down)
-                {
-                    camera_move.z = -1;
-                }
-                app.keyboard.down = true;
-            }
-            else if (event.key == GLFW_KEY_S && event.action == GLFW_RELEASE)
-            {
-                if (app.keyboard.up)
-                {
-                    camera_move.z = 1;
-                }
-                else
-                {
-                    camera_move.z = 0;
-                }
-                app.keyboard.down = false;
-            }
-            else if (event.key == GLFW_KEY_A && event.action == GLFW_PRESS)
-            {
-                if (!app.keyboard.left)
-                {
-                    camera_move.x = 1;
-                }
-                app.keyboard.left= true;
-            }
-            else if (event.key == GLFW_KEY_A && event.action == GLFW_RELEASE)
-            {
-                if (app.keyboard.right)
-                {
-                    camera_move.x = -1;
-                }
-                else
-                {
-                    camera_move.x = 0;
-                }
-                app.keyboard.left= false;
-            }
-            else if (event.key == GLFW_KEY_D && event.action == GLFW_PRESS)
-            {
-                if (!app.keyboard.right)
-                {
-                    camera_move.x = -1;
-                }
-                app.keyboard.right = true;
-            }
-            else if (event.key == GLFW_KEY_D && event.action == GLFW_RELEASE)
-            {
-                if (app.keyboard.left)
-                {
-                    camera_move.x = 1;
-                }
-                else
-                {
-                    camera_move.x = 0;
-                }
-                app.keyboard.right = false;
+                return 0;
             }
         }
+
 
         auto current_time = std::chrono::high_resolution_clock::now();
         float delta = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
@@ -2016,9 +2064,12 @@ int main()
         }
 
         start_time = current_time;
-        camera_position += camera_move * camera_speed * delta;
 
-        rendering_state.camera.pos = camera_position;
+        // Update camera based on basic wasd controller and mouse movement like in FPS
+        if (!first_frame)
+        {
+            updateCamera(delta, camera_speed, rendering_state.swap_chain.extent, rendering_state.camera, app, rendering_state.window);
+        }
 
         for (auto& drawable : rendering_state.drawables)
         {
@@ -2035,6 +2086,7 @@ int main()
             return 0;
         }
 
+        first_frame = false;
         rendering_state.current_frame = (rendering_state.current_frame + 1) % 2;
     }
 }
