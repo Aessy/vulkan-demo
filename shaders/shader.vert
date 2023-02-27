@@ -1,15 +1,27 @@
-#version 450
+#version 460
 
 layout( push_constant ) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
     uint texture_index;
-} ubo;
+} ubo_test;
 
 layout(set = 1, binding = 0) uniform UniformLight {
     vec3 light_pos;
 } light;
+
+struct ObjectData
+{
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+    uint texture_index;
+};
+
+layout(std140,set = 2, binding = 0) readonly buffer ObjectBuffer{
+    ObjectData objects[];
+} ubo2;
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 in_color;
@@ -23,6 +35,7 @@ layout(location = 3) out vec3 eye_direction_cameraspace;
 layout(location = 4) out vec3 light_direction_cameraspace;
 
 void main() {
+    ObjectData ubo = ubo2.objects[gl_BaseInstance];
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
 
     position_worldspace = (ubo.model * vec4(inPosition, 1)).xyz;

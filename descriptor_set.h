@@ -58,6 +58,11 @@ inline auto createTextureSamplerBinding(int binding, int count, vk::ShaderStageF
     return createLayoutBinding(binding, vk::DescriptorType::eCombinedImageSampler, count, shader_flags);
 }
 
+inline auto createStorageBufferBinding(int binding, int count, vk::ShaderStageFlags shader_flags)
+{
+    return createLayoutBinding(binding, vk::DescriptorType::eStorageBuffer, count, shader_flags);
+}
+
 template<typename Device>
 inline auto createDescriptorPoolInfo(Device const& device, std::vector<vk::DescriptorSetLayoutBinding> const& bindings)
 {
@@ -150,7 +155,8 @@ inline auto createSets(Device const& device, vk::DescriptorPool const& pool, vk:
 
 template<typename UniformObject, typename UniformBuffer, typename Device>
 inline void updateUniformBuffer(Device const& device, std::vector<UniformBuffer> const& uniform_buffer,
-        std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding)
+        std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding,
+        uint32_t size)
 {
     int i = 0;
     for (auto const& set : sets)
@@ -159,7 +165,7 @@ inline void updateUniformBuffer(Device const& device, std::vector<UniformBuffer>
         buffer_info.buffer = uniform_buffer[i].uniform_buffers;
         std::cout << sizeof(UniformObject) << '\n';
         buffer_info.offset = 0;
-        buffer_info.range = sizeof(UniformObject);
+        buffer_info.range = sizeof(UniformObject) * size;
 
         vk::WriteDescriptorSet desc_writes{};
         desc_writes.sType = vk::StructureType::eWriteDescriptorSet;
@@ -167,7 +173,7 @@ inline void updateUniformBuffer(Device const& device, std::vector<UniformBuffer>
         desc_writes.dstBinding = binding.binding;
         desc_writes.dstArrayElement = 0;
         desc_writes.descriptorType = binding.descriptorType;
-        desc_writes.descriptorCount = 1; // TODO: Add support for array
+        desc_writes.descriptorCount = size; // TODO: Add support for array
         desc_writes.setBufferInfo(buffer_info);
         ++i;
 

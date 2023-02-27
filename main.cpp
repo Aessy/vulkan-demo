@@ -591,6 +591,28 @@ auto createUniformBuffers(RenderingState const& state)
     return ubos;
 }
 
+template<typename BufferObject>
+auto createStorageBuffers(RenderingState const& state, uint32_t size)
+{
+    vk::DeviceSize buffer_size = sizeof(BufferObject) * size;
+
+    std::vector<UniformBuffer> ubos;
+    size_t const max_frames_in_flight = 2;
+    for (size_t i = 0; i < max_frames_in_flight; ++i)
+    {
+        vk::DeviceMemory uniform_buffer_memory;
+        auto buffer = createBuffer(state, buffer_size, vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible
+                                                                                 | vk::MemoryPropertyFlagBits::eHostCoherent,
+                                                                                   uniform_buffer_memory);
+        auto mapped = state.device.mapMemory(uniform_buffer_memory, 0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0));
+        checkResult(mapped.result);
+
+        ubos.push_back(UniformBuffer{buffer, uniform_buffer_memory, mapped.value});
+    }
+
+    return ubos;
+}
+
 std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties)
 {
     vk::ImageCreateInfo image_info;
@@ -1258,7 +1280,7 @@ UniformBufferObject updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBu
     ubo.texture_index = drawable.texture_index;
 
     ubo.proj[1][1] *= -1;
-    memcpy(uniform_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
+    //memcpy(uniform_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
 
     // Update light uniform
     glm::vec3 light_pos = glm::vec3(0,-2,2-time);
@@ -1319,23 +1341,36 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
     command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
     uint32_t offset = 0;
 
+    int i = 0;
     for (auto const& drawable : state.drawables)
     {
-        // Fix so we don't rebind the same pipeline and descriptor sets for every draw. Big performance loss here atm.
-        command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, drawable.program.pipeline[0]);
-        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, drawable.program.pipeline_layout, 0, 1, &drawable.program.descriptor_sets[0].set[state.current_frame], 0, nullptr);
-        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, drawable.program.pipeline_layout, 1, 1, &drawable.program.descriptor_sets[1].set[state.current_frame], 1, &offset);
-
         auto ubo = updateUniformBuffer(state.uniform_buffers[state.current_frame], state.light_buffers[state.current_frame], state.camera, drawable, state.swap_chain.extent);
+        void* buffer = state.uniform_buffers[state.current_frame].uniform_buffers_mapped;
 
-        command_buffer.pushConstants(state.gpu_program.pipeline_layout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0,
-                sizeof(UniformBufferObject), &ubo);
+        auto* b = (unsigned char*)buffer+(sizeof(UniformBufferObject)*i);
+        memcpy(b, &ubo, sizeof(ubo));
+        ++i;
+    }
+
+    // Fix so we don't rebind the same pipeline and descriptor sets for every draw. Big performance loss here atm.
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.drawables[0].program.pipeline[0]);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.drawables[0].program.pipeline_layout, 0, 1, &state.gpu_program.descriptor_sets[0].set[state.current_frame], 0, nullptr);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.drawables[0].program.pipeline_layout, 1, 1, &state.gpu_program.descriptor_sets[1].set[state.current_frame], 1, &offset);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.drawables[0].program.pipeline_layout, 2, 1, &state.gpu_program.descriptor_sets[2].set[state.current_frame], 0, nullptr);
+    i = 0;
+    for (auto const& drawable : state.drawables)
+    {
+        //auto ubo = updateUniformBuffer(state.uniform_buffers[state.current_frame], state.light_buffers[state.current_frame], state.camera, drawable, state.swap_chain.extent);
+        //command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, drawable.program.pipeline_layout, 2, 1, &state.gpu_program.descriptor_sets[2].set[state.current_frame], 0, nullptr);
+
+        //command_buffer.pushConstants(state.gpu_program.pipeline_layout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0,
+        //        sizeof(UniformBufferObject), &ubo);
 
         command_buffer.bindVertexBuffers(0,drawable.mesh.vertex_buffer,{0});
         command_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
 
-
-        command_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0, 0, 0);
+        command_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0, 0, ++i);
+        //command_buffer.draw(drawable.mesh.indices_size, 1, 0, 1);
     }
     command_buffer.endRenderPass();
 
@@ -1928,6 +1963,12 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
     return { graphic_pipeline.first, graphic_pipeline.second, desc_sets};
 };
 
+struct RenderingSystem
+{
+    GpuProgram program;
+    std::vector<Draw> drawables;
+};
+
 int main()
 {
     srand (time(NULL));
@@ -2003,7 +2044,7 @@ int main()
     // Descriptor bindings for default shader
     auto textures_descriptor_binding = createTextureSamplerBinding(0, 32, vk::ShaderStageFlagBits::eFragment);
     auto lights_descriptor_binding = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
-    auto mvp_descriptor_binding = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
+    auto mvp_descriptor_binding = createStorageBufferBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
 
     std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings{{textures_descriptor_binding}, // Set 0 binding 0
                                                                                     {lights_descriptor_binding},   // Set 1 binding 0
@@ -2018,13 +2059,13 @@ int main()
     auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg", "textures/ridley.png"});
 
     // Create uniform buffers for lights and matrices for default shader
-    rendering_state.uniform_buffers = createUniformBuffers<UniformBufferObject>(rendering_state);
+    rendering_state.uniform_buffers = createStorageBuffers<UniformBufferObject>(rendering_state, 10000);
     rendering_state.light_buffers = createUniformBuffers<LightBufferObject>(rendering_state);
 
     // Update the descriptor sets with the buffers and textures
     updateImageSampler(rendering_state.device, textures, rendering_state.gpu_program.descriptor_sets[0].set, rendering_state.gpu_program.descriptor_sets[0].layout_bindings[0]);
-    updateUniformBuffer<LightBufferObject>(rendering_state.device, rendering_state.light_buffers, rendering_state.gpu_program.descriptor_sets[1].set, rendering_state.gpu_program.descriptor_sets[1].layout_bindings[0]);
-    updateUniformBuffer<UniformBufferObject>(rendering_state.device, rendering_state.uniform_buffers, rendering_state.gpu_program.descriptor_sets[2].set, rendering_state.gpu_program.descriptor_sets[2].layout_bindings[0]);
+    updateUniformBuffer<LightBufferObject>(rendering_state.device, rendering_state.light_buffers, rendering_state.gpu_program.descriptor_sets[1].set, rendering_state.gpu_program.descriptor_sets[1].layout_bindings[0], 1);
+    updateUniformBuffer<UniformBufferObject>(rendering_state.device, rendering_state.uniform_buffers, rendering_state.gpu_program.descriptor_sets[2].set, rendering_state.gpu_program.descriptor_sets[2].layout_bindings[0], 10000);
 
     auto model = loadModel("models/ridley.obj");
     //auto ridley = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_per_draw.set,  {0,-5,-10});
