@@ -143,6 +143,14 @@ struct DrawableMesh
     uint32_t indices_size{};
 };
 
+struct GpuProgram
+{
+    std::vector<vk::Pipeline> pipeline;
+    vk::PipelineLayout pipeline_layout;
+
+    std::vector<DescriptionPoolAndSet> descriptor_sets;
+};
+
 struct Draw
 {
     DrawableMesh mesh;
@@ -152,8 +160,7 @@ struct Draw
 
     int texture_index;
 
-    vk::Pipeline pipeline;
-    std::vector<vk::DescriptorSet> descriptor_set;
+    GpuProgram program;
 };
 
 struct QueueFamilyIndices {
@@ -185,13 +192,6 @@ struct Camera
     glm::vec2 pitch_yawn{};
 };
 
-struct GpuProgram
-{
-    std::vector<vk::Pipeline> pipeline;
-    vk::PipelineLayout pipeline_layout;
-
-    std::vector<DescriptionPoolAndSet> descriptor_sets;
-};
 
 struct RenderingState
 {
@@ -1319,14 +1319,13 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
     command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
     uint32_t offset = 0;
 
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.gpu_program.pipeline[0]);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.gpu_program.pipeline_layout, 0, 1, &state.gpu_program.descriptor_sets[0].set[state.current_frame], 0, nullptr);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.gpu_program.pipeline_layout, 1, 1, &state.gpu_program.descriptor_sets[1].set[state.current_frame], 1, &offset);
-
-//    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 2, 1, &state.descriptor_sets[2].set[state.current_frame], 1, &offset);
-
     for (auto const& drawable : state.drawables)
     {
+        // Fix so we don't rebind the same pipeline and descriptor sets for every draw. Big performance loss here atm.
+        command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, drawable.program.pipeline[0]);
+        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, drawable.program.pipeline_layout, 0, 1, &drawable.program.descriptor_sets[0].set[state.current_frame], 0, nullptr);
+        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, drawable.program.pipeline_layout, 1, 1, &drawable.program.descriptor_sets[1].set[state.current_frame], 1, &offset);
+
         auto ubo = updateUniformBuffer(state.uniform_buffers[state.current_frame], state.light_buffers[state.current_frame], state.camera, drawable, state.swap_chain.extent);
 
         command_buffer.pushConstants(state.gpu_program.pipeline_layout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0,
@@ -1678,7 +1677,7 @@ RenderingState createVulkanRenderState()
 
     auto window = setupGlfw(*app);
 
-    auto const instance = createInstance(true);
+    auto const instance = createInstance(false);
 
     auto const surface = createSurface(instance, window);
 
@@ -1778,7 +1777,7 @@ DrawableMesh loadMesh(RenderingState const& state, std::vector<Vertex> const& ve
     return mesh;
 }
 
-Draw createDraw(DrawableMesh const& mesh, vk::Pipeline const& pipeline, std::vector<vk::DescriptorSet> const& set,
+Draw createDraw(DrawableMesh const& mesh, GpuProgram program,
         glm::vec3 const& pos = glm::vec3(1,1,1))
 {
     Draw draw;
@@ -1787,8 +1786,7 @@ Draw createDraw(DrawableMesh const& mesh, vk::Pipeline const& pipeline, std::vec
     draw.rotation = glm::vec3(1,1,1);
     draw.angel = 0;
     draw.texture_index = 0;
-    draw.pipeline = pipeline;
-    draw.descriptor_set = set;
+    draw.program = std::move(program);
 
     return draw;
 }
@@ -2042,7 +2040,7 @@ int main()
         pos.y = (rand() % 10) - 10;
         pos.z = (rand() % 40) - 40;
 
-        rendering_state.drawables.push_back(createDraw(mesh, rendering_state.gpu_program.pipeline[0], rendering_state.gpu_program.descriptor_sets[2].set, pos));
+        rendering_state.drawables.push_back(createDraw(mesh, test_program, pos));
     }
 
     static auto start_time = std::chrono::high_resolution_clock::now();

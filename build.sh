@@ -3,4 +3,4 @@
 glslc shaders/shader.frag -o shaders/frag.spv
 glslc shaders/shader.vert -o shaders/vert.spv
 
-g++ main.cpp -lglfw -lvulkan -lX11 -g -std=c++23
+g++ main.cpp -lglfw -lvulkan -lX11 -O3 -std=c++23
