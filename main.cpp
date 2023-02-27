@@ -185,6 +185,14 @@ struct Camera
     glm::vec2 pitch_yawn{};
 };
 
+struct GpuProgram
+{
+    std::vector<vk::Pipeline> pipeline;
+    vk::PipelineLayout pipeline_layout;
+
+    std::vector<DescriptionPoolAndSet> descriptor_sets;
+};
+
 struct RenderingState
 {
     std::unique_ptr<App> app;
@@ -197,9 +205,9 @@ struct RenderingState
     QueueFamilyIndices indices;
     vk::PhysicalDevice physical_device;
     vk::RenderPass render_pass;
-    std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
-    vk::PipelineLayout pipeline_layout;
-    std::vector<vk::Pipeline> pipelines;
+    //std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
+    //vk::PipelineLayout pipeline_layout;
+    //std::vector<vk::Pipeline> pipelines;
     std::vector<vk::ImageView> image_views;
 
     SwapChain swap_chain;
@@ -221,13 +229,14 @@ struct RenderingState
     std::vector<UniformBuffer> uniform_buffers{};
     std::vector<UniformBuffer> light_buffers{};
 
-    std::vector<vk::DescriptorSet> desc_sets;
-
     std::vector<Draw> drawables;
 
     Camera camera;
 
-    std::vector<DescriptionPoolAndSet> descriptor_sets;
+    //std::vector<DescriptionPoolAndSet> descriptor_sets;
+
+    // For testing
+    GpuProgram gpu_program;
 
 
 };
@@ -1272,8 +1281,8 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
 
     auto result = command_buffer.begin(begin_info);
 
-    auto desc_set = state.descriptor_sets[0].set[0];
-    auto desc_set_2 = state.descriptor_sets[0].set[1];
+    //auto desc_set = state.descriptor_sets[0].set[0];
+    //auto desc_set_2 = state.descriptor_sets[0].set[1];
 
 
 
@@ -1310,16 +1319,17 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
     command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
     uint32_t offset = 0;
 
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 0, 1, &state.descriptor_sets[0].set[state.current_frame], 0, nullptr);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 1, 1, &state.descriptor_sets[1].set[state.current_frame], 1, &offset);
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.pipelines[0]);
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.gpu_program.pipeline[0]);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.gpu_program.pipeline_layout, 0, 1, &state.gpu_program.descriptor_sets[0].set[state.current_frame], 0, nullptr);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.gpu_program.pipeline_layout, 1, 1, &state.gpu_program.descriptor_sets[1].set[state.current_frame], 1, &offset);
+
 //    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.pipeline_layout, 2, 1, &state.descriptor_sets[2].set[state.current_frame], 1, &offset);
 
     for (auto const& drawable : state.drawables)
     {
         auto ubo = updateUniformBuffer(state.uniform_buffers[state.current_frame], state.light_buffers[state.current_frame], state.camera, drawable, state.swap_chain.extent);
 
-        command_buffer.pushConstants(state.pipeline_layout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0,
+        command_buffer.pushConstants(state.gpu_program.pipeline_layout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0,
                 sizeof(UniformBufferObject), &ubo);
 
         command_buffer.bindVertexBuffers(0,drawable.mesh.vertex_buffer,{0});
@@ -1662,13 +1672,13 @@ DepthResources createDepth(RenderingState const& state)
 }
 
 
-RenderingState createVulkanRenderState(std::vector<std::vector<vk::DescriptorSetLayoutBinding>> bindings)
+RenderingState createVulkanRenderState()
 {
     auto app = std::make_unique<App>();
 
     auto window = setupGlfw(*app);
 
-    auto const instance = createInstance(false);
+    auto const instance = createInstance(true);
 
     auto const surface = createSurface(instance, window);
 
@@ -1683,11 +1693,6 @@ RenderingState createVulkanRenderState(std::vector<std::vector<vk::DescriptorSet
 
     auto const render_pass = createRenderPass(device, sc.swap_chain_image_format);
 
-    std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
-    std::transform(bindings.begin(), bindings.end(), std::back_inserter(descriptor_set_layouts),
-            [&device](auto const& set){return createDescriptorSetLayout(device, set);});
-
-    auto const graphic_pipeline = createGraphicsPipline(device, sc.extent, render_pass, descriptor_set_layouts);
     auto const command_pool = createCommandPool(device, indices);
     auto const command_buffers = createCommandBuffer(device, command_pool);
 
@@ -1695,6 +1700,7 @@ RenderingState createVulkanRenderState(std::vector<std::vector<vk::DescriptorSet
 
     auto const graphics_queue = device.getQueue(*indices.graphics_family, 0);
     auto const present_queue = device.getQueue(*indices.present_family, 0);
+
 
     Camera camera;
     camera.proj = glm::perspective(glm::radians(45.0f), sc.extent.width / (float)sc.extent.height, 0.1f, 100.0f);
@@ -1712,9 +1718,6 @@ RenderingState createVulkanRenderState(std::vector<std::vector<vk::DescriptorSet
         .indices = indices,
         .physical_device = physical_device,
         .render_pass = render_pass,
-        .descriptor_set_layouts = std::move(descriptor_set_layouts),
-        .pipeline_layout = graphic_pipeline.second,
-        .pipelines = graphic_pipeline.first,
         .image_views = swap_chain_image_views,
         .swap_chain = sc,
         .semaphores = semaphores,
@@ -1903,13 +1906,36 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
     }
 }
 
+GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings, RenderingState const& rendering_state)
+{
+    // Create layouts for the descriptor sets
+    std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
+    std::transform(descriptor_set_layout_bindings.begin(), descriptor_set_layout_bindings.end(), std::back_inserter(descriptor_set_layouts),
+            [&rendering_state](auto const& set){return createDescriptorSetLayout(rendering_state.device, set);});
+
+    // Create the default pipeline
+    auto const graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, rendering_state.render_pass, descriptor_set_layouts);
+
+    // Create descriptor set for the textures, lights, and matrices
+    int i = 0;
+    std::vector<DescriptionPoolAndSet> desc_sets;
+    for (auto const& descriptor_set_layout : descriptor_set_layouts)
+    {
+        std::cout << "Creating set\n";
+        desc_sets.push_back(createDescriptorSet(rendering_state.device, descriptor_set_layout, descriptor_set_layout_bindings[i++]));
+    }
+
+    std::cout << "Finished creating GPU program\n";
+
+    return { graphic_pipeline.first, graphic_pipeline.second, desc_sets};
+};
+
 int main()
 {
     srand (time(NULL));
+    RenderingState rendering_state = createVulkanRenderState();
 
-    std::cout << "Buffer: " << sizeof(vk::Buffer) << '\n';
-    std::cout << "Buffer: " << sizeof(vk::Pipeline) << '\n';
-
+    // Demo box vertices
     std::vector<Vertex> vertices {
         //Position           // Color            // UV   // Normal
         // Front
@@ -1949,6 +1975,7 @@ int main()
         {{ 0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {0,0,-1}}  //7 23
     };
 
+    // Demo box indices
     const std::vector<uint32_t> indices = {
         // Front
         0, 1, 3,
@@ -1975,38 +2002,37 @@ int main()
         23, 21, 20
     };
 
+    // Descriptor bindings for default shader
     auto textures_descriptor_binding = createTextureSamplerBinding(0, 32, vk::ShaderStageFlagBits::eFragment);
     auto lights_descriptor_binding = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
     auto mvp_descriptor_binding = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
 
-    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layouts{{textures_descriptor_binding}, // Set 0 binding 0
+    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings{{textures_descriptor_binding}, // Set 0 binding 0
                                                                                     {lights_descriptor_binding},   // Set 1 binding 0
                                                                                     {mvp_descriptor_binding}};     // Set 2 binding 0
+                                                                                                                   //
+    auto test_program = createGpuProgram(descriptor_set_layout_bindings, rendering_state);
+    rendering_state.gpu_program = test_program;
 
-    RenderingState rendering_state = createVulkanRenderState(descriptor_set_layouts);
-
+    // Load textures
+    std::cout << "Loading sampler\n";
     auto sampler = createTextureSampler(rendering_state);
-
     auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg", "textures/ridley.png"});
 
-    auto mesh = loadMesh(rendering_state, vertices, indices);
-
+    // Create uniform buffers for lights and matrices for default shader
     rendering_state.uniform_buffers = createUniformBuffers<UniformBufferObject>(rendering_state);
     rendering_state.light_buffers = createUniformBuffers<LightBufferObject>(rendering_state);
 
-    auto desc_textures = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[0], {textures_descriptor_binding});
-    auto desc_per_frame = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[1], {lights_descriptor_binding});
-    auto desc_per_draw  = createDescriptorSet(rendering_state.device, rendering_state.descriptor_set_layouts[2], {mvp_descriptor_binding});
-
-    updateUniformBuffer<LightBufferObject>(rendering_state.device, rendering_state.light_buffers, desc_per_frame.set, desc_per_frame.layout_bindings[0]);
-    updateUniformBuffer<UniformBufferObject>(rendering_state.device, rendering_state.uniform_buffers, desc_per_draw.set, desc_per_draw.layout_bindings[0]);
-    updateImageSampler(rendering_state.device, textures, desc_textures.set, desc_textures.layout_bindings[0]);
-
-    rendering_state.descriptor_sets = { desc_textures, desc_per_frame, desc_per_draw };
+    // Update the descriptor sets with the buffers and textures
+    updateImageSampler(rendering_state.device, textures, rendering_state.gpu_program.descriptor_sets[0].set, rendering_state.gpu_program.descriptor_sets[0].layout_bindings[0]);
+    updateUniformBuffer<LightBufferObject>(rendering_state.device, rendering_state.light_buffers, rendering_state.gpu_program.descriptor_sets[1].set, rendering_state.gpu_program.descriptor_sets[1].layout_bindings[0]);
+    updateUniformBuffer<UniformBufferObject>(rendering_state.device, rendering_state.uniform_buffers, rendering_state.gpu_program.descriptor_sets[2].set, rendering_state.gpu_program.descriptor_sets[2].layout_bindings[0]);
 
     auto model = loadModel("models/ridley.obj");
-    auto ridley = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_per_draw.set,  {0,-5,-10});
-    ridley.texture_index = 2;
+    //auto ridley = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_per_draw.set,  {0,-5,-10});
+    //ridley.texture_index = 2;
+
+    auto mesh = loadMesh(rendering_state, vertices, indices);
 
     // Add 500 boxes to the scene
     for (int i = 0; i < 500; ++i)
@@ -2016,7 +2042,7 @@ int main()
         pos.y = (rand() % 10) - 10;
         pos.z = (rand() % 40) - 40;
 
-        rendering_state.drawables.push_back(createDraw(mesh, rendering_state.pipelines[0], desc_per_draw.set, pos));
+        rendering_state.drawables.push_back(createDraw(mesh, rendering_state.gpu_program.pipeline[0], rendering_state.gpu_program.descriptor_sets[2].set, pos));
     }
 
     static auto start_time = std::chrono::high_resolution_clock::now();

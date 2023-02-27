@@ -50,6 +50,7 @@ inline vk::DescriptorSetLayoutBinding createLayoutBinding(int binding, vk::Descr
 inline auto createUniformBinding(int binding, int count, vk::ShaderStageFlags shader_flags)
 {
     return createLayoutBinding(binding, vk::DescriptorType::eUniformBufferDynamic, count, shader_flags);
+
 }
 
 inline auto createTextureSamplerBinding(int binding, int count, vk::ShaderStageFlags shader_flags)
