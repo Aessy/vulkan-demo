@@ -289,14 +289,6 @@ struct RenderingSystem
     std::vector<Draw> drawables;
 };
 
-struct GrassRenderingSystem
-{
-    GpuProgram program;
-
-    std::vector<UniformBuffer> grass_data;
-    DrawableMesh grass_mesh;
-};
-
 RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::vector<Texture> const& textures)
 {
     // Demo box vertices
@@ -406,25 +398,39 @@ RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::
     return render_system;
 }
 
+struct GrassRenderingSystem
+{
+    GpuProgram program;
+
+    std::vector<UniformBuffer> world_data;
+    std::vector<UniformBuffer> grass_data;
+    DrawableMesh grass_mesh;
+};
+
+
 GrassRenderingSystem createGrass(RenderingState const& rendering_state, std::vector<Texture> const& textures)
 {
     // Descriptor bindings for shaderfor shader
     auto textures_descriptor_binding = createTextureSamplerBinding(0, 32, vk::ShaderStageFlagBits::eFragment);
+    auto world_buffer = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
     auto positions_buffer = createStorageBufferBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
 
     std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings{{textures_descriptor_binding}, // Set 0 binding 0
-                                                                                            {positions_buffer}};           // Set 1 binding 0
+                                                                                            {world_buffer},                // Set 1 binding 0
+                                                                                            {positions_buffer}};           // Set 2 binding 0
     auto test_program = createGpuProgram(descriptor_set_layout_bindings, rendering_state, "./shaders/grass_vert.spv", "./shaders/grass_frag.spv");
 
     // Create uniform buffers for lights and matrices for default shader
+    auto world_data = createUniformBuffers<WorldBufferObject>(rendering_state);
     auto storage_buffer = createStorageBuffers<ModelBufferObject>(rendering_state, 10000);
 
     // Update the descriptor sets with the buffers and textures
     updateImageSampler(rendering_state.device, textures, test_program.descriptor_sets[0].set, test_program.descriptor_sets[0].layout_bindings[0]);
-    updateUniformBuffer<ModelBufferObject>(rendering_state.device, storage_buffer, test_program.descriptor_sets[1].set, test_program.descriptor_sets[1].layout_bindings[0], 10000);
+    updateUniformBuffer<WorldBufferObject>(rendering_state.device, world_data, test_program.descriptor_sets[1].set,  test_program.descriptor_sets[1].layout_bindings[0], 1);
+    updateUniformBuffer<ModelBufferObject>(rendering_state.device, storage_buffer, test_program.descriptor_sets[2].set, test_program.descriptor_sets[2].layout_bindings[0], 10000);
 
     // Load mesh
-    auto model = loadModel("models/plant.obj");
+    auto model = loadModel("models/grass.obj");
     auto mesh = loadMesh(rendering_state, model);
 
     // Set positions for instanced rendering
@@ -433,7 +439,9 @@ GrassRenderingSystem createGrass(RenderingState const& rendering_state, std::vec
     {
         for (int y = 0; y < 100; ++y)
         {
-            auto drawable = createDraw(mesh, test_program, glm::vec3(x,0,y));
+            auto drawable = createDraw(mesh, test_program, glm::vec3(x/200.0f,0,y/200.0f));
+            drawable.rotation = glm::vec3(0,1,0);
+            drawable.angel = (std::rand() % 10)-5;
             drawable.texture_index = 0;
 
             auto ubo = createModelBufferObject(drawable);
@@ -449,19 +457,23 @@ GrassRenderingSystem createGrass(RenderingState const& rendering_state, std::vec
         }
     }
 
-    return GrassRenderingSystem{test_program, storage_buffer, mesh};
+    return GrassRenderingSystem{test_program, world_data, storage_buffer, mesh};
 }
 
-void draw(vk::CommandBuffer& command_buffer, GrassRenderingSystem& render_system, Camera const&, int frame)
+void draw(vk::CommandBuffer& command_buffer, GrassRenderingSystem& render_system, Camera const& camera, int frame)
 {
+    updateWorldBuffer(render_system.world_data[frame], camera);
+
+    uint32_t offset = 0;
     command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline[0]);
     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 0, 1, &render_system.program.descriptor_sets[0].set[frame], 0, nullptr);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 1, 1, &render_system.program.descriptor_sets[1].set[frame], 0, nullptr);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 1, 1, &render_system.program.descriptor_sets[1].set[frame], 1, &offset);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 2, 1, &render_system.program.descriptor_sets[2].set[frame], 0, nullptr);
 
     command_buffer.bindVertexBuffers(0,render_system.grass_mesh.vertex_buffer,{0});
     command_buffer.bindIndexBuffer(render_system.grass_mesh.index_buffer, 0, vk::IndexType::eUint32);
 
-    command_buffer.drawIndexed(render_system.grass_mesh.indices_size, 1000,0,0,0);
+    command_buffer.drawIndexed(render_system.grass_mesh.indices_size, 10000,0,0,0);
 }
 
 void draw(vk::CommandBuffer& command_buffer, RenderingSystem& render_system, Camera const& camera, int frame)
@@ -779,7 +791,7 @@ int main()
     auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg", "textures/ridley.png"});
 
     auto render_system = createDefaultSystem(rendering_state, textures);
-    //auto grass = createGrass(rendering_state, textures);
+    auto grass = createGrass(rendering_state, textures);
 
     static auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -833,7 +845,7 @@ int main()
             updateCamera(delta, camera_speed, rendering_state.swap_chain.extent, rendering_state.camera, app, rendering_state.window);
         }
 
-        auto result = drawFrame(rendering_state, render_system);
+        auto result = drawFrame(rendering_state, grass);
         if (result == DrawResult::RESIZE)
         {
             recreateSwapchain(rendering_state);

@@ -665,7 +665,7 @@ RenderingState createVulkanRenderState()
 
     auto window = setupGlfw(*app);
 
-    auto const instance = createInstance(true);
+    auto const instance = createInstance(false);
 
     auto const surface = createSurface(instance, window);
 
