@@ -1,7 +1,3 @@
-#include <glm/ext/matrix_transform.hpp>
-#include <glm/geometric.hpp>
-#include <glm/trigonometric.hpp>
-#include <iterator>
 #define VK_USE_PLATFORM_XLIB_KHR
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
@@ -27,6 +23,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include "glm/gtx/string_cast.hpp"
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/geometric.hpp>
+#include <glm/trigonometric.hpp>
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
@@ -39,20 +38,26 @@
 #include <fstream>
 #include <memory>
 #include <queue>
+#include <iterator>
 
 #include "descriptor_set.h"
 
-struct UniformBufferObject
+struct ModelBufferObject
 {
     alignas(16) glm::mat4 model;
-    alignas(16) glm::mat4 view;
-    alignas(16) glm::mat4 proj;
     alignas(16) uint32_t texture_index;
 };
 
 struct LightBufferObject
 {
     alignas(16) glm::vec3 position;
+};
+
+struct WorldBufferObject
+{
+    alignas(16) glm::mat4 camera_view;
+    alignas(16) glm::mat4 camera_proj;
+    alignas(16) glm::vec3 light_position;
 };
 
 struct Vertex
@@ -143,6 +148,8 @@ struct DrawableMesh
     uint32_t indices_size{};
 };
 
+
+
 struct GpuProgram
 {
     std::vector<vk::Pipeline> pipeline;
@@ -162,6 +169,20 @@ struct Draw
 
     GpuProgram program;
 };
+
+Draw createDraw(DrawableMesh const& mesh, GpuProgram program,
+        glm::vec3 const& pos = glm::vec3(1,1,1))
+{
+    Draw draw;
+    draw.mesh = mesh;
+    draw.position = pos;
+    draw.rotation = glm::vec3(1,1,1);
+    draw.angel = 0;
+    draw.texture_index = 0;
+    draw.program = std::move(program);
+
+    return draw;
+}
 
 struct QueueFamilyIndices {
     std::optional<unsigned int> graphics_family;
@@ -205,9 +226,6 @@ struct RenderingState
     QueueFamilyIndices indices;
     vk::PhysicalDevice physical_device;
     vk::RenderPass render_pass;
-    //std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
-    //vk::PipelineLayout pipeline_layout;
-    //std::vector<vk::Pipeline> pipelines;
     std::vector<vk::ImageView> image_views;
 
     SwapChain swap_chain;
@@ -221,23 +239,9 @@ struct RenderingState
     vk::Queue graphics_queue;
     vk::Queue present_queue;
 
-    std::vector<vk::Buffer> vbos;
-
     uint32_t current_frame{};
 
-    DrawableMesh mesh;
-    std::vector<UniformBuffer> uniform_buffers{};
-    std::vector<UniformBuffer> light_buffers{};
-
-    std::vector<Draw> drawables;
-
     Camera camera;
-
-    //std::vector<DescriptionPoolAndSet> descriptor_sets;
-
-    // For testing
-    GpuProgram gpu_program;
-
 
 };
 
@@ -568,6 +572,28 @@ vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> 
     state.device.freeMemory(staging_buffer_memory);
     return index_buffer;
 }
+
+DrawableMesh loadMesh(RenderingState const& state, Model const& model)
+{
+    DrawableMesh mesh;
+    mesh.vertex_buffer = createVertexBuffer(state, model.vertices);
+    mesh.index_buffer = createIndexBuffer(state, model.indices);
+    mesh.indices_size = model.indices.size();
+
+    return mesh;
+}
+
+DrawableMesh loadMesh(RenderingState const& state, std::vector<Vertex> const& vertices,
+                                                   std::vector<uint32_t> const& indices)
+{
+    DrawableMesh mesh;
+    mesh.vertex_buffer = createVertexBuffer(state, vertices);
+    mesh.index_buffer = createIndexBuffer(state, indices);
+    mesh.indices_size = indices.size();
+
+    return mesh;
+}
+
 
 template<typename BufferObject>
 auto createUniformBuffers(RenderingState const& state)
@@ -945,6 +971,8 @@ bool checkValidationLayerSupport(std::vector<const char*> const& validation_laye
 
 vk::ShaderModule createShaderModule(std::vector<char> const& code, vk::Device const& device)
 {
+    std::cout << code.size() << '\n';
+
     vk::ShaderModuleCreateInfo create_info;
     create_info.sType = vk::StructureType::eShaderModuleCreateInfo;
     create_info.setCodeSize(code.size());
@@ -963,12 +991,15 @@ std::vector<char> readFile(std::string const& path)
     return std::vector<char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 }
 
-std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout)
+std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout,
+                                                                                std::string const& vert_path, std::string const& frag_path)
 {
     std::string path;
 
-    auto const vertex = createShaderModule(readFile("shaders/vert.spv"), device);
-    auto const frag = createShaderModule(readFile("shaders/frag.spv"), device);
+    std::cout << "Create vertex\n";
+    auto const vertex = createShaderModule(readFile(vert_path), device);
+    std::cout << "Create frag\n";
+    auto const frag = createShaderModule(readFile(frag_path), device);
 
 
     vk::PipelineShaderStageCreateInfo vert_shader_stage_info;
@@ -1084,10 +1115,10 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     //
     vk::PushConstantRange range;
     range.setStageFlags(vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
-    range.setSize(sizeof(UniformBufferObject));
+    range.setSize(sizeof(ModelBufferObject));
     range.setOffset(0);
 
-    pipeline_layout_info.setPushConstantRanges(range);
+    //pipeline_layout_info.setPushConstantRanges(range);
     // pipeline_layout_info.pushConstantRangeCount = 0;
     // pipeline_layout_info.pPushConstantRanges = nullptr;
 
@@ -1239,60 +1270,278 @@ std::vector<vk::CommandBuffer> createCommandBuffer(vk::Device const& device, vk:
     return command_buffers.value;
 }
 
-UniformBufferObject updateUniformBuffer(UniformBuffer& uniform_buffer, UniformBuffer& light_buffer, Camera const& camera, Draw const& drawable, vk::Extent2D extent)
+ModelBufferObject createModelBufferObject(Draw const& drawable)
 {
-    static auto startTime = std::chrono::high_resolution_clock::now();
-
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-    UniformBufferObject ubo{};
-    //ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    ModelBufferObject model_buffer{};
 
     auto rotation = glm::rotate(glm::mat4(1.0f), drawable.angel, drawable.rotation);
     auto translation = glm::translate(glm::mat4(1.0f), drawable.position);
-    ubo.model = translation * rotation;
+    model_buffer.model = translation * rotation;
+    model_buffer.texture_index = drawable.texture_index;
 
-    // ubo.model =  glm::rotate(glm::mat4(1.0f), drawable.angel, drawable.rotation) * glm::translate(glm::mat4(1.0f), drawable.position);
-    // ubo.model =  glm::mat4(1.0f) * glm::translate(glm::mat4(1.0f), drawable.position);
+    return model_buffer;
+}
 
-    ubo.view = glm::lookAt(camera.pos, (camera.pos + camera.camera_front), camera.up);
-    ubo.proj = glm::perspective(glm::radians(45.0f), extent.width / (float)extent.height, 0.1f, 100.0f);
+WorldBufferObject updateWorldBuffer(UniformBuffer& world_buffer, Camera const& camera)
+{
+    WorldBufferObject ubo{};
 
-    /*
-    auto rotate =   glm::rotate(glm::mat4(1.0f), camera.x_angle, glm::vec3(1,0,0))
-                  * glm::rotate(glm::mat4(1.0f), camera.z_angle, glm::vec3(0,0,1))
-                  * glm::rotate(glm::mat4(1.0f), camera.y_angle, glm::vec3(0,1,0));
-    ubo.view = glm::translate(glm::mat4(1.0f), camera.pos) * rotate * camera.view;
-    */
-
-    ubo.proj = camera.proj;
-
-
-
-    // ubo.model = //glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));   // 
-    /*
-    ubo.view = glm::lookAt(glm::vec3(0.0f, 5.0f, 18.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    ubo.proj = glm::perspective(glm::radians(45.0f), swap_chain_extent.width / (float)swap_chain_extent.height, 0.1f, 100.0f);
-
-    */
-
-    ubo.texture_index = drawable.texture_index;
-
-    ubo.proj[1][1] *= -1;
-    //memcpy(uniform_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
+    ubo.camera_view = glm::lookAt(camera.pos, (camera.pos + camera.camera_front), camera.up);
+    ubo.camera_proj = camera.proj;
+    ubo.camera_proj[1][1] *= -1;
 
     // Update light uniform
-    glm::vec3 light_pos = glm::vec3(0,-2,2-time);
-    //glm::vec3 light_pos = glm::vec3(0,0,0);
-    LightBufferObject light { light_pos };
+    glm::vec3 light_pos = glm::vec3(0,-2,2);
+    ubo.light_position = light_pos;
 
-    memcpy(light_buffer.uniform_buffers_mapped, &light, sizeof(light));
+    memcpy(world_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
 
     return ubo;
 }
 
-void recordCommandBuffer(RenderingState& state, uint32_t image_index)
+GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings, RenderingState const& rendering_state, std::string const& shader_vert, std::string const& shader_frag)
+{
+    // Create layouts for the descriptor sets
+    std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
+    std::transform(descriptor_set_layout_bindings.begin(), descriptor_set_layout_bindings.end(), std::back_inserter(descriptor_set_layouts),
+            [&rendering_state](auto const& set){return createDescriptorSetLayout(rendering_state.device, set);});
+
+    // Create the default pipeline
+    auto const graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, rendering_state.render_pass, descriptor_set_layouts, shader_vert, shader_frag);
+
+    // Create descriptor set for the textures, lights, and matrices
+    int i = 0;
+    std::vector<DescriptionPoolAndSet> desc_sets;
+    for (auto const& descriptor_set_layout : descriptor_set_layouts)
+    {
+        std::cout << "Creating set\n";
+        desc_sets.push_back(createDescriptorSet(rendering_state.device, descriptor_set_layout, descriptor_set_layout_bindings[i++]));
+    }
+
+    std::cout << "Finished creating GPU program\n";
+
+    return { graphic_pipeline.first, graphic_pipeline.second, desc_sets};
+};
+
+struct RenderingSystem
+{
+    GpuProgram program;
+
+    std::vector<UniformBuffer> storage_buffer;
+    std::vector<UniformBuffer> world_buffer;
+
+    std::vector<Draw> drawables;
+};
+
+struct GrassRenderingSystem
+{
+    GpuProgram program;
+
+    std::vector<UniformBuffer> grass_data;
+    DrawableMesh grass_mesh;
+};
+
+RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::vector<Texture> const& textures)
+{
+    // Demo box vertices
+    std::vector<Vertex> vertices {
+        //Position           // Color            // UV   // Normal
+        // Front
+        {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {0,0,1}}, //0  0
+        {{ 0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {0,0,1}}, //1  1  
+        {{-0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 1}, {0,0,1}}, //2  2
+        {{ 0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 1}, {0,0,1}}, //3  3
+                                                          //
+        // Up
+        {{-0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {0,1,0}}, //2  4
+        {{ 0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {0,1,0}}, //3  5
+        {{-0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {0,1,0}}, //6  6
+        {{ 0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 1}, {0,1,0}}, //7  7
+
+        // Down 
+        {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {0,-1,0}}, //0  8
+        {{ 0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {0,-1,0}}, //1  9
+        {{-0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {0,-1,0}}, //4 10
+        {{ 0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 1}, {0,-1,0}}, //5 11
+                                                          //
+        // Left
+        {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {-1,0,0}}, //0 12
+        {{-0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 0}, {-1,0,0}}, //4 13
+        {{-0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 1}, {-1,0,0}}, //2 14
+        {{-0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 1}, {-1,0,0}}, //6 15
+                                                          //
+        // Right
+        {{ 0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {1,0,0}}, //1 16
+        {{ 0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 0}, {1,0,0}}, //5 17
+        {{ 0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 1}, {1,0,0}}, //3 18
+        {{ 0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {1,0,0}}, //7 19
+
+        // Back
+        {{-0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 0}, {0,0,-1}}, //4 20
+        {{ 0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 0}, {0,0,-1}}, //5 21
+        {{-0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 1}, {0,0,-1}}, //6 22
+        {{ 0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {0,0,-1}}  //7 23
+    };
+
+    // Demo box indices
+    const std::vector<uint32_t> indices = {
+        // Front
+        0, 1, 3,
+        3, 2, 0,
+
+        // Top
+        7, 6, 4,
+        4, 5, 7,
+
+        // Bottom
+        11, 9, 8,
+        8, 10, 11,
+
+        // Left
+        12, 14, 15,
+        15, 13, 12,
+
+        // Right
+        16, 17, 19,
+        19, 18, 16,
+
+        // Back
+        20, 22, 23,
+        23, 21, 20
+    };
+
+    // Descriptor bindings for default shader
+    auto textures_descriptor_binding = createTextureSamplerBinding(0, 32, vk::ShaderStageFlagBits::eFragment);
+    auto lights_descriptor_binding = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
+    auto mvp_descriptor_binding = createStorageBufferBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
+
+    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings{{textures_descriptor_binding}, // Set 0 binding 0
+                                                                                    {lights_descriptor_binding},   // Set 1 binding 0
+                                                                                    {mvp_descriptor_binding}};     // Set 2 binding 0
+                                                                                                                   //
+    auto test_program = createGpuProgram(descriptor_set_layout_bindings, rendering_state, "./shaders/vert.spv", "./shaders/frag.spv");
+
+    // Create uniform buffers for lights and matrices for default shader
+    auto model_buffers = createStorageBuffers<ModelBufferObject>(rendering_state, 10000);
+    auto world_buffers = createUniformBuffers<WorldBufferObject>(rendering_state);
+
+    // Update the descriptor sets with the buffers and textures
+    updateImageSampler(rendering_state.device, textures, test_program.descriptor_sets[0].set, test_program.descriptor_sets[0].layout_bindings[0]);
+    updateUniformBuffer<WorldBufferObject>(rendering_state.device, world_buffers, test_program.descriptor_sets[1].set, test_program.descriptor_sets[1].layout_bindings[0], 1);
+    updateUniformBuffer<ModelBufferObject>(rendering_state.device, model_buffers, test_program.descriptor_sets[2].set, test_program.descriptor_sets[2].layout_bindings[0], 10000);
+
+    auto mesh = loadMesh(rendering_state, vertices, indices);
+
+    RenderingSystem render_system{test_program, model_buffers, world_buffers, {}};
+    // Add 500 boxes to the scene
+    for (int i = 0; i < 500; ++i)
+    {
+        glm::vec3 pos;
+        pos.x = (rand() % 10) - 5;
+        pos.y = (rand() % 10) - 10;
+        pos.z = (rand() % 40) - 40;
+
+        auto box = createDraw(mesh, test_program, pos);
+        box.texture_index = i % 2;
+
+        render_system.drawables.push_back(std::move(box));
+    }
+
+    return render_system;
+}
+
+GrassRenderingSystem createGrass(RenderingState const& rendering_state, std::vector<Texture> const& textures)
+{
+    // Descriptor bindings for shaderfor shader
+    auto textures_descriptor_binding = createTextureSamplerBinding(0, 32, vk::ShaderStageFlagBits::eFragment);
+    auto positions_buffer = createStorageBufferBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
+
+    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings{{textures_descriptor_binding}, // Set 0 binding 0
+                                                                                            {positions_buffer}};           // Set 1 binding 0
+    auto test_program = createGpuProgram(descriptor_set_layout_bindings, rendering_state, "./shaders/grass_vert.spv", "./shaders/grass_frag.spv");
+
+    // Create uniform buffers for lights and matrices for default shader
+    auto storage_buffer = createStorageBuffers<ModelBufferObject>(rendering_state, 10000);
+
+    // Update the descriptor sets with the buffers and textures
+    updateImageSampler(rendering_state.device, textures, test_program.descriptor_sets[0].set, test_program.descriptor_sets[0].layout_bindings[0]);
+    updateUniformBuffer<ModelBufferObject>(rendering_state.device, rendering_state.uniform_buffers, test_program.descriptor_sets[1].set, test_program.descriptor_sets[1].layout_bindings[0], 10000);
+
+    // Load mesh
+    auto model = loadModel("models/plant.obj");
+    auto mesh = loadMesh(rendering_state, model);
+
+    // Set positions for instanced rendering
+    int i = 0;
+    for (int x = 0; x < 100; ++x)
+    {
+        for (int y = 0; y < 100; ++y)
+        {
+            auto drawable = createDraw(mesh, test_program, glm::vec3(x,0,y));
+            drawable.texture_index = 0;
+
+            auto ubo = createModelBufferObject(drawable);
+
+            for (int frame = 0; frame < 2; ++frame)
+            {
+                void* buffer = storage_buffer[frame].uniform_buffers_mapped;
+                auto* b = (unsigned char*)buffer+(sizeof(ModelBufferObject)*i);
+                memcpy(b, &ubo, sizeof(ubo));
+            }
+
+            ++i;
+        }
+    }
+
+    return GrassRenderingSystem{test_program, storage_buffer, mesh};
+}
+
+void draw(vk::CommandBuffer& command_buffer, GrassRenderingSystem& render_system, Camera const&, int frame)
+{
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline[0]);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 0, 1, &render_system.program.descriptor_sets[0].set[frame], 0, nullptr);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 1, 1, &render_system.program.descriptor_sets[1].set[frame], 0, nullptr);
+
+    command_buffer.bindVertexBuffers(0,render_system.grass_mesh.vertex_buffer,{0});
+    command_buffer.bindIndexBuffer(render_system.grass_mesh.index_buffer, 0, vk::IndexType::eUint32);
+
+    command_buffer.drawIndexed(render_system.grass_mesh.indices_size, 1000,0,0,0);
+}
+
+void draw(vk::CommandBuffer& command_buffer, RenderingSystem& render_system, Camera const& camera, int frame)
+{
+    uint32_t offset = 0;
+    int i = 0;
+    for (auto const& drawable : render_system.drawables)
+    {
+        auto ubo = createModelBufferObject(drawable);
+        void* buffer = render_system.storage_buffer[frame].uniform_buffers_mapped;
+        auto* b = (unsigned char*)buffer+(sizeof(ModelBufferObject)*i);
+        memcpy(b, &ubo, sizeof(ubo));
+        ++i;
+    }
+
+    updateWorldBuffer(render_system.world_buffer[frame], camera);
+
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline[0]);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 0, 1, &render_system.program.descriptor_sets[0].set[frame], 0, nullptr);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 1, 1, &render_system.program.descriptor_sets[1].set[frame], 1, &offset);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 2, 1, &render_system.program.descriptor_sets[2].set[frame], 0, nullptr);
+    i = 0;
+
+    for (auto const& drawable : render_system.drawables)
+    {
+        command_buffer.bindVertexBuffers(0,drawable.mesh.vertex_buffer,{0});
+        command_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
+
+        command_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0, 0, ++i);
+    }
+}
+
+
+
+template<typename RenderingSystem>
+void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingSystem& render_system)
 {
     auto& command_buffer = state.command_buffer[state.current_frame];
 
@@ -1339,6 +1588,9 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
     command_buffer.setScissor(0,scissor);
 
     command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
+    draw(command_buffer, render_system, state.camera, state.current_frame);
+
+    /*
     uint32_t offset = 0;
 
     int i = 0;
@@ -1351,6 +1603,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
         memcpy(b, &ubo, sizeof(ubo));
         ++i;
     }
+
 
     // Fix so we don't rebind the same pipeline and descriptor sets for every draw. Big performance loss here atm.
     command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.drawables[0].program.pipeline[0]);
@@ -1372,6 +1625,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index)
         command_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0, 0, ++i);
         //command_buffer.draw(drawable.mesh.indices_size, 1, 0, 1);
     }
+    */
     command_buffer.endRenderPass();
 
     result = command_buffer.end();
@@ -1384,7 +1638,8 @@ enum class DrawResult
     EXIT
 };
 
-DrawResult drawFrame(RenderingState& state)
+template<typename RenderingSystem>
+DrawResult drawFrame(RenderingState& state, RenderingSystem& render_system)
 {
     auto v = state.device.waitForFences(state.semaphores.in_flight_fence[state.current_frame], true, ~0);
 
@@ -1407,7 +1662,7 @@ DrawResult drawFrame(RenderingState& state)
     state.command_buffer[state.current_frame].reset(static_cast<vk::CommandBufferResetFlags>(0));
 
     auto image_index = next_image.value;
-    recordCommandBuffer(state, image_index);
+    recordCommandBuffer(state, image_index, render_system);
 
     vk::PipelineStageFlags wait_stages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
 
@@ -1463,7 +1718,7 @@ auto createInstance(bool validation_layers_on)
     app_info.applicationVersion = VK_MAKE_VERSION(1,0,0);
     app_info.pEngineName = "No Engine";
     app_info.engineVersion = VK_MAKE_VERSION(1,0,0);
-    app_info.apiVersion = VK_API_VERSION_1_1;
+    app_info.apiVersion = VK_API_VERSION_1_3;
 
     vk::InstanceCreateInfo info{};
     info.sType = vk::StructureType::eInstanceCreateInfo;
@@ -1551,12 +1806,17 @@ vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device, QueueF
     vk::PhysicalDeviceFeatures device_features{};
     device_features.samplerAnisotropy = true;
     
+    vk::PhysicalDeviceVulkan11Features f{};
+    f.shaderDrawParameters = true;
+
     vk::PhysicalDeviceDescriptorIndexingFeatures desc_indexing_features {};
     desc_indexing_features.sType = vk::StructureType::ePhysicalDeviceDescriptorIndexingFeatures;
     desc_indexing_features.shaderSampledImageArrayNonUniformIndexing = true;
     desc_indexing_features.runtimeDescriptorArray = true;
     desc_indexing_features.descriptorBindingVariableDescriptorCount = true;
     desc_indexing_features.descriptorBindingPartiallyBound = true;
+
+    desc_indexing_features.pNext = &f;
 
     static const std::vector<const char*> device_extensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -1712,7 +1972,7 @@ RenderingState createVulkanRenderState()
 
     auto window = setupGlfw(*app);
 
-    auto const instance = createInstance(false);
+    auto const instance = createInstance(true);
 
     auto const surface = createSurface(instance, window);
 
@@ -1789,41 +2049,6 @@ void recreateSwapchain(RenderingState& state)
                                            state.swap_chain.extent, state.depth_resources);
 
     std::cout << "Finish recreating\n";
-}
-
-DrawableMesh loadMesh(RenderingState const& state, Model const& model)
-{
-    DrawableMesh mesh;
-    mesh.vertex_buffer = createVertexBuffer(state, model.vertices);
-    mesh.index_buffer = createIndexBuffer(state, model.indices);
-    mesh.indices_size = model.indices.size();
-
-    return mesh;
-}
-
-DrawableMesh loadMesh(RenderingState const& state, std::vector<Vertex> const& vertices,
-                                                   std::vector<uint32_t> const& indices)
-{
-    DrawableMesh mesh;
-    mesh.vertex_buffer = createVertexBuffer(state, vertices);
-    mesh.index_buffer = createIndexBuffer(state, indices);
-    mesh.indices_size = indices.size();
-
-    return mesh;
-}
-
-Draw createDraw(DrawableMesh const& mesh, GpuProgram program,
-        glm::vec3 const& pos = glm::vec3(1,1,1))
-{
-    Draw draw;
-    draw.mesh = mesh;
-    draw.position = pos;
-    draw.rotation = glm::vec3(1,1,1);
-    draw.angel = 0;
-    draw.texture_index = 0;
-    draw.program = std::move(program);
-
-    return draw;
 }
 
 Texture createTexture(RenderingState const& state, std::string const& path, vk::Sampler sampler)
@@ -1939,150 +2164,18 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
     }
 }
 
-GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings, RenderingState const& rendering_state)
-{
-    // Create layouts for the descriptor sets
-    std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
-    std::transform(descriptor_set_layout_bindings.begin(), descriptor_set_layout_bindings.end(), std::back_inserter(descriptor_set_layouts),
-            [&rendering_state](auto const& set){return createDescriptorSetLayout(rendering_state.device, set);});
-
-    // Create the default pipeline
-    auto const graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, rendering_state.render_pass, descriptor_set_layouts);
-
-    // Create descriptor set for the textures, lights, and matrices
-    int i = 0;
-    std::vector<DescriptionPoolAndSet> desc_sets;
-    for (auto const& descriptor_set_layout : descriptor_set_layouts)
-    {
-        std::cout << "Creating set\n";
-        desc_sets.push_back(createDescriptorSet(rendering_state.device, descriptor_set_layout, descriptor_set_layout_bindings[i++]));
-    }
-
-    std::cout << "Finished creating GPU program\n";
-
-    return { graphic_pipeline.first, graphic_pipeline.second, desc_sets};
-};
-
-struct RenderingSystem
-{
-    GpuProgram program;
-    std::vector<Draw> drawables;
-};
-
 int main()
 {
     srand (time(NULL));
     RenderingState rendering_state = createVulkanRenderState();
-
-    // Demo box vertices
-    std::vector<Vertex> vertices {
-        //Position           // Color            // UV   // Normal
-        // Front
-        {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {0,0,1}}, //0  0
-        {{ 0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {0,0,1}}, //1  1  
-        {{-0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 1}, {0,0,1}}, //2  2
-        {{ 0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 1}, {0,0,1}}, //3  3
-                                                          //
-        // Up
-        {{-0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {0,1,0}}, //2  4
-        {{ 0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {0,1,0}}, //3  5
-        {{-0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {0,1,0}}, //6  6
-        {{ 0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 1}, {0,1,0}}, //7  7
-
-        // Down 
-        {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {0,-1,0}}, //0  8
-        {{ 0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {0,-1,0}}, //1  9
-        {{-0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {0,-1,0}}, //4 10
-        {{ 0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 1}, {0,-1,0}}, //5 11
-                                                          //
-        // Left
-        {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {-1,0,0}}, //0 12
-        {{-0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 0}, {-1,0,0}}, //4 13
-        {{-0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 1}, {-1,0,0}}, //2 14
-        {{-0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 1}, {-1,0,0}}, //6 15
-                                                          //
-        // Right
-        {{ 0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {1,0,0}}, //1 16
-        {{ 0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 0}, {1,0,0}}, //5 17
-        {{ 0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 1}, {1,0,0}}, //3 18
-        {{ 0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {1,0,0}}, //7 19
-
-        // Back
-        {{-0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 0}, {0,0,-1}}, //4 20
-        {{ 0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 0}, {0,0,-1}}, //5 21
-        {{-0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 1}, {0,0,-1}}, //6 22
-        {{ 0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {0,0,-1}}  //7 23
-    };
-
-    // Demo box indices
-    const std::vector<uint32_t> indices = {
-        // Front
-        0, 1, 3,
-        3, 2, 0,
-
-        // Top
-        7, 6, 4,
-        4, 5, 7,
-
-        // Bottom
-        11, 9, 8,
-        8, 10, 11,
-
-        // Left
-        12, 14, 15,
-        15, 13, 12,
-
-        // Right
-        16, 17, 19,
-        19, 18, 16,
-
-        // Back
-        20, 22, 23,
-        23, 21, 20
-    };
-
-    // Descriptor bindings for default shader
-    auto textures_descriptor_binding = createTextureSamplerBinding(0, 32, vk::ShaderStageFlagBits::eFragment);
-    auto lights_descriptor_binding = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
-    auto mvp_descriptor_binding = createStorageBufferBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
-
-    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings{{textures_descriptor_binding}, // Set 0 binding 0
-                                                                                    {lights_descriptor_binding},   // Set 1 binding 0
-                                                                                    {mvp_descriptor_binding}};     // Set 2 binding 0
-                                                                                                                   //
-    auto test_program = createGpuProgram(descriptor_set_layout_bindings, rendering_state);
-    rendering_state.gpu_program = test_program;
 
     // Load textures
     std::cout << "Loading sampler\n";
     auto sampler = createTextureSampler(rendering_state);
     auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg", "textures/ridley.png"});
 
-    // Create uniform buffers for lights and matrices for default shader
-    rendering_state.uniform_buffers = createStorageBuffers<UniformBufferObject>(rendering_state, 10000);
-    rendering_state.light_buffers = createUniformBuffers<LightBufferObject>(rendering_state);
-
-    // Update the descriptor sets with the buffers and textures
-    updateImageSampler(rendering_state.device, textures, rendering_state.gpu_program.descriptor_sets[0].set, rendering_state.gpu_program.descriptor_sets[0].layout_bindings[0]);
-    updateUniformBuffer<LightBufferObject>(rendering_state.device, rendering_state.light_buffers, rendering_state.gpu_program.descriptor_sets[1].set, rendering_state.gpu_program.descriptor_sets[1].layout_bindings[0], 1);
-    updateUniformBuffer<UniformBufferObject>(rendering_state.device, rendering_state.uniform_buffers, rendering_state.gpu_program.descriptor_sets[2].set, rendering_state.gpu_program.descriptor_sets[2].layout_bindings[0], 10000);
-
-    auto model = loadModel("models/ridley.obj");
-    //auto ridley = createDraw(loadMesh(rendering_state, model), rendering_state.pipelines[0], desc_per_draw.set,  {0,-5,-10});
-    //ridley.texture_index = 2;
-
-    auto mesh = loadMesh(rendering_state, vertices, indices);
-
-    // Add 500 boxes to the scene
-    for (int i = 0; i < 500; ++i)
-    {
-        glm::vec3 pos;
-        pos.x = (rand() % 10) - 5;
-        pos.y = (rand() % 10) - 10;
-        pos.z = (rand() % 40) - 40;
-
-        rendering_state.drawables.push_back(createDraw(mesh, test_program, pos));
-    }
+    auto render_system = createDefaultSystem(rendering_state, textures);
+    //auto grass = createGrass(rendering_state, textures);
 
     static auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -2136,12 +2229,7 @@ int main()
             updateCamera(delta, camera_speed, rendering_state.swap_chain.extent, rendering_state.camera, app, rendering_state.window);
         }
 
-        for (auto& drawable : rendering_state.drawables)
-        {
-            drawable.angel += delta;
-        }
-
-        auto result = drawFrame(rendering_state);
+        auto result = drawFrame(rendering_state, render_system);
         if (result == DrawResult::RESIZE)
         {
             recreateSwapchain(rendering_state);
