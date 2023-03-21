@@ -26,6 +26,7 @@ layout(location = 1) out vec3 position_worldspace;
 layout(location = 2) out vec3 normal_cameraspace;
 layout(location = 3) out vec3 eye_direction_cameraspace;
 layout(location = 4) out vec3 light_direction_cameraspace;
+layout(location = 5) out flat uint texture_id;
 
 void main() {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
@@ -42,4 +43,5 @@ void main() {
     normal_cameraspace = (world.view * ubo.model * vec4(in_normal,0)).xyz;
 
     uv = in_tex_coord;
+    texture_id = ubo.texture_index;
 }

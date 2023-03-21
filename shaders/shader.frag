@@ -14,6 +14,7 @@ layout(location = 1) in vec3 position_worldspace;
 layout(location = 2) in vec3 normal_cameraspace;
 layout(location = 3) in vec3 eye_direction_cameraspace;
 layout(location = 4) in vec3 light_direction_cameraspace;
+layout(location = 5) in flat uint texture_id;
 
 layout(location = 0) out vec4 out_color;
 
@@ -22,7 +23,7 @@ void main()
     vec3 light_color = vec3(1,1,1);
     float light_power = 500.0f;
 
-    vec3 material_diffuse_color = texture(texSampler[0], uv).rgb;
+    vec3 material_diffuse_color = texture(texSampler[texture_id], uv).rgb;
     vec3 material_ambient_color = vec3(0.1, 0.1, 0.1) * material_diffuse_color;
     vec3 material_speccular_color = vec3(1.0, 1.0, 1.0);
 

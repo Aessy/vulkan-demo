@@ -690,11 +690,11 @@ RenderingState createVulkanRenderState()
 
 
     Camera camera;
-    camera.proj = glm::perspective(glm::radians(45.0f), sc.extent.width / (float)sc.extent.height, 0.1f, 100.0f);
+    camera.proj = glm::perspective(glm::radians(45.0f), sc.extent.width / (float)sc.extent.height, 0.1f, 1000.0f);
     camera.camera_front = glm::vec3(0,0,-1);
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
-    camera.pos = glm::vec3(0,0,0);
+    camera.pos = glm::vec3(0,1,0);
 
     RenderingState render_state {
         .app = std::move(app),
