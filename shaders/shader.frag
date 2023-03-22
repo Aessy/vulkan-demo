@@ -15,6 +15,7 @@ layout(location = 2) in vec3 normal_cameraspace;
 layout(location = 3) in vec3 eye_direction_cameraspace;
 layout(location = 4) in vec3 light_direction_cameraspace;
 layout(location = 5) in flat uint texture_id;
+layout(location = 6) in vec3 color;
 
 layout(location = 0) out vec4 out_color;
 

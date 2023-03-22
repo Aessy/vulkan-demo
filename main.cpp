@@ -139,12 +139,12 @@ Model loadModel(std::string const& model_path)
             };
 
             vertex.normal = {
-                  attrib.normals[2 * index.normal_index + 0]
-                , attrib.normals[2 * index.normal_index + 1]
-                , attrib.normals[2 * index.normal_index + 2]
+                  attrib.normals[3 * index.normal_index + 0]
+                , attrib.normals[3 * index.normal_index + 1]
+                , attrib.normals[3 * index.normal_index + 2]
             };
 
-            vertex.color = {1.0f, 1.0f, 1.0f};
+            vertex.color = {0.5f, 0.1f, 0.3f};
 
             model.vertices.push_back(vertex);
             model.indices.push_back(model.indices.size());
@@ -247,7 +247,7 @@ WorldBufferObject updateWorldBuffer(UniformBuffer& world_buffer, Camera const& c
     ubo.camera_proj[1][1] *= -1;
 
     // Update light uniform
-    glm::vec3 light_pos = glm::vec3(0,-2,2);
+    glm::vec3 light_pos = glm::vec3(2,1.5, 2);
     ubo.light_position = light_pos;
 
     memcpy(world_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
@@ -390,6 +390,15 @@ RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::
     drawable.texture_index = 3; // Dirt texture
 
     render_system.drawables.push_back(drawable);
+
+    auto suzanne = loadModel("./models/ridley.obj");
+    auto suzanne_mesh = loadMesh(rendering_state, suzanne);
+    auto suzanne_drawable = createDraw(suzanne_mesh, test_program);
+    suzanne_drawable.position.y = 1.5;
+    suzanne_drawable.position.x = 0;
+    suzanne_drawable.position.z = 0;
+    suzanne_drawable.texture_index = 2;
+    render_system.drawables.push_back(suzanne_drawable);
 
     // Add 500 boxes to the scene
     for (int i = 0; i < 2; ++i)
@@ -786,15 +795,20 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
 
     if (app.cursor_pos.x != uint32_t(extent.width/2) || app.cursor_pos.y != uint32_t(extent.height/2))
     {
-        std::cout << "x: " << app.cursor_pos.x << "y: " << app.cursor_pos.y << '\n';
-
         glm::vec2 center = glm::vec2(extent.width/2, extent.height/2);
         glm::vec2 diff = glm::vec2(app.cursor_pos.x, app.cursor_pos.y) - center;
         diff.y = -diff.y;
 
-        std::cout << "diffx: " << diff.x << "diffy: " << diff.y << '\n';
-
         camera.pitch_yawn += diff * camera_speed * delta;
+
+        if (camera.pitch_yawn.y >= 90)
+        {
+            camera.pitch_yawn.y = 89;
+        }
+        if (camera.pitch_yawn.y <= -90)
+        {
+            camera.pitch_yawn.y = -89;
+        }
 
         glm::vec3 direction;
         direction.x = std::cos(glm::radians(camera.pitch_yawn.x)) * cos(glm::radians(camera.pitch_yawn.y));
@@ -802,8 +816,6 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
         direction.z = std::sin(glm::radians(camera.pitch_yawn.x)) * cos(glm::radians(camera.pitch_yawn.y));
 
         camera.camera_front = glm::normalize(direction);
-
-        std::cout << "New camera front: " << glm::to_string(camera.camera_front) << '\n';
 
         app.cursor_pos = CursorPos{uint32_t(extent.width/2), uint32_t(extent.height/2)};
         glfwSetCursorPos(window, app.cursor_pos.x, app.cursor_pos.y);
