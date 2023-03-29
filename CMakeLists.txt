@@ -3,10 +3,11 @@ project(vulkan)
 cmake_minimum_required(VERSION 3.21)
 
 set(SRC VulkanRenderSystem.cpp
-        main.cpp)
+        main.cpp
+        height_map.cpp)
 
 add_executable(vulkan-test ${SRC})
-target_compile_options(vulkan-test PUBLIC -O3 -std=c++23)
+target_compile_options(vulkan-test PUBLIC -g -std=c++23)
 target_link_libraries(vulkan-test glfw vulkan X11)
 
 add_custom_target(shaders

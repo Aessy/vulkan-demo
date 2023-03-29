@@ -44,6 +44,7 @@
 #include "VulkanRenderSystem.h"
 #include "Model.h"
 #include "Mesh.h"
+#include "height_map.h"
 
 
 struct DescriptionPoolAndSet
@@ -84,6 +85,7 @@ struct Draw
     DrawableMesh mesh;
     glm::vec3 position;
     glm::vec3 rotation;
+    float scale;
     float angel;
 
     int texture_index;
@@ -100,6 +102,7 @@ Draw createDraw(DrawableMesh const& mesh, GpuProgram program,
     draw.position = pos;
     draw.rotation = glm::vec3(1,1,1);
     draw.angel = 0;
+    draw.scale = 1.0f;
     draw.texture_index = 0;
     draw.program = std::move(program);
 
@@ -232,7 +235,8 @@ ModelBufferObject createModelBufferObject(Draw const& drawable)
 
     auto rotation = glm::rotate(glm::mat4(1.0f), drawable.angel, drawable.rotation);
     auto translation = glm::translate(glm::mat4(1.0f), drawable.position);
-    model_buffer.model = translation * rotation;
+    auto scale = glm::scale(glm::mat4(1.0f), glm::vec3(drawable.scale, drawable.scale, drawable.scale));
+    model_buffer.model = translation * rotation * scale;
     model_buffer.texture_index = drawable.texture_index;
 
     return model_buffer;
@@ -247,7 +251,7 @@ WorldBufferObject updateWorldBuffer(UniformBuffer& world_buffer, Camera const& c
     ubo.camera_proj[1][1] *= -1;
 
     // Update light uniform
-    glm::vec3 light_pos = glm::vec3(2,1.5, 2);
+    glm::vec3 light_pos = glm::vec3(20,30, 20);
     ubo.light_position = light_pos;
 
     memcpy(world_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
@@ -384,20 +388,22 @@ RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::
 
 
     // Create the ground using a plain
-    auto model = loadModel("./models/plain.obj");
+    auto model = createFlatGround(513, 200); //loadModel("./models/plain.obj");
+    applyHeightMap("./textures/terrain.png", model);
     auto plain_mesh = loadMesh(rendering_state, model);
     auto drawable = createDraw(plain_mesh, test_program);
     drawable.texture_index = 3; // Dirt texture
 
     render_system.drawables.push_back(drawable);
 
-    auto suzanne = loadModel("./models/ridley.obj");
+    auto suzanne = loadModel("./models/rock.obj");
     auto suzanne_mesh = loadMesh(rendering_state, suzanne);
     auto suzanne_drawable = createDraw(suzanne_mesh, test_program);
-    suzanne_drawable.position.y = 1.5;
+    suzanne_drawable.position.y = 0;
     suzanne_drawable.position.x = 0;
     suzanne_drawable.position.z = 0;
-    suzanne_drawable.texture_index = 2;
+    suzanne_drawable.texture_index = 4;
+    suzanne_drawable.scale = 20.0f;
     render_system.drawables.push_back(suzanne_drawable);
 
     // Add 500 boxes to the scene
@@ -596,43 +602,6 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
 
     command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
     draw(command_buffer, render_system, state.camera, state.current_frame);
-
-    /*
-    uint32_t offset = 0;
-
-    int i = 0;
-    for (auto const& drawable : state.drawables)
-    {
-        auto ubo = updateUniformBuffer(state.uniform_buffers[state.current_frame], state.light_buffers[state.current_frame], state.camera, drawable, state.swap_chain.extent);
-        void* buffer = state.uniform_buffers[state.current_frame].uniform_buffers_mapped;
-
-        auto* b = (unsigned char*)buffer+(sizeof(UniformBufferObject)*i);
-        memcpy(b, &ubo, sizeof(ubo));
-        ++i;
-    }
-
-
-    // Fix so we don't rebind the same pipeline and descriptor sets for every draw. Big performance loss here atm.
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, state.drawables[0].program.pipeline[0]);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.drawables[0].program.pipeline_layout, 0, 1, &state.gpu_program.descriptor_sets[0].set[state.current_frame], 0, nullptr);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.drawables[0].program.pipeline_layout, 1, 1, &state.gpu_program.descriptor_sets[1].set[state.current_frame], 1, &offset);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, state.drawables[0].program.pipeline_layout, 2, 1, &state.gpu_program.descriptor_sets[2].set[state.current_frame], 0, nullptr);
-    i = 0;
-    for (auto const& drawable : state.drawables)
-    {
-        //auto ubo = updateUniformBuffer(state.uniform_buffers[state.current_frame], state.light_buffers[state.current_frame], state.camera, drawable, state.swap_chain.extent);
-        //command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, drawable.program.pipeline_layout, 2, 1, &state.gpu_program.descriptor_sets[2].set[state.current_frame], 0, nullptr);
-
-        //command_buffer.pushConstants(state.gpu_program.pipeline_layout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0,
-        //        sizeof(UniformBufferObject), &ubo);
-
-        command_buffer.bindVertexBuffers(0,drawable.mesh.vertex_buffer,{0});
-        command_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
-
-        command_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0, 0, ++i);
-        //command_buffer.draw(drawable.mesh.indices_size, 1, 0, 1);
-    }
-    */
     command_buffer.endRenderPass();
 
     result = command_buffer.end();
@@ -830,7 +799,7 @@ int main()
     // Load textures
     std::cout << "Loading sampler\n";
     auto sampler = createTextureSampler(rendering_state);
-    auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg", "textures/ridley.png", "textures/ground.jpg"});
+    auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg", "textures/ridley.png", "textures/ground.jpg", "models/nature_rock/weoodcm_8K_Albedo.jpg"});
 
     auto render_system = createDefaultSystem(rendering_state, textures);
     auto grass = createGrass(rendering_state, textures);
