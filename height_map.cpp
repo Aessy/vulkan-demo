@@ -64,6 +64,8 @@ void applyHeightMap(std::string const& height_map_path, Model& m)
 
     auto pixels = stbi_load(height_map_path.c_str(), &width, &height, &channels, STBI_grey);
 
+    size_t index = 0;
+
     for (auto& vertex : m.vertices)
     {
         int mapped_x = (vertex.pos.x+(200.0f/2))/200*width;

@@ -388,7 +388,7 @@ RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::
 
 
     // Create the ground using a plain
-    auto model = createFlatGround(513, 200); //loadModel("./models/plain.obj");
+    auto model = createFlatGround(512, 200); //loadModel("./models/plain.obj");
     applyHeightMap("./textures/terrain.png", model);
     auto plain_mesh = loadMesh(rendering_state, model);
     auto drawable = createDraw(plain_mesh, test_program);
@@ -550,7 +550,7 @@ void draw(vk::CommandBuffer& command_buffer, RenderingSystem& render_system, Cam
 void draw(vk::CommandBuffer& command_buffer, World& render_system, Camera const& camera, int frame)
 {
     draw(command_buffer, render_system.default_rendering, camera, frame);
-    draw(command_buffer, render_system.grass, camera, frame);
+    //draw(command_buffer, render_system.grass, camera, frame);
 }
 
 template<typename RenderingSystem>
