@@ -250,6 +250,7 @@ WorldBufferObject updateWorldBuffer(UniformBuffer& world_buffer, Camera const& c
     ubo.camera_proj = camera.proj;
     ubo.camera_proj[1][1] *= -1;
 
+
     // Update light uniform
     glm::vec3 light_pos = glm::vec3(0,100, 0);
     ubo.light_position = light_pos;
