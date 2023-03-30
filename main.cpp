@@ -396,16 +396,6 @@ RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::
 
     render_system.drawables.push_back(drawable);
 
-    auto suzanne = loadModel("./models/rock.obj");
-    auto suzanne_mesh = loadMesh(rendering_state, suzanne);
-    auto suzanne_drawable = createDraw(suzanne_mesh, test_program);
-    suzanne_drawable.position.y = 0;
-    suzanne_drawable.position.x = 0;
-    suzanne_drawable.position.z = 0;
-    suzanne_drawable.texture_index = 4;
-    suzanne_drawable.scale = 20.0f;
-    render_system.drawables.push_back(suzanne_drawable);
-
     // Add 500 boxes to the scene
     for (int i = 0; i < 2; ++i)
     {
@@ -799,7 +789,7 @@ int main()
     // Load textures
     std::cout << "Loading sampler\n";
     auto sampler = createTextureSampler(rendering_state);
-    auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg", "textures/ridley.png", "textures/ground.jpg", "models/nature_rock/weoodcm_8K_Albedo.jpg"});
+    auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg", "textures/ridley.png", "textures/ground.jpg"});
 
     auto render_system = createDefaultSystem(rendering_state, textures);
     auto grass = createGrass(rendering_state, textures);

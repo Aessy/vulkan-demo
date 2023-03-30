@@ -75,6 +75,8 @@ void applyHeightMap(std::string const& height_map_path, Model& m)
         unsigned char height = pixels[pos];
 
         vertex.pos.y = float(height)/256*50;
+
+        vertex.normal = glm::vec3(0.5, 0.1, 0.2);
     }
 
     std::cout << "Loaded height_map " << width << ":" << width << " " << channels << '\n';
