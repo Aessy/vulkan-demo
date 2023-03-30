@@ -47,5 +47,5 @@ void main()
     
     //out_color = vec4(color, 1);
     float jt = dot(n, vec3(sqrt(2), sqrt(2), sqrt(2)));
-    out_color = vec4(jt, jt, jt, 1);
+    out_color = vec4(material_ambient_color + (material_diffuse_color * vec3(jt, jt, jt)), 1);
 }

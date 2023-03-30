@@ -251,7 +251,7 @@ WorldBufferObject updateWorldBuffer(UniformBuffer& world_buffer, Camera const& c
     ubo.camera_proj[1][1] *= -1;
 
     // Update light uniform
-    glm::vec3 light_pos = glm::vec3(20,30, 20);
+    glm::vec3 light_pos = glm::vec3(0,100, 0);
     ubo.light_position = light_pos;
 
     memcpy(world_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
@@ -540,7 +540,7 @@ void draw(vk::CommandBuffer& command_buffer, RenderingSystem& render_system, Cam
 void draw(vk::CommandBuffer& command_buffer, World& render_system, Camera const& camera, int frame)
 {
     draw(command_buffer, render_system.default_rendering, camera, frame);
-    draw(command_buffer, render_system.grass, camera, frame);
+    //draw(command_buffer, render_system.grass, camera, frame);
 }
 
 template<typename RenderingSystem>
