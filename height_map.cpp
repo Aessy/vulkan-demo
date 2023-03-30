@@ -38,6 +38,13 @@ Model createFlatGround(std::size_t size, float length)
             glm::vec3 bottom_left (x_top_left, 0, y_top_left+y_interval);
             glm::vec3 bottom_right (x_top_left+x_interval, 0, y_top_left+y_interval);
 
+            /*
+            model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=glm::vec2(0, 1)});
+            model.vertices.push_back(Vertex{.pos=top_right,.tex_coord=glm::vec2(1, 1)});
+            model.vertices.push_back(Vertex{.pos=bottom_left,.tex_coord=glm::vec2(0, 0)});
+            model.vertices.push_back(Vertex{.pos=bottom_right,.tex_coord=glm::vec2(1, 0)});
+            */
+
             model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=glm::vec2(top_left.x, top_left.y)});
             model.vertices.push_back(Vertex{.pos=top_right,.tex_coord=glm::vec2(top_right.x, top_right.y)});
             model.vertices.push_back(Vertex{.pos=bottom_left,.tex_coord=glm::vec2(bottom_left.x, bottom_left.y)});
@@ -124,8 +131,6 @@ Model createModeFromHeightMap(std::string const& height_map_path, float size, fl
             auto const& normals = it->second;
             auto normal = glm::normalize(std::accumulate(normals.begin(), normals.end(), glm::vec3(0,0,0)));
             vertex.normal = normal;
-
-            std::cout << glm::to_string(vertex.normal) << '\n';
         }
     }
 

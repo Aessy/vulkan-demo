@@ -392,7 +392,7 @@ RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::
     auto model = createModeFromHeightMap("./textures/terrain.png", 200, 50);
     auto plain_mesh = loadMesh(rendering_state, model);
     auto drawable = createDraw(plain_mesh, test_program);
-    drawable.texture_index = 3; // Dirt texture
+    drawable.texture_index = 4; // Dirt texture
 
     render_system.drawables.push_back(drawable);
 
@@ -540,7 +540,7 @@ void draw(vk::CommandBuffer& command_buffer, RenderingSystem& render_system, Cam
 void draw(vk::CommandBuffer& command_buffer, World& render_system, Camera const& camera, int frame)
 {
     draw(command_buffer, render_system.default_rendering, camera, frame);
-    //draw(command_buffer, render_system.grass, camera, frame);
+    draw(command_buffer, render_system.grass, camera, frame);
 }
 
 template<typename RenderingSystem>
@@ -789,7 +789,7 @@ int main()
     // Load textures
     std::cout << "Loading sampler\n";
     auto sampler = createTextureSampler(rendering_state);
-    auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg", "textures/ridley.png", "textures/ground.jpg"});
+    auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg", "textures/ridley.png", "textures/ground.jpg", "textures/stone.jpg"});
 
     auto render_system = createDefaultSystem(rendering_state, textures);
     auto grass = createGrass(rendering_state, textures);

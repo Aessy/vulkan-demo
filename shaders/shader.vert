@@ -41,7 +41,8 @@ void main() {
     vec3 light_position_cameraspace = (world.view * vec4(world.light_pos,1)).xyz;
     light_direction_cameraspace = light_position_cameraspace + eye_direction_cameraspace;
 
-    normal_cameraspace = (world.view * ubo.model * vec4(in_normal,0)).xyz;
+    //normal_cameraspace = (world.view * ubo.model * vec4(in_normal,0)).xyz;
+    normal_cameraspace = in_normal;
 
     uv = in_tex_coord;
     texture_id = ubo.texture_index;

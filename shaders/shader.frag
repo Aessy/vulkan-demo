@@ -45,5 +45,7 @@ void main()
                  material_diffuse_color * light_color * cos_theta / (distance * distance);
                  material_speccular_color * light_color * light_power * pow(cos_alpha,5) / (distance*distance);
     
-    out_color = vec4(color, 1);
+    //out_color = vec4(color, 1);
+    float jt = dot(n, vec3(sqrt(2), sqrt(2), sqrt(2)));
+    out_color = vec4(jt, jt, jt, 1);
 }
