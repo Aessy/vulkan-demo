@@ -388,8 +388,8 @@ RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::
 
 
     // Create the ground using a plain
-    auto model = createFlatGround(512, 200); //loadModel("./models/plain.obj");
-    applyHeightMap("./textures/terrain.png", model);
+    //auto model = createFlatGround(512, 200); //loadModel("./models/plain.obj");
+    auto model = createModeFromHeightMap("./textures/terrain.png", 200, 50);
     auto plain_mesh = loadMesh(rendering_state, model);
     auto drawable = createDraw(plain_mesh, test_program);
     drawable.texture_index = 3; // Dirt texture
