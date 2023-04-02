@@ -46,6 +46,10 @@
 #include "Mesh.h"
 #include "height_map.h"
 
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
+#include "imgui.h"
+
 
 struct DescriptionPoolAndSet
 {
@@ -260,6 +264,10 @@ WorldBufferObject updateWorldBuffer(UniformBuffer& world_buffer, Camera const& c
     return ubo;
 }
 
+void updateModelBuffer(UniformBuffer& model_buffer, ModelBufferObject const& model_object)
+{
+}
+
 GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings, RenderingState const& rendering_state, std::string const& shader_vert, std::string const& shader_frag)
 {
     // Create layouts for the descriptor sets
@@ -293,6 +301,43 @@ struct RenderingSystem
 
     std::vector<Draw> drawables;
 };
+
+struct TerrainRenderingSystem
+{
+    std::vector<UniformBuffer> world_buffer;
+    std::vector<UniformBuffer> model_buffer;
+
+    GpuProgram program;
+    Draw terrain;
+};
+
+TerrainRenderingSystem createTerrain(RenderingState const& rendering_state)
+{
+    std::string const height_map = "./textures/terrain.png";
+    std::string const terrain_shader_vert = "./shaders/terrain_vert.spv";
+    std::string const terrain_shader_frag = "./shaders/terrain_frag.spv";
+    float const terrain_size = 200;
+    float const terrain_height = 50;
+
+    auto world_data  = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
+    auto object_data = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
+
+    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings{{world_data}, // Set 0 binding 0
+                                                                                            {object_data}};  // Set 1 binding 0
+    auto program = createGpuProgram(descriptor_set_layout_bindings, rendering_state, terrain_shader_vert, terrain_shader_frag);
+
+    auto world_buffer = createUniformBuffers<WorldBufferObject>(rendering_state);
+    auto model_buffer = createUniformBuffers<ModelBufferObject>(rendering_state);
+
+    updateUniformBuffer<WorldBufferObject>(rendering_state.device, world_buffer, program.descriptor_sets[0].set, program.descriptor_sets[0].layout_bindings[0], 1);
+    updateUniformBuffer<ModelBufferObject>(rendering_state.device, model_buffer, program.descriptor_sets[1].set, program.descriptor_sets[1].layout_bindings[0], 1);
+
+    auto model = createModeFromHeightMap(height_map, terrain_size, terrain_height);
+    auto mesh = loadMesh(rendering_state, model);
+    auto drawable = createDraw(mesh, program);
+
+    return TerrainRenderingSystem{world_buffer, model_buffer, program, drawable};
+}
 
 RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::vector<Texture> const& textures)
 {
@@ -375,8 +420,8 @@ RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::
     auto test_program = createGpuProgram(descriptor_set_layout_bindings, rendering_state, "./shaders/vert.spv", "./shaders/frag.spv");
 
     // Create uniform buffers for lights and matrices for default shader
-    auto model_buffers = createStorageBuffers<ModelBufferObject>(rendering_state, 10000);
     auto world_buffers = createUniformBuffers<WorldBufferObject>(rendering_state);
+    auto model_buffers = createStorageBuffers<ModelBufferObject>(rendering_state, 10000);
 
     // Update the descriptor sets with the buffers and textures
     updateImageSampler(rendering_state.device, textures, test_program.descriptor_sets[0].set, test_program.descriptor_sets[0].layout_bindings[0]);
@@ -395,7 +440,7 @@ RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::
     auto drawable = createDraw(plain_mesh, test_program);
     drawable.texture_index = 4; // Dirt texture
 
-    render_system.drawables.push_back(drawable);
+    //render_system.drawables.push_back(drawable);
 
     // Add 500 boxes to the scene
     for (int i = 0; i < 2; ++i)
@@ -427,6 +472,7 @@ struct World
 {
     GrassRenderingSystem grass;
     RenderingSystem default_rendering;
+    TerrainRenderingSystem terrain;
 
     Camera camera;
     LightBufferObject light;
@@ -508,6 +554,25 @@ void draw(vk::CommandBuffer& command_buffer, GrassRenderingSystem& render_system
     command_buffer.drawIndexed(render_system.grass_mesh.indices_size, 1000000,0,0,0);
 }
 
+void draw(vk::CommandBuffer& command_buffer, TerrainRenderingSystem& render_system, Camera const& camera, int frame)
+{
+    updateWorldBuffer(render_system.world_buffer[frame], camera);
+
+    auto ubo = createModelBufferObject(render_system.terrain);
+    void* buffer = render_system.model_buffer[frame].uniform_buffers_mapped;
+    memcpy(buffer, (unsigned char*)&ubo, sizeof(ubo));
+
+    uint32_t offset = 0;
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline[0]);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 0, 1, &render_system.program.descriptor_sets[0].set[frame], 1, &offset);
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 1, 1, &render_system.program.descriptor_sets[1].set[frame], 1, &offset);
+
+    command_buffer.bindVertexBuffers(0,render_system.terrain.mesh.vertex_buffer,{0});
+    command_buffer.bindIndexBuffer(render_system.terrain.mesh.index_buffer, 0, vk::IndexType::eUint32);
+
+    command_buffer.drawIndexed(render_system.terrain.mesh.indices_size, 1, 0, 0, 0);
+}
+
 void draw(vk::CommandBuffer& command_buffer, RenderingSystem& render_system, Camera const& camera, int frame)
 {
     uint32_t offset = 0;
@@ -542,6 +607,7 @@ void draw(vk::CommandBuffer& command_buffer, World& render_system, Camera const&
 {
     draw(command_buffer, render_system.default_rendering, camera, frame);
     //draw(command_buffer, render_system.grass, camera, frame);
+    draw(command_buffer, render_system.terrain, camera, frame);
 }
 
 template<typename RenderingSystem>
@@ -593,6 +659,8 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
 
     command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
     draw(command_buffer, render_system, state.camera, state.current_frame);
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
     command_buffer.endRenderPass();
 
     result = command_buffer.end();
@@ -609,6 +677,8 @@ template<typename RenderingSystem>
 DrawResult drawFrame(RenderingState& state, RenderingSystem& render_system)
 {
     auto v = state.device.waitForFences(state.semaphores.in_flight_fence[state.current_frame], true, ~0);
+
+    ImGui::Render();
 
     auto next_image = state.device.acquireNextImageKHR(state.swap_chain.swap_chain, ~0,
             state.semaphores.image_available_semaphore[state.current_frame], VK_NULL_HANDLE);
@@ -730,6 +800,14 @@ bool processEvent(Event const& event, App& app)
     {
         return false;
     }
+    else if (event.key == GLFW_KEY_LEFT_SHIFT && event.action == GLFW_PRESS)
+    {
+        app.keyboard.shift = true;
+    }
+    else if (event.key == GLFW_KEY_LEFT_SHIFT && event.action == GLFW_RELEASE)
+    {
+        app.keyboard.shift = false;
+    }
 
     return true;
 }
@@ -753,7 +831,7 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
         camera.pos -= camera_speed * glm::normalize(glm::cross(camera.camera_front, camera.up)) * delta;
     }
 
-    if (app.cursor_pos.x != uint32_t(extent.width/2) || app.cursor_pos.y != uint32_t(extent.height/2))
+    if (app.keyboard.shift && (app.cursor_pos.x != uint32_t(extent.width/2) || app.cursor_pos.y != uint32_t(extent.height/2)))
     {
         glm::vec2 center = glm::vec2(extent.width/2, extent.height/2);
         glm::vec2 diff = glm::vec2(app.cursor_pos.x, app.cursor_pos.y) - center;
@@ -790,13 +868,17 @@ int main()
     // Load textures
     std::cout << "Loading sampler\n";
     auto sampler = createTextureSampler(rendering_state);
-    auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg", "textures/far.jpg", "textures/ridley.png", "textures/ground.jpg", "textures/stone.jpg"});
+    auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg",
+                                                            "textures/far.jpg"
+                                                          , "textures/ridley.png"
+                                                          , "textures/ground.jpg"});
 
     auto render_system = createDefaultSystem(rendering_state, textures);
     auto grass = createGrass(rendering_state, textures);
+    auto terrain = createTerrain(rendering_state);
 
 
-    World world{grass, render_system, {}, {}};
+    World world{grass, render_system, terrain, {}, {}};
 
     static auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -849,6 +931,13 @@ int main()
         {
             updateCamera(delta, camera_speed, rendering_state.swap_chain.extent, rendering_state.camera, app, rendering_state.window);
         }
+
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+
+        ImGui::NewFrame();
+
+        ImGui::ShowDemoWindow();
 
         auto result = drawFrame(rendering_state, world);
         if (result == DrawResult::RESIZE)

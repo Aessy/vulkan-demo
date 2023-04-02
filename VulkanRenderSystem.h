@@ -35,6 +35,7 @@ struct Keyboard
     bool down = false;
     bool left = false;
     bool right = false;
+    bool shift = false;
 };
 
 struct CursorPos

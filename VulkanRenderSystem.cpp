@@ -1,4 +1,6 @@
 #include "VulkanRenderSystem.h"
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
@@ -9,6 +11,10 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
+
+#include "imgui.h"
+#include "imgui_impl_vulkan.h"
+#include "imgui_impl_glfw.h"
 
 #include <algorithm>
 #include <iostream>
@@ -658,14 +664,65 @@ static std::vector<vk::Framebuffer> createFrameBuffers(vk::Device const& device,
     return swap_chain_frame_buffers;
 }
 
+void initImgui(vk::Device const& device, vk::PhysicalDevice const& physical, vk::Instance const& instance,
+               vk::Queue const& queue, vk::RenderPass const& render_pass,
+               RenderingState& state, GLFWwindow* window)
+{
+    std::vector<vk::DescriptorPoolSize> pool_sizes
+    {
+        { vk::DescriptorType::eSampler, 1000 }
+       ,{ vk::DescriptorType::eCombinedImageSampler, 1000 }
+       ,{ vk::DescriptorType::eSampledImage, 1000 }
+       ,{ vk::DescriptorType::eStorageImage, 1000 }
+       ,{ vk::DescriptorType::eUniformTexelBuffer, 1000 }
+       ,{ vk::DescriptorType::eStorageTexelBuffer, 1000 }
+       ,{ vk::DescriptorType::eUniformBuffer, 1000 }
+       ,{ vk::DescriptorType::eStorageBuffer, 1000 }
+       ,{ vk::DescriptorType::eUniformBufferDynamic, 1000 }
+       ,{ vk::DescriptorType::eStorageBufferDynamic, 1000 }
+       ,{ vk::DescriptorType::eInputAttachment, 1000 }
+    };
+
+    vk::DescriptorPoolCreateInfo pool_info;
+    pool_info.sType = vk::StructureType::eDescriptorPoolCreateInfo;
+    pool_info.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+    pool_info.maxSets = 1000;
+    pool_info.poolSizeCount = std::size(pool_sizes);
+    pool_info.setPoolSizes(pool_sizes);
+
+    vk::DescriptorPool imgui_pool = device.createDescriptorPool(pool_info).value;
+
+    ImGui::CreateContext();
+
+    ImGui_ImplGlfw_InitForVulkan(window, true);
+
+    ImGui_ImplVulkan_InitInfo init_info{};
+    init_info.Instance = instance;
+    init_info.Device = device;
+    init_info.DescriptorPool = imgui_pool;
+    init_info.PhysicalDevice = physical;
+    init_info.Queue = queue;
+    init_info.MinImageCount = 3;
+    init_info.ImageCount = 3;
+    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+    ImGui_ImplVulkan_Init(&init_info, render_pass);
+
+    auto cmd = beginSingleTimeCommands(state);
+    ImGui_ImplVulkan_CreateFontsTexture(cmd);
+    endSingleTimeCommands(state, cmd);
+
+    ImGui_ImplVulkan_DestroyFontUploadObjects();
+}
 
 RenderingState createVulkanRenderState()
 {
     auto app = std::make_unique<App>();
 
+
     auto window = setupGlfw(*app);
 
-    auto const instance = createInstance(false);
+    auto const instance = createInstance(true);
 
     auto const surface = createSurface(instance, window);
 
@@ -714,6 +771,8 @@ RenderingState createVulkanRenderState()
         .present_queue = present_queue,
         .camera = camera
     };
+
+    initImgui(device, physical_device, instance, graphics_queue, render_pass, render_state, window);
 
     auto depth_image = createDepth(render_state);
     auto swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, sc.extent, depth_image);
