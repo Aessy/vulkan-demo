@@ -26,7 +26,7 @@ struct Scene
 
 };
 
-WorldBufferObject createWorldBufferObject(Scene const& scene)
+inline WorldBufferObject createWorldBufferObject(Scene const& scene)
 {
     WorldBufferObject ubo;
 
@@ -39,7 +39,7 @@ WorldBufferObject createWorldBufferObject(Scene const& scene)
     return ubo;
 }
 
-ModelBufferObject createModelBufferObject(Object const& object)
+inline ModelBufferObject createModelBufferObject(Object const& object)
 {
     ModelBufferObject model_buffer{};
 

@@ -52,19 +52,13 @@
 #include "Textures.h"
 #include "TypeLayer.h"
 #include "Renderer.h"
+#include "Application.h"
 
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 #include "imgui.h"
 
 #include "Gui.h"
-
-struct Application
-{
-    Textures textures;
-    std::vector<std::unique_ptr<Program>> programs;
-    Scene scene;
-};
 
 Model loadModel(std::string const& model_path)
 {
@@ -114,26 +108,6 @@ Model loadModel(std::string const& model_path)
     return model;
 }
 
-DrawableMesh loadMesh(RenderingState const& state, Model const& model)
-{
-    DrawableMesh mesh;
-    mesh.vertex_buffer = createVertexBuffer(state, model.vertices);
-    mesh.index_buffer = createIndexBuffer(state, model.indices);
-    mesh.indices_size = model.indices.size();
-
-    return mesh;
-}
-
-DrawableMesh loadMesh(RenderingState const& state, std::vector<Vertex> const& vertices,
-                                                   std::vector<uint32_t> const& indices)
-{
-    DrawableMesh mesh;
-    mesh.vertex_buffer = createVertexBuffer(state, vertices);
-    mesh.index_buffer = createIndexBuffer(state, indices);
-    mesh.indices_size = indices.size();
-
-    return mesh;
-}
 
 void loop(GLFWwindow* window)
 {
@@ -438,13 +412,17 @@ int main()
     camera.up = glm::vec3(0,1,0);
     camera.pos = glm::vec3(0,1,0);
 
+    std::map<std::string, DrawableMesh> meshes;
+    meshes.insert({"plain", loadMesh(core, loadModel("./models/plain.obj"))});;
+
     Scene scene;
     scene.camera = camera;
     scene.light.position = glm::vec3(0,100,0);
-    scene.objects[0].push_back(createObject(loadMesh(core, loadModel("./models/plain.obj"))));
+    scene.objects[0].push_back(createObject(meshes.at("plain")));
 
     Application application{
         .textures = std::move(textures),
+        .meshes = std::move(meshes),
         .programs = std::move(programs),
         .scene = std::move(scene)
     };
@@ -509,7 +487,7 @@ int main()
 
         // ImGui::ShowDemoWindow();
 
-        //gui::createGui(render_system_gui);
+        gui::createGui(application);
 
         auto result = drawFrame(core, application);
         if (result == DrawResult::RESIZE)

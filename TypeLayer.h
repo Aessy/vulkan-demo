@@ -41,6 +41,8 @@ struct Buffer
 
 struct Program
 {
+    int id{};
+
     std::array<char, 50> name{{}};
     std::array<char, 50> vertex_shader{{}};
     std::array<char, 50> fragment_shader{{}};
@@ -50,9 +52,6 @@ struct Program
 
 struct RenderingSystem
 {
-    std::vector<Binding> bindings;
-    std::vector<Buffer> buffers;
-
     std::vector<Program> programs;
 };
 

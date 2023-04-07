@@ -7,9 +7,14 @@
 #include <string>
 #include <iostream>
 
+#include "Scene.h"
+
+#include "Application.h"
+
 namespace gui
 {
 
+/*
 const char* const items[]{"Uniform", "Storage", "Textures"};
 const char* const buffer_type[]{"Model", "World"};
 
@@ -42,12 +47,10 @@ void createProgram(RenderingSystem& system)
         static Program new_program = {};
         ImGui::SeparatorText("Create Program");
         ImGui::InputText("Name", new_program.name.data(), new_program.name.size());
-        ImGui::InputText("Vertex shader", new_program.vertex_shader.data(), new_program.vertex_shader.size());
-        ImGui::InputText("Fragment shader", new_program.fragment_shader.data(), new_program.fragment_shader.size());
-
-    }
+        ImGui::InputText("Vertex shader", new_progracreate_buffer_popup
 
 }
+
 
 void createBuffer(RenderingSystem& system)
 {
@@ -98,7 +101,120 @@ void createBuffer(RenderingSystem& system)
         ImGui::EndPopup();
     }
 }
+*/
 
+void showCamera(Camera const& camera)
+{
+    if (ImGui::BeginPopup("camera"))
+    {
+
+        ImGui::Text("Pos: x:%f, y:%f, z:%f",camera.pos.x,
+                                            camera.pos.y,
+                                            camera.pos.z);
+        ImGui::EndPopup();
+    }
+}
+
+void showLight(LightBufferObject const& light)
+{
+    if (ImGui::BeginPopup("light"))
+    {
+        ImGui::Text("Pos: x:%f, y:%f, z:%f",light.position.x, light.position.y, light.position.z);
+        ImGui::EndPopup();
+    }
+}
+void showObject(Object& obj)
+{
+    if (ImGui::BeginPopup("object"))
+    {
+        std::cout << "object\n";
+        ImGui::Text("Position");
+        ImGui::InputFloat("Pos x", &obj.position.x, 1.0f, 10.0f);
+        ImGui::InputFloat("Pos y", &obj.position.y, 1.0f, 10.0f);
+        ImGui::InputFloat("Pos z", &obj.position.z, 1.0f, 10.0f);
+        ImGui::Text("Rotation");
+        ImGui::InputFloat("X", &obj.rotation.x, 1.0f, 10.0f);
+        ImGui::InputFloat("Y", &obj.rotation.y, 1.0f, 10.0f);
+        ImGui::InputFloat("Z", &obj.rotation.z, 1.0f, 10.0f);
+        ImGui::Text("Angle");
+        ImGui::DragFloat("Angle", &obj.angel, 0.01, 0, 360);
+        ImGui::EndPopup();
+    }
+}
+void showScene(Scene& scene)
+{
+    ImGui::BeginChild("Scene", ImVec2(-1, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
+
+    if (ImGui::TreeNode("Camera"))
+    {
+        Camera& camera = scene.camera;
+        ImGui::Text("Pos: x:%f, y:%f, z:%f",camera.pos.x,
+                                            camera.pos.y,
+                                            camera.pos.z);
+        ImGui::TreePop();
+    }
+    if (ImGui::TreeNode("Light"))
+    {
+        auto& light = scene.light;
+        ImGui::Text("Pos: x:%f, y:%f, z:%f",light.position.x, light.position.y, light.position.z);
+        ImGui::TreePop();
+    }
+
+    for (auto& prog: scene.objects)
+    {
+        for (auto& obj : prog.second)
+        {
+            if (ImGui::TreeNode("Object"))
+            {
+                showObject(obj);
+                ImGui::Text("Pos: x:%f, y:%f, z:%f",obj.position.x, obj.position.y, obj.position.z);
+                ImGui::Text("Angle: %f", obj.angel);
+                ImGui::Text("Scale: %f", obj.scale);
+                ImGui::Text("Indices: %d", obj.mesh.indices_size);
+                ImGui::Text("Material: %d", prog.first);
+                ImGui::Text("Texture: %d", obj.texture_index);
+                if (ImGui::Button("Edit"))
+                {
+                    std::cout << "Open\n";
+                    ImGui::OpenPopup("object");
+                }
+                ImGui::TreePop();
+            }
+        }
+    }
+
+
+    ImGui::EndChild();
+}
+
+void showMeshes(std::map<std::string, DrawableMesh>& meshes)
+{
+    ImGui::BeginChild("Meshes", ImVec2(-1, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
+    for (auto const& mesh : meshes)
+    {
+        ImGui::Text("%s", mesh.first.c_str());
+    }
+
+    ImGui::EndChild();
+
+}
+
+void createGui(Application& application)
+{
+    ImGui::Begin("Vulkan rendering engine", nullptr, ImGuiWindowFlags_MenuBar);
+    if (ImGui::CollapsingHeader("Scene"))
+    {
+        showScene(application.scene);
+    }
+    if (ImGui::CollapsingHeader("Meshes"))
+    {
+        showMeshes(application.meshes);
+    }
+
+    ImGui::End();
+
+}
+/*
 void createGui(RenderingSystem& system)
 {
     ImGui::Begin("RenderingSystem", nullptr, ImGuiWindowFlags_MenuBar);
@@ -144,5 +260,6 @@ void createGui(RenderingSystem& system)
 
     ImGui::End();
 }
+*/
 
 }

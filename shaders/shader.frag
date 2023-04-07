@@ -24,7 +24,7 @@ void main()
     vec3 light_color = vec3(1,1,1);
     float light_power = 100.0f;
 
-    vec3 material_diffuse_color = vec3(0.4, 0.1, 0.6); //texture(texSampler[texture_id], uv).rgb;
+    vec3 material_diffuse_color = texture(texSampler[texture_id], uv).rgb;
     vec3 material_ambient_color = vec3(0.3, 0.3, 0.3) * material_diffuse_color;
     vec3 material_speccular_color = vec3(1.0, 1.0, 1.0);
 

@@ -16,7 +16,7 @@ struct Object
     int texture_index{0};
 };
 
-auto createObject(DrawableMesh const& mesh, glm::vec3 const& position = glm::vec3(0,0,0))
+inline auto createObject(DrawableMesh const& mesh, glm::vec3 const& position = glm::vec3(0,0,0))
 {
 
     Object draw;
