@@ -45,73 +45,26 @@
 #include "Model.h"
 #include "Mesh.h"
 #include "height_map.h"
+#include "utilities.h"
+#include "Scene.h"
+#include "Program.h"
+#include "Object.h"
+#include "Textures.h"
+#include "TypeLayer.h"
+#include "Renderer.h"
 
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 #include "imgui.h"
 
+#include "Gui.h"
 
-struct DescriptionPoolAndSet
+struct Application
 {
-    vk::DescriptorPool pool;
-    std::vector<vk::DescriptorSet> set;
-
-    vk::DescriptorSetLayout layout;
-    std::vector<vk::DescriptorSetLayoutBinding> layout_bindings;
+    Textures textures;
+    std::vector<std::unique_ptr<Program>> programs;
+    Scene scene;
 };
-
-DescriptionPoolAndSet createDescriptorSet(vk::Device const& device, vk::DescriptorSetLayout const& layout,
-                                          std::vector<vk::DescriptorSetLayoutBinding> const& layout_bindings)
-{
-    auto pool = createDescriptorPoolInfo(device, layout_bindings);
-    auto set = createSets(device, pool, layout, layout_bindings);
-
-    return DescriptionPoolAndSet
-    {
-        pool,
-        set,
-        layout,
-        layout_bindings
-    };
-}
-
-
-struct GpuProgram
-{
-    std::vector<vk::Pipeline> pipeline;
-    vk::PipelineLayout pipeline_layout;
-
-    std::vector<DescriptionPoolAndSet> descriptor_sets;
-};
-
-struct Draw
-{
-    DrawableMesh mesh;
-    glm::vec3 position;
-    glm::vec3 rotation;
-    float scale;
-    float angel;
-
-    int texture_index;
-
-    GpuProgram program;
-};
-
-
-Draw createDraw(DrawableMesh const& mesh, GpuProgram program,
-        glm::vec3 const& pos = glm::vec3(0,0,0))
-{
-    Draw draw;
-    draw.mesh = mesh;
-    draw.position = pos;
-    draw.rotation = glm::vec3(1,1,1);
-    draw.angel = 0;
-    draw.scale = 1.0f;
-    draw.texture_index = 0;
-    draw.program = std::move(program);
-
-    return draw;
-}
 
 Model loadModel(std::string const& model_path)
 {
@@ -182,42 +135,6 @@ DrawableMesh loadMesh(RenderingState const& state, std::vector<Vertex> const& ve
     return mesh;
 }
 
-
-std::pair<vk::Image, vk::DeviceMemory> createTextureImage(RenderingState const& state, std::string const& path)
-{
-    int width, height, channels {};
-
-    //auto pixels = stbi_load("textures/far.jpg", &width, &height, &channels, STBI_rgb_alpha);
-    auto pixels = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
-
-    if (!pixels)
-    {
-        std::cout << "Could not load texture\n";
-    }
-
-    vk::DeviceSize image_size = width * height * 4;
-    vk::DeviceMemory staging_buffer_memory;
-
-    auto staging_buffer = createBuffer(state, image_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, staging_buffer_memory);
-
-    auto data = state.device.mapMemory(staging_buffer_memory, 0, image_size, static_cast<vk::MemoryMapFlagBits>(0));
-    memcpy(data.value, pixels, static_cast<size_t>(image_size));
-    state.device.unmapMemory(staging_buffer_memory);
-    stbi_image_free(pixels);
-
-    auto image = createImage(state, width, height, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-    transitionImageLayout(state, image.first, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
-    copyBufferToImage(state, staging_buffer, image.first, width, height);
-    transitionImageLayout(state, image.first, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
-
-    state.device.destroyBuffer(staging_buffer);
-    state.device.freeMemory(staging_buffer_memory);
-
-    return image;
-}
-
-
 void loop(GLFWwindow* window)
 {
     while (!glfwWindowShouldClose(window))
@@ -227,387 +144,12 @@ void loop(GLFWwindow* window)
 }
 
 
-std::vector<char> readFile(std::string const& path)
+void draw(vk::CommandBuffer& command_buffer, Application& app, int frame)
 {
-    std::ifstream file(path);
-    return std::vector<char>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-}
-
-ModelBufferObject createModelBufferObject(Draw const& drawable)
-{
-    ModelBufferObject model_buffer{};
-
-    auto rotation = glm::rotate(glm::mat4(1.0f), drawable.angel, drawable.rotation);
-    auto translation = glm::translate(glm::mat4(1.0f), drawable.position);
-    auto scale = glm::scale(glm::mat4(1.0f), glm::vec3(drawable.scale, drawable.scale, drawable.scale));
-    model_buffer.model = translation * rotation * scale;
-    model_buffer.texture_index = drawable.texture_index;
-
-    return model_buffer;
-}
-
-WorldBufferObject updateWorldBuffer(UniformBuffer& world_buffer, Camera const& camera)
-{
-    WorldBufferObject ubo{};
-
-    ubo.camera_view = glm::lookAt(camera.pos, (camera.pos + camera.camera_front), camera.up);
-    ubo.camera_proj = camera.proj;
-    ubo.camera_proj[1][1] *= -1;
-
-
-    // Update light uniform
-    glm::vec3 light_pos = glm::vec3(0,100, 0);
-    ubo.light_position = light_pos;
-
-    memcpy(world_buffer.uniform_buffers_mapped, &ubo, sizeof(ubo));
-
-    return ubo;
-}
-
-void updateModelBuffer(UniformBuffer& model_buffer, ModelBufferObject const& model_object)
-{
-}
-
-GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings, RenderingState const& rendering_state, std::string const& shader_vert, std::string const& shader_frag)
-{
-    // Create layouts for the descriptor sets
-    std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
-    std::transform(descriptor_set_layout_bindings.begin(), descriptor_set_layout_bindings.end(), std::back_inserter(descriptor_set_layouts),
-            [&rendering_state](auto const& set){return createDescriptorSetLayout(rendering_state.device, set);});
-
-    // Create the default pipeline
-    auto const graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, rendering_state.render_pass, descriptor_set_layouts, readFile(shader_vert), readFile(shader_frag));
-
-    // Create descriptor set for the textures, lights, and matrices
-    int i = 0;
-    std::vector<DescriptionPoolAndSet> desc_sets;
-    for (auto const& descriptor_set_layout : descriptor_set_layouts)
-    {
-        std::cout << "Creating set\n";
-        desc_sets.push_back(createDescriptorSet(rendering_state.device, descriptor_set_layout, descriptor_set_layout_bindings[i++]));
-    }
-
-    std::cout << "Finished creating GPU program\n";
-
-    return { graphic_pipeline.first, graphic_pipeline.second, desc_sets};
-};
-
-struct RenderingSystem
-{
-    GpuProgram program;
-
-    std::vector<UniformBuffer> storage_buffer;
-    std::vector<UniformBuffer> world_buffer;
-
-    std::vector<Draw> drawables;
-};
-
-struct TerrainRenderingSystem
-{
-    std::vector<UniformBuffer> world_buffer;
-    std::vector<UniformBuffer> model_buffer;
-
-    GpuProgram program;
-    Draw terrain;
-};
-
-TerrainRenderingSystem createTerrain(RenderingState const& rendering_state)
-{
-    std::string const height_map = "./textures/terrain.png";
-    std::string const terrain_shader_vert = "./shaders/terrain_vert.spv";
-    std::string const terrain_shader_frag = "./shaders/terrain_frag.spv";
-    float const terrain_size = 200;
-    float const terrain_height = 50;
-
-    auto world_data  = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
-    auto object_data = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
-
-    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings{{world_data}, // Set 0 binding 0
-                                                                                            {object_data}};  // Set 1 binding 0
-    auto program = createGpuProgram(descriptor_set_layout_bindings, rendering_state, terrain_shader_vert, terrain_shader_frag);
-
-    auto world_buffer = createUniformBuffers<WorldBufferObject>(rendering_state);
-    auto model_buffer = createUniformBuffers<ModelBufferObject>(rendering_state);
-
-    updateUniformBuffer<WorldBufferObject>(rendering_state.device, world_buffer, program.descriptor_sets[0].set, program.descriptor_sets[0].layout_bindings[0], 1);
-    updateUniformBuffer<ModelBufferObject>(rendering_state.device, model_buffer, program.descriptor_sets[1].set, program.descriptor_sets[1].layout_bindings[0], 1);
-
-    auto model = createModeFromHeightMap(height_map, terrain_size, terrain_height);
-    auto mesh = loadMesh(rendering_state, model);
-    auto drawable = createDraw(mesh, program);
-
-    return TerrainRenderingSystem{world_buffer, model_buffer, program, drawable};
-}
-
-RenderingSystem createDefaultSystem(RenderingState const& rendering_state, std::vector<Texture> const& textures)
-{
-    // Demo box vertices
-    std::vector<Vertex> vertices {
-        //Position           // Color            // UV   // Normal
-        // Front
-        {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {0,0,1}}, //0  0
-        {{ 0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {0,0,1}}, //1  1  
-        {{-0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 1}, {0,0,1}}, //2  2
-        {{ 0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 1}, {0,0,1}}, //3  3
-                                                          //
-        // Up
-        {{-0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {0,1,0}}, //2  4
-        {{ 0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {0,1,0}}, //3  5
-        {{-0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {0,1,0}}, //6  6
-        {{ 0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 1}, {0,1,0}}, //7  7
-
-        // Down 
-        {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {0,-1,0}}, //0  8
-        {{ 0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {0,-1,0}}, //1  9
-        {{-0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {0,-1,0}}, //4 10
-        {{ 0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 1}, {0,-1,0}}, //5 11
-                                                          //
-        // Left
-        {{-0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 0}, {-1,0,0}}, //0 12
-        {{-0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 0}, {-1,0,0}}, //4 13
-        {{-0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {0, 1}, {-1,0,0}}, //2 14
-        {{-0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 1}, {-1,0,0}}, //6 15
-                                                          //
-        // Right
-        {{ 0.5, -0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 0}, {1,0,0}}, //1 16
-        {{ 0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 0}, {1,0,0}}, //5 17
-        {{ 0.5,  0.5, 0.5},  {1.0f, 0.0f, 0.0f}, {1, 1}, {1,0,0}}, //3 18
-        {{ 0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {1,0,0}}, //7 19
-
-        // Back
-        {{-0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 0}, {0,0,-1}}, //4 20
-        {{ 0.5, -0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 0}, {0,0,-1}}, //5 21
-        {{-0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {1, 1}, {0,0,-1}}, //6 22
-        {{ 0.5,  0.5, -0.5}, {1.0f, 0.0f, 0.0f}, {0, 1}, {0,0,-1}}  //7 23
-    };
-
-    // Demo box indices
-    const std::vector<uint32_t> indices = {
-        // Front
-        0, 1, 3,
-        3, 2, 0,
-
-        // Top
-        7, 6, 4,
-        4, 5, 7,
-
-        // Bottom
-        11, 9, 8,
-        8, 10, 11,
-
-        // Left
-        12, 14, 15,
-        15, 13, 12,
-
-        // Right
-        16, 17, 19,
-        19, 18, 16,
-
-        // Back
-        20, 22, 23,
-        23, 21, 20
-    };
-
-    // Descriptor bindings for default shader
-    auto textures_descriptor_binding = createTextureSamplerBinding(0, 32, vk::ShaderStageFlagBits::eFragment);
-    auto lights_descriptor_binding = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
-    auto mvp_descriptor_binding = createStorageBufferBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
-
-    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings{{textures_descriptor_binding}, // Set 0 binding 0
-                                                                                    {lights_descriptor_binding},   // Set 1 binding 0
-                                                                                    {mvp_descriptor_binding}};     // Set 2 binding 0
-                                                                                                                   //
-    auto test_program = createGpuProgram(descriptor_set_layout_bindings, rendering_state, "./shaders/vert.spv", "./shaders/frag.spv");
-
-    // Create uniform buffers for lights and matrices for default shader
-    auto world_buffers = createUniformBuffers<WorldBufferObject>(rendering_state);
-    auto model_buffers = createStorageBuffers<ModelBufferObject>(rendering_state, 10000);
-
-    // Update the descriptor sets with the buffers and textures
-    updateImageSampler(rendering_state.device, textures, test_program.descriptor_sets[0].set, test_program.descriptor_sets[0].layout_bindings[0]);
-    updateUniformBuffer<WorldBufferObject>(rendering_state.device, world_buffers, test_program.descriptor_sets[1].set, test_program.descriptor_sets[1].layout_bindings[0], 1);
-    updateUniformBuffer<ModelBufferObject>(rendering_state.device, model_buffers, test_program.descriptor_sets[2].set, test_program.descriptor_sets[2].layout_bindings[0], 10000);
-
-    auto mesh = loadMesh(rendering_state, vertices, indices);
-
-    RenderingSystem render_system{test_program, model_buffers, world_buffers, {}};
-
-
-    // Create the ground using a plain
-    //auto model = createFlatGround(512, 200); //loadModel("./models/plain.obj");
-    auto model = createModeFromHeightMap("./textures/terrain.png", 200, 50);
-    auto plain_mesh = loadMesh(rendering_state, model);
-    auto drawable = createDraw(plain_mesh, test_program);
-    drawable.texture_index = 4; // Dirt texture
-
-    //render_system.drawables.push_back(drawable);
-
-    // Add 500 boxes to the scene
-    for (int i = 0; i < 2; ++i)
-    {
-        glm::vec3 pos;
-        pos.x = (rand() % 10) - 5;
-        pos.y = 0.5;
-        pos.z = (rand() % 40) - 40;
-
-        auto box = createDraw(mesh, test_program, pos);
-        box.texture_index = 0;
-
-        render_system.drawables.push_back(std::move(box));
-    }
-
-    return render_system;
-}
-
-struct GrassRenderingSystem
-{
-    GpuProgram program;
-
-    std::vector<UniformBuffer> world_data;
-    std::vector<UniformBuffer> grass_data;
-    DrawableMesh grass_mesh;
-};
-
-struct World
-{
-    GrassRenderingSystem grass;
-    RenderingSystem default_rendering;
-    TerrainRenderingSystem terrain;
-
-    Camera camera;
-    LightBufferObject light;
-};
-
-float randFloat(float a, float b)
-{
-    return ((b - a) * ((float)rand() / RAND_MAX)) + a;
-}
-
-GrassRenderingSystem createGrass(RenderingState const& rendering_state, std::vector<Texture> const& textures)
-{
-    // Descriptor bindings for shaderfor shader
-    auto textures_descriptor_binding = createTextureSamplerBinding(0, 32, vk::ShaderStageFlagBits::eFragment);
-    auto world_buffer = createUniformBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
-    auto positions_buffer = createStorageBufferBinding(0, 1, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
-
-    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings{{textures_descriptor_binding}, // Set 0 binding 0
-                                                                                            {world_buffer},                // Set 1 binding 0
-                                                                                            {positions_buffer}};           // Set 2 binding 0
-    auto test_program = createGpuProgram(descriptor_set_layout_bindings, rendering_state, "./shaders/grass_vert.spv", "./shaders/grass_frag.spv");
-
-    // Create uniform buffers for lights and matrices for default shader
-    auto world_data = createUniformBuffers<WorldBufferObject>(rendering_state);
-    auto storage_buffer = createStorageBuffers<ModelBufferObject>(rendering_state, 1000000);
-
-    // Update the descriptor sets with the buffers and textures
-    updateImageSampler(rendering_state.device, textures, test_program.descriptor_sets[0].set, test_program.descriptor_sets[0].layout_bindings[0]);
-    updateUniformBuffer<WorldBufferObject>(rendering_state.device, world_data, test_program.descriptor_sets[1].set,  test_program.descriptor_sets[1].layout_bindings[0], 1);
-    updateUniformBuffer<ModelBufferObject>(rendering_state.device, storage_buffer, test_program.descriptor_sets[2].set, test_program.descriptor_sets[2].layout_bindings[0], 1000000);
-
-    // Load mesh
-    auto model = loadModel("models/grass.obj");
-    auto mesh = loadMesh(rendering_state, model);
-
-    // Set positions for instanced rendering
-    int i = 0;
-    for (int x = 0; x < 1000; ++x)
-    {
-        for (int y = 0; y < 1000; ++y)
-        {
-            auto drawable = createDraw(mesh, test_program, glm::vec3(x/20.0f,0,y/20.0f));
-            drawable.rotation = glm::vec3(0,1,0);
-            drawable.angel = randFloat(0,360);
-            drawable.position.x += randFloat(0.0f, 0.05f) - 0.025f;
-            drawable.position.z += randFloat(0.0f, 0.05f) - 0.025f;
-            drawable.position.y -= randFloat(0.0f, 0.10) - 0.05f;
-            drawable.texture_index = 0;
-
-            auto ubo = createModelBufferObject(drawable);
-
-            for (int frame = 0; frame < 2; ++frame)
-            {
-                void* buffer = storage_buffer[frame].uniform_buffers_mapped;
-                auto* b = (unsigned char*)buffer+(sizeof(ModelBufferObject)*i);
-                memcpy(b, &ubo, sizeof(ubo));
-            }
-
-            ++i;
-        }
-    }
-
-    return GrassRenderingSystem{test_program, world_data, storage_buffer, mesh};
-}
-
-void draw(vk::CommandBuffer& command_buffer, GrassRenderingSystem& render_system, Camera const& camera, int frame)
-{
-    updateWorldBuffer(render_system.world_data[frame], camera);
-
-    uint32_t offset = 0;
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline[0]);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 0, 1, &render_system.program.descriptor_sets[0].set[frame], 0, nullptr);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 1, 1, &render_system.program.descriptor_sets[1].set[frame], 1, &offset);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 2, 1, &render_system.program.descriptor_sets[2].set[frame], 0, nullptr);
-
-    command_buffer.bindVertexBuffers(0,render_system.grass_mesh.vertex_buffer,{0});
-    command_buffer.bindIndexBuffer(render_system.grass_mesh.index_buffer, 0, vk::IndexType::eUint32);
-
-    command_buffer.drawIndexed(render_system.grass_mesh.indices_size, 1000000,0,0,0);
-}
-
-void draw(vk::CommandBuffer& command_buffer, TerrainRenderingSystem& render_system, Camera const& camera, int frame)
-{
-    updateWorldBuffer(render_system.world_buffer[frame], camera);
-
-    auto ubo = createModelBufferObject(render_system.terrain);
-    void* buffer = render_system.model_buffer[frame].uniform_buffers_mapped;
-    memcpy(buffer, (unsigned char*)&ubo, sizeof(ubo));
-
-    uint32_t offset = 0;
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline[0]);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 0, 1, &render_system.program.descriptor_sets[0].set[frame], 1, &offset);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 1, 1, &render_system.program.descriptor_sets[1].set[frame], 1, &offset);
-
-    command_buffer.bindVertexBuffers(0,render_system.terrain.mesh.vertex_buffer,{0});
-    command_buffer.bindIndexBuffer(render_system.terrain.mesh.index_buffer, 0, vk::IndexType::eUint32);
-
-    command_buffer.drawIndexed(render_system.terrain.mesh.indices_size, 1, 0, 0, 0);
-}
-
-void draw(vk::CommandBuffer& command_buffer, RenderingSystem& render_system, Camera const& camera, int frame)
-{
-    uint32_t offset = 0;
-    int i = 0;
-    for (auto const& drawable : render_system.drawables)
-    {
-        auto ubo = createModelBufferObject(drawable);
-        void* buffer = render_system.storage_buffer[frame].uniform_buffers_mapped;
-        auto* b = (unsigned char*)buffer+(sizeof(ModelBufferObject)*i);
-        memcpy(b, &ubo, sizeof(ubo));
-        ++i;
-    }
-
-    updateWorldBuffer(render_system.world_buffer[frame], camera);
-
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline[0]);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 0, 1, &render_system.program.descriptor_sets[0].set[frame], 0, nullptr);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 1, 1, &render_system.program.descriptor_sets[1].set[frame], 1, &offset);
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render_system.program.pipeline_layout, 2, 1, &render_system.program.descriptor_sets[2].set[frame], 0, nullptr);
-    i = 0;
-
-    for (auto const& drawable : render_system.drawables)
-    {
-        command_buffer.bindVertexBuffers(0,drawable.mesh.vertex_buffer,{0});
-        command_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
-
-        command_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0, 0, i++);
-    }
-}
-
-void draw(vk::CommandBuffer& command_buffer, World& render_system, Camera const& camera, int frame)
-{
-    draw(command_buffer, render_system.default_rendering, camera, frame);
+    renderScene(command_buffer, app.scene, app.programs, frame);
+    //draw(command_buffer, render_system.default_rendering, camera, frame);
     //draw(command_buffer, render_system.grass, camera, frame);
-    draw(command_buffer, render_system.terrain, camera, frame);
+    //draw(command_buffer, render_system.terrain, camera, frame);
 }
 
 template<typename RenderingSystem>
@@ -658,7 +200,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
     command_buffer.setScissor(0,scissor);
 
     command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
-    draw(command_buffer, render_system, state.camera, state.current_frame);
+    draw(command_buffer, render_system, state.current_frame);
 
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
     command_buffer.endRenderPass();
@@ -735,30 +277,6 @@ DrawResult drawFrame(RenderingState& state, RenderingSystem& render_system)
     return DrawResult::SUCCESS;
 }
 
-
-Texture createTexture(RenderingState const& state, std::string const& path, vk::Sampler sampler)
-{
-    auto image = createTextureImage(state, path);
-    auto image_view = createTextureImageView(state, image.first);
-
-    return Texture {
-        .image = image.first,
-        .memory = image.second,
-        .view = image_view,
-        .sampler = sampler
-    };
-}
-
-std::vector<Texture> loadTextures(RenderingState const& state, vk::Sampler const& sampler, std::vector<std::string> const& paths)
-{
-    std::vector<Texture> textures;
-    for (auto const& path : paths)
-    {
-        textures.push_back(createTexture(state, path, sampler));
-    }
-
-    return textures;
-}
 
 bool processEvent(Event const& event, App& app)
 {
@@ -863,22 +381,73 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
 int main()
 {
     srand (time(NULL));
-    RenderingState rendering_state = createVulkanRenderState();
+    RenderingState core = createVulkanRenderState();
 
-    // Load textures
-    std::cout << "Loading sampler\n";
-    auto sampler = createTextureSampler(rendering_state);
-    auto textures = loadTextures(rendering_state, sampler, {"textures/create.jpg",
-                                                            "textures/far.jpg"
-                                                          , "textures/ridley.png"
-                                                          , "textures/ground.jpg"});
+    Textures textures = createTextures(core, {"./textures/ground.jpg"});
 
-    auto render_system = createDefaultSystem(rendering_state, textures);
-    auto grass = createGrass(rendering_state, textures);
-    auto terrain = createTerrain(rendering_state);
+    layer_types::Program program_desc;
+    program_desc.fragment_shader = {{"./shaders/frag.spv"}};
+    program_desc.vertex_shader= {{"./shaders/vert.spv"}};
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"texture_buffer"}},
+        .type = layer_types::BufferType::WorldBufferObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding textures"}},
+            .binding = 0,
+            .type = layer_types::BindingType::TextureSampler,
+            .size = 32,
+            .vertex = true,
+            .fragment = true
+        }
+    }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"test_program"}},
+        .type = layer_types::BufferType::WorldBufferObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding world"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .vertex = true,
+            .fragment = true
+        }
+    }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"test_program"}},
+        .type = layer_types::BufferType::ModelBufferObject,
+        .size = 500,
+        .binding = layer_types::Binding {
+            .name = {{"binding model"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Storage,
+            .size = 1,
+            .vertex = true,
+            .fragment = true
+        }
+    }});
 
+    std::vector<std::unique_ptr<Program>> programs;
+    programs.push_back(createProgram(program_desc, core, textures));
 
-    World world{grass, render_system, terrain, {}, {}};
+    Camera camera;
+    camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.1f, 1000.0f);
+    camera.camera_front = glm::vec3(0,0,-1);
+    camera.pitch_yawn = glm::vec2(-90, 0);
+    camera.up = glm::vec3(0,1,0);
+    camera.pos = glm::vec3(0,1,0);
+
+    Scene scene;
+    scene.camera = camera;
+    scene.light.position = glm::vec3(0,100,0);
+    scene.objects[0].push_back(createObject(loadMesh(core, loadModel("./models/plain.obj"))));
+
+    Application application{
+        .textures = std::move(textures),
+        .programs = std::move(programs),
+        .scene = std::move(scene)
+    };
 
     static auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -890,15 +459,16 @@ int main()
 
     float camera_speed = 20;
 
-    rendering_state.app->cursor_pos = {rendering_state.swap_chain.extent.width/2, rendering_state.swap_chain.extent.height/2};
-    glfwSetCursorPos(rendering_state.window, rendering_state.app->cursor_pos.x, rendering_state.app->cursor_pos.y);
+    core.app->cursor_pos = {core.swap_chain.extent.width/2, core.swap_chain.extent.height/2};
+    glfwSetCursorPos(core.window, core.app->cursor_pos.x, core.app->cursor_pos.y);
 
-    while (!glfwWindowShouldClose(rendering_state.window))
+
+    while (!glfwWindowShouldClose(core.window))
     {
         glfwPollEvents();
 
-        auto& app = *rendering_state.app;
-        while (rendering_state.app->events.size())
+        auto& app = *core.app;
+        while (core.app->events.size())
         {
             auto event = app.events.front();
             app.events.pop();
@@ -929,7 +499,7 @@ int main()
         // Update camera based on basic wasd controller and mouse movement like in FPS
         if (!first_frame)
         {
-            updateCamera(delta, camera_speed, rendering_state.swap_chain.extent, rendering_state.camera, app, rendering_state.window);
+            updateCamera(delta, camera_speed, core.swap_chain.extent, application.scene.camera, app, core.window);
         }
 
         ImGui_ImplVulkan_NewFrame();
@@ -937,12 +507,14 @@ int main()
 
         ImGui::NewFrame();
 
-        ImGui::ShowDemoWindow();
+        // ImGui::ShowDemoWindow();
 
-        auto result = drawFrame(rendering_state, world);
+        //gui::createGui(render_system_gui);
+
+        auto result = drawFrame(core, application);
         if (result == DrawResult::RESIZE)
         {
-            recreateSwapchain(rendering_state);
+            recreateSwapchain(core);
         }
         else if (result == DrawResult::EXIT)
         {
@@ -950,6 +522,6 @@ int main()
         }
 
         first_frame = false;
-        rendering_state.current_frame = (rendering_state.current_frame + 1) % 2;
+        core.current_frame = (core.current_frame + 1) % 2;
     }
 }

@@ -745,14 +745,6 @@ RenderingState createVulkanRenderState()
     auto const graphics_queue = device.getQueue(*indices.graphics_family, 0);
     auto const present_queue = device.getQueue(*indices.present_family, 0);
 
-
-    Camera camera;
-    camera.proj = glm::perspective(glm::radians(45.0f), sc.extent.width / (float)sc.extent.height, 0.1f, 1000.0f);
-    camera.camera_front = glm::vec3(0,0,-1);
-    camera.pitch_yawn = glm::vec2(-90, 0);
-    camera.up = glm::vec3(0,1,0);
-    camera.pos = glm::vec3(0,1,0);
-
     RenderingState render_state {
         .app = std::move(app),
         .window = window,
@@ -769,7 +761,6 @@ RenderingState createVulkanRenderState()
         .command_buffer = command_buffers,
         .graphics_queue = graphics_queue,
         .present_queue = present_queue,
-        .camera = camera
     };
 
     initImgui(device, physical_device, instance, graphics_queue, render_pass, render_state, window);

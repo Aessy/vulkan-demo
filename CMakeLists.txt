@@ -5,6 +5,10 @@ cmake_minimum_required(VERSION 3.21)
 set(SRC VulkanRenderSystem.cpp
         main.cpp
         height_map.cpp
+        Gui.cpp
+        Model.cpp
+        Program.cpp
+        Textures.cpp
         imgui_impl_vulkan.cpp
         imgui_impl_glfw.cpp)
 

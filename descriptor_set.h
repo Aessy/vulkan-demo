@@ -13,13 +13,7 @@
 
 #include <iostream>
 
-struct Texture
-{
-    vk::Image image;
-    vk::DeviceMemory memory;
-    vk::ImageView view;
-    vk::Sampler sampler;
-};
+#include "Textures.h"
 
 template<typename ObjectType>
 struct UniformBinding
