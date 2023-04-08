@@ -57,7 +57,7 @@ inline void renderScene(vk::CommandBuffer& cmd_buffer, Scene const& scene, std::
             cmd_buffer.bindVertexBuffers(0, drawable.mesh.vertex_buffer, {0});
             cmd_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
 
-            cmd_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0,0, i++);
+            cmd_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0,0, i);
         }
     }
 }

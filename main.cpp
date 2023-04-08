@@ -26,8 +26,6 @@
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
 
 #include <chrono>
 #include <iostream>
@@ -59,54 +57,6 @@
 #include "imgui.h"
 
 #include "Gui.h"
-
-Model loadModel(std::string const& model_path)
-{
-    tinyobj::attrib_t attrib;
-    std::vector<tinyobj::shape_t> shapes;
-    std::vector<tinyobj::material_t> materials;
-    std::string warn, err;
-
-    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, model_path.c_str()))
-    {
-        std::cout << "Failed loading model\n";
-        return {};
-    }
-
-    Model model;
-
-    for (auto const& shape : shapes)
-    {
-        for (auto const& index : shape.mesh.indices)
-        {
-            Vertex vertex;
-
-            vertex.pos = {
-                  attrib.vertices[3 * index.vertex_index + 0]
-                , attrib.vertices[3 * index.vertex_index + 1]
-                , attrib.vertices[3 * index.vertex_index + 2]
-            };
-
-            vertex.tex_coord = {
-                  attrib.texcoords[2 * index.texcoord_index + 0]
-                , 1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
-            };
-
-            vertex.normal = {
-                  attrib.normals[3 * index.normal_index + 0]
-                , attrib.normals[3 * index.normal_index + 1]
-                , attrib.normals[3 * index.normal_index + 2]
-            };
-
-            vertex.color = {0.5f, 0.1f, 0.3f};
-
-            model.vertices.push_back(vertex);
-            model.indices.push_back(model.indices.size());
-        }
-    }
-
-    return model;
-}
 
 
 void loop(GLFWwindow* window)
@@ -402,6 +352,10 @@ int main()
         }
     }});
 
+    Models models;
+    int plain_id = models.loadModel("./models/plain.obj");
+    int cylinder_id = models.loadModel("./models/cylinder.obj");
+
     std::vector<std::unique_ptr<Program>> programs;
     programs.push_back(createProgram(program_desc, core, textures));
 
@@ -412,16 +366,21 @@ int main()
     camera.up = glm::vec3(0,1,0);
     camera.pos = glm::vec3(0,1,0);
 
-    std::map<std::string, DrawableMesh> meshes;
-    meshes.insert({"plain", loadMesh(core, loadModel("./models/plain.obj"))});;
+    Meshes meshes;
+    meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
+    meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
     Scene scene;
     scene.camera = camera;
     scene.light.position = glm::vec3(0,100,0);
-    scene.objects[0].push_back(createObject(meshes.at("plain")));
+    for (auto const& mesh : meshes.meshes)
+    {
+        scene.objects[0].push_back(createObject(mesh.second));
+    }
 
     Application application{
         .textures = std::move(textures),
+        .models = std::move(models),
         .meshes = std::move(meshes),
         .programs = std::move(programs),
         .scene = std::move(scene)

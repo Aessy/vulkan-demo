@@ -4,6 +4,7 @@
 
 #include "Program.h"
 
+#include "Id.h"
 #include "Mesh.h"
 
 struct Object
@@ -14,11 +15,12 @@ struct Object
     float scale{1};
     float angel{0};
     int texture_index{0};
+
+    int const id = Id();
 };
 
 inline auto createObject(DrawableMesh const& mesh, glm::vec3 const& position = glm::vec3(0,0,0))
 {
-
     Object draw;
     draw.mesh = mesh;
     draw.position = position;

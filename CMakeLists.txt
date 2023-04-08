@@ -9,6 +9,7 @@ set(SRC VulkanRenderSystem.cpp
         Model.cpp
         Program.cpp
         Textures.cpp
+        Id.cpp
         imgui_impl_vulkan.cpp
         imgui_impl_glfw.cpp)
 

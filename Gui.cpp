@@ -14,95 +14,55 @@
 namespace gui
 {
 
-/*
-const char* const items[]{"Uniform", "Storage", "Textures"};
-const char* const buffer_type[]{"Model", "World"};
-
-
-void createBinding(RenderingSystem& system)
+void showModelTree(Model& model)
 {
-    if (ImGui::BeginPopup("create_binding_popup"))
+    if (ImGui::TreeNode((model.path + std::to_string(model.id)).c_str()))
     {
-        static Binding new_binding = {};
-        ImGui::SeparatorText("Create Binding");
-        ImGui::InputText("Name", new_binding.name.data(), new_binding.name.size());
-        ImGui::Combo("Binding Type", &new_binding.type, items, 3);
-        ImGui::InputInt("Size", &new_binding.size, 1, 1);
-        ImGui::Checkbox("Vertex shader", &new_binding.vertex);
-        ImGui::Checkbox("Fragment shader", &new_binding.fragment);
-        if (ImGui::Button("Create"))
+        ImGui::Text("Path: %s", model.path.c_str());
+        ImGui::Text("Vertices: %d", model.vertices.size());
+        ImGui::Text("Indices: %d", model.indices.size());
+
+        ImGui::TreePop();
+    }
+
+}
+
+void showModels(Models& models)
+{
+    ImGui::BeginChild("Models", ImVec2(-1, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
+    for (auto& model: models.models)
+    {
+        showModelTree(model.second);
+    }
+
+    ImGui::EndChild();
+
+}
+
+void showMeshTree(DrawableMesh& mesh, Models& models, std::string const& name)
+{
+    if (ImGui::TreeNode(name.c_str()))
+    {
+        ImGui::Text("Indices: %d", mesh.indices_size);
+        if (models.models.contains(mesh.model_id))
         {
-            system.bindings.push_back(new_binding);
-            new_binding = {};
-            ImGui::CloseCurrentPopup();
+            showModelTree(models.models.at(mesh.model_id));
         }
-        ImGui::EndPopup();
+
+        ImGui::TreePop();
     }
 }
 
-void createProgram(RenderingSystem& system)
+void showMeshes(Meshes& meshes, Models& models)
 {
-    if (ImGui::BeginPopup("create_program"))
+    ImGui::BeginChild("Meshes", ImVec2(-1, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
+    for (auto& mesh : meshes.meshes)
     {
-        static Program new_program = {};
-        ImGui::SeparatorText("Create Program");
-        ImGui::InputText("Name", new_program.name.data(), new_program.name.size());
-        ImGui::InputText("Vertex shader", new_progracreate_buffer_popup
-
-}
-
-
-void createBuffer(RenderingSystem& system)
-{
-    if (ImGui::BeginPopup("create_buffer_popup"))
-    {
-        static Buffer new_buffer = {};
-        ImGui::SeparatorText("Create buffer");
-        ImGui::InputText("Name", new_buffer.name.data(), new_buffer.name.size());
-        ImGui::Combo("Buffer Type", &new_buffer.type, buffer_type, 2);
-        ImGui::InputInt("Size", &new_buffer.size, 1, 1);
-
-        static int current_binding = -1;
-
-        if (system.bindings.size() > 0)
-        {
-            if (current_binding == -1)
-            {
-                current_binding = 0;
-                new_buffer.binding = system.bindings[0];
-            }
-
-            char const* current_item = system.bindings[current_binding].name.data();
-            if (ImGui::BeginCombo("Binding", current_item))
-            {
-                for (size_t i = 0; i < system.bindings.size(); ++i)
-                {
-                    bool const is_selected = (current_binding == i);
-                    if (ImGui::Selectable(system.bindings[i].name.data(), is_selected))
-                    {
-                        current_binding = i;
-                        new_buffer.binding = system.bindings[i];
-                    }
-                    if (is_selected)
-                    {
-                        ImGui::SetItemDefaultFocus();
-                    }
-                 }
-                ImGui::EndCombo();
-            }
-        }
-        if (ImGui::Button("Create"))
-        {
-            system.buffers.push_back(new_buffer);
-            new_buffer = {};
-            current_binding = -1;
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
+        showMeshTree(mesh.second, models, (mesh.second.name + ": " + std::to_string(mesh.second.id).c_str()));
     }
-}
-*/
 
+    ImGui::EndChild();
+}
 void showCamera(Camera const& camera)
 {
     if (ImGui::BeginPopup("camera"))
@@ -141,7 +101,7 @@ void showObject(Object& obj)
         ImGui::EndPopup();
     }
 }
-void showScene(Scene& scene)
+void showScene(Scene& scene, Models& models)
 {
     ImGui::BeginChild("Scene", ImVec2(-1, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
 
@@ -164,7 +124,7 @@ void showScene(Scene& scene)
     {
         for (auto& obj : prog.second)
         {
-            if (ImGui::TreeNode("Object"))
+            if (ImGui::TreeNode((std::string(obj.mesh.name) + std::to_string(obj.id)).c_str()))
             {
                 showObject(obj);
                 ImGui::Text("Pos: x:%f, y:%f, z:%f",obj.position.x, obj.position.y, obj.position.z);
@@ -173,6 +133,7 @@ void showScene(Scene& scene)
                 ImGui::Text("Indices: %d", obj.mesh.indices_size);
                 ImGui::Text("Material: %d", prog.first);
                 ImGui::Text("Texture: %d", obj.texture_index);
+                showMeshTree(obj.mesh, models, std::string("Mesh: ") + obj.mesh.name + " " + std::to_string(obj.mesh.id));
                 if (ImGui::Button("Edit"))
                 {
                     std::cout << "Open\n";
@@ -187,79 +148,24 @@ void showScene(Scene& scene)
     ImGui::EndChild();
 }
 
-void showMeshes(std::map<std::string, DrawableMesh>& meshes)
-{
-    ImGui::BeginChild("Meshes", ImVec2(-1, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
-    for (auto const& mesh : meshes)
-    {
-        ImGui::Text("%s", mesh.first.c_str());
-    }
-
-    ImGui::EndChild();
-
-}
-
 void createGui(Application& application)
 {
     ImGui::Begin("Vulkan rendering engine", nullptr, ImGuiWindowFlags_MenuBar);
     if (ImGui::CollapsingHeader("Scene"))
     {
-        showScene(application.scene);
+        showScene(application.scene, application.models);
     }
     if (ImGui::CollapsingHeader("Meshes"))
     {
-        showMeshes(application.meshes);
+        showMeshes(application.meshes, application.models);
+    }
+    if (ImGui::CollapsingHeader("Models"))
+    {
+        showModels(application.models);
     }
 
     ImGui::End();
 
 }
-/*
-void createGui(RenderingSystem& system)
-{
-    ImGui::Begin("RenderingSystem", nullptr, ImGuiWindowFlags_MenuBar);
-
-    if (ImGui::CollapsingHeader("Bindings"))
-    {
-        if (ImGui::Button("Create Binding"))
-        {
-            ImGui::OpenPopup("create_binding_popup");
-        }
-
-        ImGui::BeginChild("Bindings", ImVec2(-1, 100), true, ImGuiWindowFlags_HorizontalScrollbar);
-        for (size_t i = 0; i < system.bindings.size(); ++i)
-        {
-            ImGui::Text("%u: %s", i, system.bindings[i].name.data());
-        }
-        ImGui::EndChild();
-
-    }
-    if (ImGui::CollapsingHeader("Buffers"))
-    {
-        if (ImGui::Button("Create buffer"))
-        {
-            ImGui::OpenPopup("create_buffer_popup");
-        }
-
-        ImGui::BeginChild("Buffers", ImVec2(-1, 100), true, ImGuiWindowFlags_HorizontalScrollbar);
-        for (size_t i = 0; i < system.buffers.size(); ++i)
-        {
-            ImGui::Text("%u: %s", i, system.buffers[i].name.data());
-        }
-        ImGui::EndChild();
-    }
-    if (ImGui::CollapsingHeader("Textures"))
-    {
-        if (ImGui::Button("Add"))
-        {
-        }
-    }
-
-    createBuffer(system);
-    createBinding(system);
-
-    ImGui::End();
-}
-*/
 
 }

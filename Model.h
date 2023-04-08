@@ -5,7 +5,11 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "glm/glm.hpp"
 
+#include "Id.h"
+
 #include <vector>
+#include <string>
+#include <map>
 
 struct ModelBufferObject
 {
@@ -47,6 +51,13 @@ struct Model
 {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
+
+    std::string path;
+    int const id = Id();
 };
 
-Model createBox(uint32_t width, uint32_t height);
+struct Models
+{
+    std::map<int, Model> models;
+    int loadModel(std::string const& model_path);
+};
