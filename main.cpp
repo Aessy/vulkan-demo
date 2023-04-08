@@ -372,7 +372,9 @@ int main()
 
     Scene scene;
     scene.camera = camera;
-    scene.light.position = glm::vec3(0,100,0);
+    scene.light.position = glm::vec3(0,10,0);
+    scene.light.light_color = glm::vec3(1,1,1);
+    scene.light.strength = 50.0f;
     for (auto const& mesh : meshes.meshes)
     {
         scene.objects[0].push_back(createObject(mesh.second));

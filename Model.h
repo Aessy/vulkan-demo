@@ -20,13 +20,15 @@ struct ModelBufferObject
 struct LightBufferObject
 {
     alignas(16) glm::vec3 position;
+    alignas(16) glm::vec3 light_color;
+    float strength;
 };
 
 struct WorldBufferObject
 {
     alignas(16) glm::mat4 camera_view;
     alignas(16) glm::mat4 camera_proj;
-    alignas(16) glm::vec3 light_position;
+    alignas(16) LightBufferObject light_position;
 };
 
 struct Vertex

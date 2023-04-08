@@ -1,9 +1,15 @@
 #version 460
 
-layout(set = 1, binding = 0) uniform UniformLight {
+struct LightBufferData
+{
+    vec3 position;
+    vec3 light_color;
+    float strength;
+};
+layout(set = 1, binding = 0) uniform UniformWorld{
     mat4 view;
     mat4 proj;
-    vec3 light_pos;
+    LightBufferData light;
 } world;
 
 struct ObjectData
@@ -21,30 +27,17 @@ layout(location = 1) in vec3 in_color;
 layout(location = 2) in vec2 in_tex_coord;
 layout(location = 3) in vec3 in_normal;
 
-layout(location = 0) out vec2 uv;
-layout(location = 1) out vec3 position_worldspace;
-layout(location = 2) out vec3 normal_cameraspace;
-layout(location = 3) out vec3 eye_direction_cameraspace;
-layout(location = 4) out vec3 light_direction_cameraspace;
-layout(location = 5) out flat uint texture_id;
-layout(location = 6) out vec3 color;
+layout(location = 0) out vec3 position_worldspace;
+layout(location = 1) out vec3 normal;
+layout(location = 2) out flat uint texture_id;
+layout(location = 3) out vec2 uv;
 
 void main() {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
     gl_Position = world.proj * world.view * ubo.model * vec4(inPosition, 1.0);
 
     position_worldspace = (ubo.model * vec4(inPosition, 1)).xyz;
-
-    vec3 vertex_position_cameraspace = (world.view * ubo.model * vec4(inPosition, 1)).xyz;
-    eye_direction_cameraspace = vec3(0,0,0) - vertex_position_cameraspace;
-
-    vec3 light_position_cameraspace = (world.view * vec4(world.light_pos,1)).xyz;
-    light_direction_cameraspace = light_position_cameraspace + eye_direction_cameraspace;
-
-    //normal_cameraspace = (world.view * ubo.model * vec4(in_normal,0)).xyz;
-    normal_cameraspace = in_normal;
-
-    uv = in_tex_coord;
+    normal = in_normal;
     texture_id = ubo.texture_index;
-    color = in_color;
+    uv = in_tex_coord;
 }

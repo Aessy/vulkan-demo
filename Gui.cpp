@@ -75,11 +75,25 @@ void showCamera(Camera const& camera)
     }
 }
 
-void showLight(LightBufferObject const& light)
+void showLight(LightBufferObject& light)
 {
     if (ImGui::BeginPopup("light"))
     {
-        ImGui::Text("Pos: x:%f, y:%f, z:%f",light.position.x, light.position.y, light.position.z);
+        ImGui::Text("Position");
+        ImGui::DragFloat("Pos x", &light.position.x, 0.1f, -100.0f, 100);
+        ImGui::DragFloat("Pos y", &light.position.y, 0.1f, -100.0f, 100);
+        ImGui::DragFloat("Pos z", &light.position.z, 0.1f, -100.0f, 100);
+        ImGui::Text("Strength");
+        ImGui::DragFloat("Strength", &light.strength, 1.0f, 0.0f, 1000.0f);
+
+        static float colors[3] {light.light_color.r, light.light_color.g, light.light_color.b};
+
+        if (ImGui::ColorEdit3("Color", colors))
+        {
+            light.light_color.r = colors[0];
+            light.light_color.g = colors[1];
+            light.light_color.b = colors[2];
+        }
         ImGui::EndPopup();
     }
 }
@@ -89,9 +103,9 @@ void showObject(Object& obj)
     {
         std::cout << "object\n";
         ImGui::Text("Position");
-        ImGui::InputFloat("Pos x", &obj.position.x, 1.0f, 10.0f);
-        ImGui::InputFloat("Pos y", &obj.position.y, 1.0f, 10.0f);
-        ImGui::InputFloat("Pos z", &obj.position.z, 1.0f, 10.0f);
+        ImGui::DragFloat("Pos x", &obj.position.x, 0.1f, -100.0f, 100.0f);
+        ImGui::DragFloat("Pos y", &obj.position.y, 0.1f, -100.0f, 100.0f);
+        ImGui::DragFloat("Pos z", &obj.position.z, 0.1f, -100.0f, 100.0f);
         ImGui::Text("Rotation");
         ImGui::InputFloat("X", &obj.rotation.x, 1.0f, 10.0f);
         ImGui::InputFloat("Y", &obj.rotation.y, 1.0f, 10.0f);
@@ -117,6 +131,12 @@ void showScene(Scene& scene, Models& models)
     {
         auto& light = scene.light;
         ImGui::Text("Pos: x:%f, y:%f, z:%f",light.position.x, light.position.y, light.position.z);
+        if (ImGui::Button("Edit"))
+        {
+            ImGui::OpenPopup("light");
+        }
+
+        showLight(light);
         ImGui::TreePop();
     }
 
@@ -143,7 +163,6 @@ void showScene(Scene& scene, Models& models)
             }
         }
     }
-
 
     ImGui::EndChild();
 }

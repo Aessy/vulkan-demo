@@ -34,8 +34,7 @@ inline WorldBufferObject createWorldBufferObject(Scene const& scene)
     ubo.camera_proj = scene.camera.proj;
     ubo.camera_proj[1][1] *= -1;
 
-    ubo.light_position = scene.light.position;
-
+    ubo.light_position = scene.light;
     return ubo;
 }
 
