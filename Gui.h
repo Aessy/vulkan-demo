@@ -13,6 +13,6 @@
 namespace gui
 {
 
-void createGui(Application& application);
+void createGui(RenderingState const& core, Application& application);
 
 }

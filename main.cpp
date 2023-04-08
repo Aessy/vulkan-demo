@@ -448,7 +448,7 @@ int main()
 
         // ImGui::ShowDemoWindow();
 
-        gui::createGui(application);
+        gui::createGui(core, application);
 
         auto result = drawFrame(core, application);
         if (result == DrawResult::RESIZE)

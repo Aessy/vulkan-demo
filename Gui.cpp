@@ -8,11 +8,147 @@
 #include <iostream>
 
 #include "Scene.h"
+#include "height_map.h"
 
 #include "Application.h"
 
 namespace gui
 {
+
+void createModel(RenderingState const& state, Models& models)
+{
+    if (ImGui::BeginPopup("create_model"))
+    {
+        ImGui::Text("Create model");
+
+        static const char* items[] = {"Box", "Grid"};
+        static int item_current = 0;
+        static float size = 1;
+        static int boxes_per_row = 1;
+        static std::array<char, 20> name {{}};
+        ImGui::Combo("Mesh type", &item_current, items, 2);
+
+        if (item_current == 0)
+        {
+            // TODO: Make box
+            ImGui::Text("TODO");
+        }
+        else if (item_current == 1)
+        {
+            ImGui::InputText("Name", name.data(), name.size()-1);
+            ImGui::InputFloat("Grid size", &size, 0.1f, 1.0f);
+            ImGui::DragInt("Boxes per row", &boxes_per_row, 1, 1, 100);
+            ImGui::Text("Vertices: %d", boxes_per_row*boxes_per_row*4);
+        }
+
+        if (ImGui::Button("Create"))
+        {
+            if (item_current == 1)
+            {
+                Model m = createFlatGround(boxes_per_row, size);
+                m.path = name.data();
+                models.models.insert({m.id, m});
+            }
+
+            item_current = 0;
+            size = 1;
+            boxes_per_row = 1;
+            name = {{}};
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+}
+
+void createMesh(RenderingState const& core, Application& app)
+{
+    if (ImGui::BeginPopup("create_mesh"))
+    {
+        ImGui::Text("Create mesh");
+
+        static auto current_item = app.models.models.begin();
+        static int current_id = current_item->first;
+        static std::array<char, 30> name{{}};
+        if (ImGui::BeginCombo("Combo", app.models.models[current_id].path.c_str()))
+        {
+            for (auto const& item : app.models.models)
+            {
+                bool selected = current_id == item.first;
+                if (ImGui::Selectable(item.second.path.c_str(), &selected))
+                {
+                    current_id = item.first;
+                }
+
+                if (selected)
+                {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+
+            ImGui::EndCombo();
+        }
+
+        ImGui::InputText("Name", name.data(), name.size()-1);
+
+        if (ImGui::Button("Create mesh"))
+        {
+            app.meshes.loadMesh(core,app.models.models[current_id], name.data());
+            name = {{}};
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+}
+
+void createObject(Application& app)
+{
+    if (ImGui::BeginPopup("create_object"))
+    {
+        ImGui::Text("Create Object");
+
+        static auto current_item = app.meshes.meshes.begin();
+        static int current_id = current_item->first;
+        static std::array<char, 30> name{{}};
+        static float pos[3]{};
+        if (ImGui::BeginCombo("Combo", app.meshes.meshes[current_id].name.c_str()))
+        {
+            for (auto const& item : app.meshes.meshes)
+            {
+                bool selected = current_id == item.first;
+                if (ImGui::Selectable(item.second.name.c_str(), &selected))
+                {
+                    current_id = item.first;
+                }
+
+                if (selected)
+                {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+
+            ImGui::EndCombo();
+        }
+
+        ImGui::InputText("Name", name.data(), name.size()-1);
+        ImGui::DragFloat3("Position", pos, 0.1, -100, 100);
+        // TODO more info like material, texture, etc
+
+        if (ImGui::Button("Create object"))
+        {
+            app.scene.objects[0].push_back(createObject(app.meshes.meshes.at(current_id), glm::vec3(pos[0], pos[1], pos[2])));
+            name = {{}};
+            pos[0] = 0;
+            pos[1] = 0;
+            pos[2] = 0;
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+
+}
 
 void showModelTree(Model& model)
 {
@@ -27,7 +163,7 @@ void showModelTree(Model& model)
 
 }
 
-void showModels(Models& models)
+void showModels(RenderingState const& core, Models& models)
 {
     ImGui::BeginChild("Models", ImVec2(-1, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
     for (auto& model: models.models)
@@ -37,6 +173,11 @@ void showModels(Models& models)
 
     ImGui::EndChild();
 
+    if (ImGui::Button("Create model"))
+    {
+        ImGui::OpenPopup("create_model");
+    }
+    createModel(core, models);
 }
 
 void showMeshTree(DrawableMesh& mesh, Models& models, std::string const& name)
@@ -53,15 +194,21 @@ void showMeshTree(DrawableMesh& mesh, Models& models, std::string const& name)
     }
 }
 
-void showMeshes(Meshes& meshes, Models& models)
+void showMeshes(RenderingState const& core, Application& app)
 {
     ImGui::BeginChild("Meshes", ImVec2(-1, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
-    for (auto& mesh : meshes.meshes)
+    for (auto& mesh : app.meshes.meshes)
     {
-        showMeshTree(mesh.second, models, (mesh.second.name + ": " + std::to_string(mesh.second.id).c_str()));
+        showMeshTree(mesh.second, app.models, (mesh.second.name + ": " + std::to_string(mesh.second.id).c_str()));
     }
 
     ImGui::EndChild();
+
+    if (ImGui::Button("Create mesh"))
+    {
+        ImGui::OpenPopup("create_mesh");
+    }
+    createMesh(core, app);
 }
 void showCamera(Camera const& camera)
 {
@@ -115,7 +262,7 @@ void showObject(Object& obj)
         ImGui::EndPopup();
     }
 }
-void showScene(Scene& scene, Models& models)
+void showScene(Application& app, Scene& scene, Models& models)
 {
     ImGui::BeginChild("Scene", ImVec2(-1, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
 
@@ -165,22 +312,62 @@ void showScene(Scene& scene, Models& models)
     }
 
     ImGui::EndChild();
+
+    if (ImGui::Button("Create object"))
+    {
+        ImGui::OpenPopup("create_object");
+    }
+
+    createObject(app);
 }
 
-void createGui(Application& application)
+void showMaterial(Application& application)
+{
+    ImGui::BeginChild("Materials", ImVec2(-1, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
+
+    for (auto& material : application.programs)
+    {
+        ImGui::Text(std::to_string(material->id).c_str());
+    }
+
+    ImGui::EndChild();
+
+}
+
+void showTextures(Application& application)
+{
+    ImGui::BeginChild("Textures", ImVec2(-1, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
+
+    for (auto& texture : application.textures.textures)
+    {
+    }
+
+    ImGui::EndChild();
+
+}
+
+void createGui(RenderingState const& core, Application& application)
 {
     ImGui::Begin("Vulkan rendering engine", nullptr, ImGuiWindowFlags_MenuBar);
     if (ImGui::CollapsingHeader("Scene"))
     {
-        showScene(application.scene, application.models);
+        showScene(application, application.scene, application.models);
     }
     if (ImGui::CollapsingHeader("Meshes"))
     {
-        showMeshes(application.meshes, application.models);
+        showMeshes(core, application);
     }
     if (ImGui::CollapsingHeader("Models"))
     {
-        showModels(application.models);
+        showModels(core, application.models);
+    }
+    if (ImGui::CollapsingHeader("Materials"))
+    {
+        showMaterial(application);
+    }
+    if (ImGui::CollapsingHeader("Textures"))
+    {
+        showTextures(application);
     }
 
     ImGui::End();
