@@ -307,14 +307,14 @@ int main()
     srand (time(NULL));
     RenderingState core = createVulkanRenderState();
 
-    Textures textures = createTextures(core, {"./textures/ground.jpg"});
+    Textures textures = createTextures(core, {"./textures/ground.jpg", "./textures/create.jpg"});
 
     layer_types::Program program_desc;
     program_desc.fragment_shader = {{"./shaders/frag.spv"}};
     program_desc.vertex_shader= {{"./shaders/vert.spv"}};
     program_desc.buffers.push_back({layer_types::Buffer{
         .name = {{"texture_buffer"}},
-        .type = layer_types::BufferType::WorldBufferObject,
+        .type = layer_types::BufferType::NoBuffer,
         .size = 1,
         .binding = layer_types::Binding {
             .name = {{"binding textures"}},
@@ -379,6 +379,8 @@ int main()
     {
         scene.objects[0].push_back(createObject(mesh.second));
     }
+
+    scene.objects[0][0].texture_index = 1;
 
     Application application{
         .textures = std::move(textures),

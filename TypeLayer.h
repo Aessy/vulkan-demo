@@ -17,7 +17,8 @@ enum class BindingType : int
 enum class BufferType : int
 {
     ModelBufferObject,
-    WorldBufferObject
+    WorldBufferObject,
+    NoBuffer
 };
 
 struct Binding

@@ -31,6 +31,12 @@ struct WorldBufferObject
     alignas(16) LightBufferObject light_position;
 };
 
+struct Terrain
+{
+     float max_height{};
+     int displacement_map{};
+};
+
 struct Vertex
 {
     glm::vec3 pos;

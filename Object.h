@@ -7,6 +7,14 @@
 #include "Id.h"
 #include "Mesh.h"
 
+/*
+struct Terrain
+{
+    size_t max_height{};
+    int displacement_map{-1};
+};
+*/
+
 struct Object
 {
     DrawableMesh mesh;

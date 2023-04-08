@@ -44,6 +44,26 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
     return { graphic_pipeline.first, graphic_pipeline.second, desc_sets};
 };
 
+template<typename BufferType, typename BufferTypeOut>
+auto createModel(RenderingState const& core, layer_types::BindingType binding_type, GpuProgram const& program, Textures const& textures, size_t index, int size)
+{
+    std::vector<UniformBuffer> buffers;
+    if (binding_type == layer_types::BindingType::Uniform)
+    {
+        buffers = createUniformBuffers<BufferType>(core);
+    }
+    else if (binding_type == layer_types::BindingType::Storage)
+    {
+        buffers = createStorageBuffers<BufferType>(core, size);
+    }
+    if (binding_type != layer_types::BindingType::TextureSampler)
+    {
+        updateUniformBuffer<BufferType>(core.device, buffers, program.descriptor_sets[index].set, program.descriptor_sets[index].layout_bindings[0], size);
+    }
+
+    return BufferTypeOut{buffers};
+}
+
 std::unique_ptr<Program> createProgram(layer_types::Program const& program_data, RenderingState const& core, Textures const& textures)
 {
     namespace lt = layer_types;
@@ -83,48 +103,18 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
     size_t index = 0;
     for (auto const& buffer : program_data.buffers)
     {
-        switch(buffer.binding.type)
+        switch (buffer.type)
         {
-            case lt::BindingType::TextureSampler:
-            {
-                updateImageSampler(core.device, textures.textures, program.descriptor_sets[index].set, program.descriptor_sets[index].layout_bindings[0]);
+            case lt::BufferType::ModelBufferObject:
+                model_types.push_back(createModel<ModelBufferObject, buffer_types::Model>(core, buffer.binding.type, program, textures, index, buffer.size));
                 break;
-            }
-            case lt::BindingType::Uniform:
-            {
-                std::vector<UniformBuffer> buffers;
-                if (buffer.type == lt::BufferType::ModelBufferObject)
-                {
-                    buffers = createUniformBuffers<ModelBufferObject>(core);
-                    updateUniformBuffer<ModelBufferObject>(core.device, buffers, program.descriptor_sets[index].set, program.descriptor_sets[index].layout_bindings[0], buffer.size);
-                    model_types.push_back(buffer_types::Model{buffers});
-                }
-                else if (buffer.type == lt::BufferType::WorldBufferObject)
-                {
-                    buffers = createUniformBuffers<WorldBufferObject>(core);
-                    updateUniformBuffer<WorldBufferObject>(core.device, buffers, program.descriptor_sets[index].set, program.descriptor_sets[index].layout_bindings[0], buffer.size);
-                    model_types.push_back(buffer_types::World{buffers});
-                }
+            case lt::BufferType::WorldBufferObject:
+                model_types.push_back(createModel<WorldBufferObject, buffer_types::World>(core, buffer.binding.type, program, textures, index, buffer.size));
                 break;
-            }
-            case lt::BindingType::Storage:
-            {
-                std::vector<UniformBuffer> buffers;
-                if (buffer.type == lt::BufferType::ModelBufferObject)
-                {
-                    auto buffers = createStorageBuffers<ModelBufferObject>(core, buffer.size);
-                    updateUniformBuffer<ModelBufferObject>(core.device, buffers, program.descriptor_sets[index].set, program.descriptor_sets[index].layout_bindings[0], buffer.size);
-                    model_types.push_back(buffer_types::Model{buffers});
-                }
-                else if (buffer.type == lt::BufferType::WorldBufferObject)
-                {
-                    auto buffers = createStorageBuffers<WorldBufferObject>(core, buffer.size);
-                    updateUniformBuffer<WorldBufferObject>(core.device, buffers, program.descriptor_sets[index].set, program.descriptor_sets[index].layout_bindings[0], buffer.size);
-                    model_types.push_back(buffer_types::World{buffers});
-                }
+            case lt::BufferType::NoBuffer:
+                if (buffer.binding.type == lt::BindingType::TextureSampler)
+                    updateImageSampler(core.device, textures.textures, program.descriptor_sets[index].set, program.descriptor_sets[index].layout_bindings[0]);
                 break;
-            }
-
         };
 
         ++index;
