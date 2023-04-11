@@ -1,15 +1,36 @@
 #version 460
+#extension GL_EXT_nonuniform_qualifier : require
 
-layout(set = 0, binding = 0) uniform UniformWorld{
+layout(set = 0, binding = 0) uniform sampler2D texSampler[];
+
+struct LightBufferData
+{
+    vec3 position;
+    vec3 light_color;
+    float strength;
+};
+layout(set = 1, binding = 0) uniform UniformWorld{
     mat4 view;
     mat4 proj;
-    vec3 light_pos;
+    LightBufferData light;
 } world;
 
-layout(set = 1, binding = 0) uniform UniformObjectData {
+struct ObjectData
+{
     mat4 model;
     uint texture_index;
-} object_data;
+};
+
+layout(std140,set = 2, binding = 0) readonly buffer ObjectBuffer{
+    ObjectData objects[];
+} ubo2;
+
+layout(set = 3, binding = 0) uniform UniformTerrain{
+    float max_height;
+    uint displacement_map;
+    uint normal_map;
+    uint texture_id;
+} terrain;
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 in_color;
@@ -18,11 +39,22 @@ layout(location = 3) in vec3 in_normal;
 
 layout(location = 0) out vec3 position_worldspace;
 layout(location = 1) out vec3 normal;
+layout(location = 2) out vec2 uv;
 
 void main()
 {
-    gl_Position = world.proj * world.view * object_data.model * vec4(inPosition, 1.0);
+    ObjectData ubo = ubo2.objects[gl_BaseInstance];
 
-    position_worldspace = (object_data.model * vec4(inPosition, 1)).xyz;
-    normal = in_normal;
+    vec3 pos = inPosition;
+
+    vec3 normal_displ = texture(texSampler[terrain.normal_map], in_tex_coord).rgb;
+    normal = normalize(normal_displ);
+    uv = in_tex_coord;
+
+    vec4 displace = texture(texSampler[terrain.displacement_map], in_tex_coord);
+    pos.y += displace.r * terrain.max_height;
+
+    gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);
+
+    position_worldspace = (ubo.model * vec4(pos, 1)).xyz;
 }

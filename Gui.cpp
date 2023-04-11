@@ -37,7 +37,7 @@ void createModel(RenderingState const& state, Models& models)
         {
             ImGui::InputText("Name", name.data(), name.size()-1);
             ImGui::InputFloat("Grid size", &size, 0.1f, 1.0f);
-            ImGui::DragInt("Boxes per row", &boxes_per_row, 1, 1, 100);
+            ImGui::DragInt("Boxes per row", &boxes_per_row, 1, 1, 5000);
             ImGui::Text("Vertices: %d", boxes_per_row*boxes_per_row*4);
         }
 
@@ -112,6 +112,8 @@ void createObject(Application& app)
         static int current_id = current_item->first;
         static std::array<char, 30> name{{}};
         static float pos[3]{};
+        static int texture_id{};
+        static int material{};
         if (ImGui::BeginCombo("Combo", app.meshes.meshes[current_id].name.c_str()))
         {
             for (auto const& item : app.meshes.meshes)
@@ -133,15 +135,22 @@ void createObject(Application& app)
 
         ImGui::InputText("Name", name.data(), name.size()-1);
         ImGui::DragFloat3("Position", pos, 0.1, -100, 100);
+        ImGui::InputInt("Texture: ", &texture_id,1,32);
+        ImGui::DragInt("Material: ", &material, 1, 0, app.programs.size()-1);
         // TODO more info like material, texture, etc
 
         if (ImGui::Button("Create object"))
         {
-            app.scene.objects[0].push_back(createObject(app.meshes.meshes.at(current_id), glm::vec3(pos[0], pos[1], pos[2])));
+            auto obj = createObject(app.meshes.meshes.at(current_id), glm::vec3(pos[0], pos[1], pos[2]));
+            obj.texture_index = texture_id;
+
+            app.scene.objects[material].push_back(std::move(obj));
             name = {{}};
             pos[0] = 0;
             pos[1] = 0;
             pos[2] = 0;
+            texture_id = 0;
+            material = 0;
             ImGui::CloseCurrentPopup();
         }
 
@@ -244,7 +253,7 @@ void showLight(LightBufferObject& light)
         ImGui::EndPopup();
     }
 }
-void showObject(Object& obj)
+void showObject(Object& obj, Application const& app)
 {
     if (ImGui::BeginPopup("object"))
     {
@@ -259,6 +268,8 @@ void showObject(Object& obj)
         ImGui::InputFloat("Z", &obj.rotation.z, 1.0f, 10.0f);
         ImGui::Text("Angle");
         ImGui::DragFloat("Angle", &obj.angel, 0.01, 0, 360);
+        ImGui::Text("Texture");
+        ImGui::DragInt("Texture", &obj.texture_index, 1, 0, app.textures.textures.size());
         ImGui::EndPopup();
     }
 }
@@ -293,7 +304,7 @@ void showScene(Application& app, Scene& scene, Models& models)
         {
             if (ImGui::TreeNode((std::string(obj.mesh.name) + std::to_string(obj.id)).c_str()))
             {
-                showObject(obj);
+                showObject(obj, app);
                 ImGui::Text("Pos: x:%f, y:%f, z:%f",obj.position.x, obj.position.y, obj.position.z);
                 ImGui::Text("Angle: %f", obj.angel);
                 ImGui::Text("Scale: %f", obj.scale);
@@ -317,6 +328,13 @@ void showScene(Application& app, Scene& scene, Models& models)
     {
         ImGui::OpenPopup("create_object");
     }
+
+    ImGui::Text("Terrain");
+    ImGui::InputInt("Displacement map", &app.scene.terrain.displacement_map);
+    ImGui::InputInt("Normal map", &app.scene.terrain.normal_map);
+    ImGui::InputInt("Texture id", &app.scene.terrain.texture_id);
+    ImGui::DragFloat("Height", &app.scene.terrain.max_height, 1.0f, 0.0f, 200.0f);
+
 
     createObject(app);
 }

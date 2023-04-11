@@ -45,7 +45,7 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
 };
 
 template<typename BufferType, typename BufferTypeOut>
-auto createModel(RenderingState const& core, layer_types::BindingType binding_type, GpuProgram const& program, Textures const& textures, size_t index, int size)
+auto createModel(RenderingState const& core, layer_types::BindingType binding_type, GpuProgram const& program, size_t index, int size)
 {
     std::vector<UniformBuffer> buffers;
     if (binding_type == layer_types::BindingType::Uniform)
@@ -106,10 +106,13 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
         switch (buffer.type)
         {
             case lt::BufferType::ModelBufferObject:
-                model_types.push_back(createModel<ModelBufferObject, buffer_types::Model>(core, buffer.binding.type, program, textures, index, buffer.size));
+                model_types.push_back(createModel<ModelBufferObject, buffer_types::Model>(core, buffer.binding.type, program, index, buffer.size));
                 break;
             case lt::BufferType::WorldBufferObject:
-                model_types.push_back(createModel<WorldBufferObject, buffer_types::World>(core, buffer.binding.type, program, textures, index, buffer.size));
+                model_types.push_back(createModel<WorldBufferObject, buffer_types::World>(core, buffer.binding.type, program, index, buffer.size));
+                break;
+            case lt::BufferType::TerrainBufferObject:
+                model_types.push_back(createModel<TerrainBufferObject, buffer_types::Terrain>(core, buffer.binding.type, program, index, buffer.size));
                 break;
             case lt::BufferType::NoBuffer:
                 if (buffer.binding.type == lt::BindingType::TextureSampler)

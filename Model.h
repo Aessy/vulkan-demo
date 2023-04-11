@@ -31,10 +31,12 @@ struct WorldBufferObject
     alignas(16) LightBufferObject light_position;
 };
 
-struct Terrain
+struct TerrainBufferObject
 {
      float max_height{};
      int displacement_map{};
+     int normal_map{};
+     int texture_id{};
 };
 
 struct Vertex

@@ -34,6 +34,11 @@ inline void renderScene(vk::CommandBuffer& cmd_buffer, Scene const& scene, std::
                     writeBuffer(model->buffers[frame],ubo,i);
                 }
             }
+            else if (auto* model = std::get_if<buffer_types::Terrain>(&buffer))
+            {
+                auto ubo = createTerrainBufferObject(scene);
+                writeBuffer(model->buffers[frame],ubo);
+            }
         }
 
         cmd_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, program.program.pipeline[0]);

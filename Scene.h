@@ -24,6 +24,8 @@ struct Scene
 
     LightBufferObject light;
 
+    TerrainBufferObject terrain;
+
 };
 
 inline WorldBufferObject createWorldBufferObject(Scene const& scene)
@@ -49,4 +51,10 @@ inline ModelBufferObject createModelBufferObject(Object const& object)
     model_buffer.texture_index = object.texture_index;
 
     return model_buffer;
+}
+
+inline TerrainBufferObject createTerrainBufferObject(Scene const& scene)
+{
+    // Should probably be per object, so that eatch object can have unique terrain data.
+    return scene.terrain;
 }

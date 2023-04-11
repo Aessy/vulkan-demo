@@ -35,7 +35,10 @@ struct Model : BufferBase
 struct World : BufferBase
 {};
 
-using ModelType = std::variant<Model, World>;
+struct Terrain : BufferBase
+{};
+
+using ModelType = std::variant<Model, World, Terrain>;
 
 };
 

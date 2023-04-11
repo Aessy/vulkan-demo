@@ -302,12 +302,74 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
     }
 }
 
+layer_types::Program createTerrainProgram()
+{
+    layer_types::Program program_desc;
+    program_desc.fragment_shader = {{"./shaders/terrain_frag.spv"}};
+    program_desc.vertex_shader= {{"./shaders/terrain_vert.spv"}};
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"texture_buffer"}},
+        .type = layer_types::BufferType::NoBuffer,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding textures"}},
+            .binding = 0,
+            .type = layer_types::BindingType::TextureSampler,
+            .size = 32,
+            .vertex = true,
+            .fragment = true
+        }
+    }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"world_buffer"}},
+        .type = layer_types::BufferType::WorldBufferObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding world"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .vertex = true,
+            .fragment = true
+        }
+    }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"model_buffer"}},
+        .type = layer_types::BufferType::ModelBufferObject,
+        .size = 10,
+        .binding = layer_types::Binding {
+            .name = {{"binding model"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Storage,
+            .size = 1,
+            .vertex = true,
+            .fragment = true
+        }
+    }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"terrain_buffer"}},
+        .type = layer_types::BufferType::TerrainBufferObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding model"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .vertex = true,
+            .fragment = true
+        }
+    }});
+
+    return program_desc;
+}
+
 int main()
 {
     srand (time(NULL));
     RenderingState core = createVulkanRenderState();
 
-    Textures textures = createTextures(core, {"./textures/ground.jpg", "./textures/create.jpg"});
+    Textures textures = createTextures(core, {"./textures/ground.jpg", "./textures/create.jpg",
+                        "./textures/brown_mud_03_disp_1k.png", "./textures/brown_mud_03_nor_gl_1k.jpg", "./textures/brown_mud_03_diff_1k.jpg"});
 
     layer_types::Program program_desc;
     program_desc.fragment_shader = {{"./shaders/frag.spv"}};
@@ -358,6 +420,7 @@ int main()
 
     std::vector<std::unique_ptr<Program>> programs;
     programs.push_back(createProgram(program_desc, core, textures));
+    programs.push_back(createProgram(createTerrainProgram(), core, textures));
 
     Camera camera;
     camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.1f, 1000.0f);

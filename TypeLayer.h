@@ -18,6 +18,7 @@ enum class BufferType : int
 {
     ModelBufferObject,
     WorldBufferObject,
+    TerrainBufferObject,
     NoBuffer
 };
 
