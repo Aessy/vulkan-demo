@@ -14,6 +14,8 @@ struct Texture
     vk::DeviceMemory memory;
     vk::ImageView view;
     vk::Sampler sampler;
+
+    std::string const name;
 };
 
 struct Textures

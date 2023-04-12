@@ -4,6 +4,8 @@
 
 #include <stb/stb_image.h>
 
+#include <filesystem>
+
 std::pair<vk::Image, vk::DeviceMemory> createTextureImage(RenderingState const& state, std::string const& path)
 {
     int width, height, channels {};
@@ -43,11 +45,14 @@ Texture createTexture(RenderingState const& state, std::string const& path, vk::
     auto image = createTextureImage(state, path);
     auto image_view = createTextureImageView(state, image.first);
 
+    auto file_name = std::filesystem::path(path).filename();
+
     return Texture {
         .image = image.first,
         .memory = image.second,
         .view = image_view,
-        .sampler = sampler
+        .sampler = sampler,
+        .name = file_name
     };
 }
 

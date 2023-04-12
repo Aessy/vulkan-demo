@@ -136,6 +136,10 @@ void createObject(Application& app)
         ImGui::InputText("Name", name.data(), name.size()-1);
         ImGui::DragFloat3("Position", pos, 0.1, -100, 100);
         ImGui::InputInt("Texture: ", &texture_id,1,32);
+        if (texture_id < app.textures.textures.size())
+        {
+            ImGui::Text("Texture: %s", app.textures.textures[texture_id].name.c_str());
+        }
         ImGui::DragInt("Material: ", &material, 1, 0, app.programs.size()-1);
         // TODO more info like material, texture, etc
 
@@ -270,6 +274,11 @@ void showObject(Object& obj, Application const& app)
         ImGui::DragFloat("Angle", &obj.angel, 0.01, 0, 360);
         ImGui::Text("Texture");
         ImGui::DragInt("Texture", &obj.texture_index, 1, 0, app.textures.textures.size());
+        if (obj.texture_index < app.textures.textures.size())
+        {
+            ImGui::Text("Texture: %s", app.textures.textures[obj.texture_index].name.c_str());
+        }
+
         ImGui::EndPopup();
     }
 }
@@ -310,7 +319,7 @@ void showScene(Application& app, Scene& scene, Models& models)
                 ImGui::Text("Scale: %f", obj.scale);
                 ImGui::Text("Indices: %d", obj.mesh.indices_size);
                 ImGui::Text("Material: %d", prog.first);
-                ImGui::Text("Texture: %d", obj.texture_index);
+                ImGui::Text("Texture: %s", app.textures.textures[obj.texture_index].name.c_str());
                 showMeshTree(obj.mesh, models, std::string("Mesh: ") + obj.mesh.name + " " + std::to_string(obj.mesh.id));
                 if (ImGui::Button("Edit"))
                 {
@@ -358,6 +367,7 @@ void showTextures(Application& application)
 
     for (auto& texture : application.textures.textures)
     {
+        ImGui::Text("%s", texture.name.c_str());
     }
 
     ImGui::EndChild();
