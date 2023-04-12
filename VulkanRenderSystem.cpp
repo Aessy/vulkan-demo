@@ -580,16 +580,16 @@ DepthResources createDepth(RenderingState const& state)
 {
     vk::Format format = getDepthFormat();
 
-    auto depth_image = createImage(state, state.swap_chain.extent.width, state.swap_chain.extent.height, format,
+    auto depth_image = createImage(state, state.swap_chain.extent.width, state.swap_chain.extent.height, 1, format,
                             vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment,
                             vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-    auto depth_image_view = createImageView(state.device, depth_image.first, format, vk::ImageAspectFlagBits::eDepth);
+    auto depth_image_view = createImageView(state.device, depth_image.first, format, vk::ImageAspectFlagBits::eDepth, 1);
 
     return {depth_image.first, depth_image.second, depth_image_view};
 }
 
-std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties)
+std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties)
 {
     vk::ImageCreateInfo image_info;
     image_info.sType = vk::StructureType::eImageCreateInfo;
@@ -597,7 +597,7 @@ std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, 
     image_info.extent.width = width;
     image_info.extent.height = height;
     image_info.extent.depth = 1;
-    image_info.mipLevels = 1;
+    image_info.mipLevels = mip_levels;
     image_info.arrayLayers = 1;
     image_info.format = format;
     image_info.tiling = tiling;
@@ -623,7 +623,7 @@ std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, 
     return std::make_pair(texture_image.value, texture_image_memory.value);
 }
 
-vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags)
+vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels)
 {
     vk::ImageViewCreateInfo view_info;
     view_info.sType = vk::StructureType::eImageViewCreateInfo;
@@ -632,9 +632,9 @@ vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, 
     view_info.format = format;
     view_info.subresourceRange.aspectMask = aspec_flags;
     view_info.subresourceRange.baseMipLevel = 0;
-    view_info.subresourceRange.levelCount = 1;
     view_info.subresourceRange.baseArrayLayer = 0;
     view_info.subresourceRange.layerCount = 1;
+    view_info.subresourceRange.levelCount= mip_levels;
 
     auto texture_image_view = device.createImageView(view_info);
     checkResult(texture_image_view.result);
@@ -821,7 +821,7 @@ static void copyBuffer(RenderingState const& state, vk::Buffer src_buffer, vk::B
     endSingleTimeCommands(state, cmd_buffer);
 }
 
-void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout)
+void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels)
 {
     auto cmd_buffer = beginSingleTimeCommands(state);
 
@@ -834,7 +834,7 @@ void transitionImageLayout(RenderingState const& state, vk::Image const& image, 
     barrier.image = image;
     barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
     barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.levelCount = mip_levels;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
     barrier.srcAccessMask = static_cast<vk::AccessFlagBits>(0); // TODO
@@ -920,9 +920,9 @@ vk::Buffer createBuffer(RenderingState const& state,
     return buffer;
 }
 
-vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image)
+vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, uint32_t mip_levels)
 {
-    auto texture_image_view = createImageView(state.device, texture_image, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
+    auto texture_image_view = createImageView(state.device, texture_image, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor, mip_levels);
     return texture_image_view;
 }
 
@@ -948,7 +948,7 @@ vk::Sampler createTextureSampler(RenderingState const& state)
     sampler_info.mipmapMode = vk::SamplerMipmapMode::eLinear;
     sampler_info.mipLodBias = 0.0f;
     sampler_info.minLod = 0.0f;
-    sampler_info.maxLod = 0.0f;
+    sampler_info.maxLod = 11.0f;
 
     auto sampler = state.device.createSampler(sampler_info);
     checkResult(sampler.result);

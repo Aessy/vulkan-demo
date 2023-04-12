@@ -16,6 +16,8 @@ struct Texture
     vk::Sampler sampler;
 
     std::string const name;
+
+    uint32_t mip_levels;
 };
 
 struct Textures

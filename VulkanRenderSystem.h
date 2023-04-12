@@ -131,8 +131,8 @@ struct RenderingState
 };
 
 RenderingState createVulkanRenderState();
-std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
-vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags);
+std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
+vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels);
 
 
 
@@ -142,9 +142,9 @@ vk::CommandBuffer beginSingleTimeCommands(RenderingState const& state);;
 void endSingleTimeCommands(RenderingState const& state, vk::CommandBuffer const& cmd_buffer);
 vk::Buffer createVertexBuffer(RenderingState const& state, std::vector<Vertex> const& vertices);
 vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> indices);
-void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout);
+void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels);
 void copyBufferToImage(RenderingState const& state, vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height);
-vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image);
+vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, uint32_t mip_levels);
 vk::Sampler createTextureSampler(RenderingState const& state);
 vk::Buffer createBuffer(RenderingState const& state,
                         vk::DeviceSize size, vk::BufferUsageFlags usage,

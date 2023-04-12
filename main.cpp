@@ -368,8 +368,8 @@ int main()
     srand (time(NULL));
     RenderingState core = createVulkanRenderState();
 
-    Textures textures = createTextures(core, {"./textures/ground.jpg", "./textures/create.jpg",
-                        "./textures/brown_mud_03_disp_1k.png", "./textures/brown_mud_03_nor_gl_1k.jpg", "./textures/brown_mud_03_diff_1k.jpg"});
+    Textures textures = createTextures(core, {"./textures/ground.jpg", "textures/create.jpg"});
+                        //"./textures/brown_mud_03_disp_1k.png", "./textures/brown_mud_03_nor_gl_1k.jpg", "./textures/brown_mud_03_diff_1k.jpg"});
 
     layer_types::Program program_desc;
     program_desc.fragment_shader = {{"./shaders/frag.spv"}};
