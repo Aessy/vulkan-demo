@@ -368,7 +368,8 @@ int main()
     srand (time(NULL));
     RenderingState core = createVulkanRenderState();
 
-    Textures textures = createTextures(core, {"./textures/ground.jpg", "textures/create.jpg"});
+    Textures textures = createTextures(core, {"./textures/terrain.png", "./textures/terrain_norm_high.png", "./textures/terrain_norm_low.png", "./textures/terrain_norm_flat.png", "./textures/rock.png"});
+
                         //"./textures/brown_mud_03_disp_1k.png", "./textures/brown_mud_03_nor_gl_1k.jpg", "./textures/brown_mud_03_diff_1k.jpg"});
 
     layer_types::Program program_desc;
@@ -417,6 +418,8 @@ int main()
     Models models;
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
+    auto height_map_model = createFlatGround(512, 512);
+    models.models.insert({height_map_model.id, height_map_model});
 
     std::vector<std::unique_ptr<Program>> programs;
     programs.push_back(createProgram(program_desc, core, textures));
@@ -430,8 +433,8 @@ int main()
     camera.pos = glm::vec3(0,1,0);
 
     Meshes meshes;
-    meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
-    meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
+    meshes.loadMesh(core, models.models.at(height_map_model.id), "height_map");
+    //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
     Scene scene;
     scene.camera = camera;
@@ -440,10 +443,8 @@ int main()
     scene.light.strength = 50.0f;
     for (auto const& mesh : meshes.meshes)
     {
-        scene.objects[0].push_back(createObject(mesh.second));
+        scene.objects[1].push_back(createObject(mesh.second));
     }
-
-    scene.objects[0][0].texture_index = 1;
 
     Application application{
         .textures = std::move(textures),

@@ -38,10 +38,10 @@ Model createFlatGround(std::size_t size, float length)
             glm::vec3 bottom_left (x_top_left, 0, y_top_left+y_interval);
             glm::vec3 bottom_right (x_top_left+x_interval, 0, y_top_left+y_interval);
 
-            glm::vec2 tex_top_left((float)x/(x_size+1), (float)y/(y_size+1));
-            glm::vec2 tex_top_right((float)(x+1)/(x_size+1), (float)y/(y_size+1));
-            glm::vec2 tex_bottom_left((float)x/(x_size+1), float(y+1)/(y_size+1));
-            glm::vec2 tex_bottom_right((float)(x+1)/(x_size+1), float(y+1)/(y_size+1));
+            glm::vec2 tex_top_left((float)x/(x_size+1), 1.0-((float)y/(y_size+1)));
+            glm::vec2 tex_top_right((float)(x+1)/(x_size+1), 1.0-((float)y/(y_size+1)));
+            glm::vec2 tex_bottom_left((float)x/(x_size+1), 1.0-(float(y+1)/(y_size+1)));
+            glm::vec2 tex_bottom_right((float)(x+1)/(x_size+1), 1.0-(float(y+1)/(y_size+1)));
 
             model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=tex_top_left});
             model.vertices.push_back(Vertex{.pos=top_right,.tex_coord=tex_top_right});

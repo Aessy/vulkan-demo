@@ -45,11 +45,27 @@ void main()
 {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
 
+
+    vec2 uv_top_left = vec2(0,1);
+    vec2 uv_top_right = vec2(1,1);
+    vec2 uv_bottom_left = vec2(0,0);
+    vec2 uv_bottom_right = vec2(1,0);
+
+    vec2 uvs[4];
+    uvs[0] = uv_top_left;
+    uvs[1] = uv_top_right;
+    uvs[2] = uv_bottom_left;
+    uvs[3] = uv_bottom_right;
+
+    vec2 uv_pos = uvs[gl_VertexIndex%4];
+
     vec3 pos = inPosition;
 
-    vec3 normal_displ = texture(texSampler[terrain.normal_map], in_tex_coord).rgb;
+    vec3 normal_displ = 2.0 * texture(texSampler[terrain.normal_map], in_tex_coord).xyz - 1.0;
     normal = normalize(normal_displ);
-    uv = in_tex_coord;
+    
+    uv = uv_pos;
+
 
     vec4 displace = texture(texSampler[terrain.displacement_map], in_tex_coord);
     pos.y += displace.r * terrain.max_height;

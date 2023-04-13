@@ -35,14 +35,12 @@ void main()
     vec3 material_diffuse_color = texture(texSampler[terrain.texture_id], uv).rgb;
     vec3 material_ambient_color = vec3(0.3, 0.3, 0.3) * material_diffuse_color;
 
-    
-    vec3 light_dir = normalize(world.light.position - position_worldspace);
     vec3 n = normalize(normal);
+    vec3 light_dir = normalize(vec3(-1,-1,0)); //normalize(world.light.position - position_worldspace);
 
-    float cos_theta = clamp(dot(n,light_dir), 0,1);
+    float cos_theta = max(dot(n,light_dir), 0.1);
 
-    vec3 color = material_ambient_color +
-                 material_diffuse_color * light_color * cos_theta;
+    vec3 color = material_diffuse_color * light_color * cos_theta;
 
     out_color = vec4(color, 1);
 }
