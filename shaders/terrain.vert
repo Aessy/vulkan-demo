@@ -12,6 +12,7 @@ struct LightBufferData
 layout(set = 1, binding = 0) uniform UniformWorld{
     mat4 view;
     mat4 proj;
+    vec3 pos;
     LightBufferData light;
 } world;
 
@@ -40,11 +41,13 @@ layout(location = 3) in vec3 in_normal;
 layout(location = 0) out vec3 position_worldspace;
 layout(location = 1) out vec3 normal;
 layout(location = 2) out vec2 uv;
+layout(location = 3) out vec2 tex_coord;
 
 void main()
 {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
 
+    tex_coord = in_tex_coord;
 
     vec2 uv_top_left = vec2(0,1);
     vec2 uv_top_right = vec2(1,1);
@@ -61,8 +64,7 @@ void main()
 
     vec3 pos = inPosition;
 
-    vec3 normal_displ = 2.0 * texture(texSampler[terrain.normal_map], in_tex_coord).xyz - 1.0;
-    normal = normalize(normal_displ);
+    normal = vec3(0,0,0);
     
     uv = uv_pos;
 

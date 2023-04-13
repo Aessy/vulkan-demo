@@ -87,7 +87,7 @@ static std::tuple<vk::Image, vk::DeviceMemory, uint32_t> createTextureImage(Rend
 
     if (!pixels)
     {
-        std::cout << "Could not load texture\n";
+        std::cout << std::string("Could not load texture") + path + "\n";
     }
 
     uint32_t mip_levels = static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;

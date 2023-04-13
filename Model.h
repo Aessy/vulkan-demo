@@ -28,6 +28,7 @@ struct WorldBufferObject
 {
     alignas(16) glm::mat4 camera_view;
     alignas(16) glm::mat4 camera_proj;
+    alignas(16) glm::vec3 camera_pos;
     alignas(16) LightBufferObject light_position;
 };
 

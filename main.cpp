@@ -368,7 +368,7 @@ int main()
     srand (time(NULL));
     RenderingState core = createVulkanRenderState();
 
-    Textures textures = createTextures(core, {"./textures/terrain.png", "./textures/terrain_norm_high.png", "./textures/terrain_norm_low.png", "./textures/terrain_norm_flat.png", "./textures/rock.png"});
+    Textures textures = createTextures(core, {"./textures/terrain.png", "./textures/terrain_norm_high.png", "./textures/terrain_norm_low.png", "./textures/terrain_norm_flat.png", "./textures/stone.jpg"});
 
                         //"./textures/brown_mud_03_disp_1k.png", "./textures/brown_mud_03_nor_gl_1k.jpg", "./textures/brown_mud_03_diff_1k.jpg"});
 
