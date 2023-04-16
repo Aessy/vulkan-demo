@@ -26,6 +26,8 @@ Model createFlatGround(std::size_t size, float length)
 
     Model model{};
     size_t count = 0;
+
+    size_t texture_size = 32;
     for (size_t y = 0; y < y_size; ++y)
     {
         float y_top_left = y_left  + y_interval*(y%y_size);
@@ -38,15 +40,24 @@ Model createFlatGround(std::size_t size, float length)
             glm::vec3 bottom_left (x_top_left, 0, y_top_left+y_interval);
             glm::vec3 bottom_right (x_top_left+x_interval, 0, y_top_left+y_interval);
 
-            glm::vec2 tex_top_left((float)x/(x_size+1), 1.0-((float)y/(y_size+1)));
-            glm::vec2 tex_top_right((float)(x+1)/(x_size+1), 1.0-((float)y/(y_size+1)));
-            glm::vec2 tex_bottom_left((float)x/(x_size+1), 1.0-(float(y+1)/(y_size+1)));
-            glm::vec2 tex_bottom_right((float)(x+1)/(x_size+1), 1.0-(float(y+1)/(y_size+1)));
+            glm::vec2 norm_top_left((float)x/(x_size+1), 1.0-((float)y/(y_size+1)));
+            glm::vec2 norm_top_right((float)(x+1)/(x_size+1), 1.0-((float)y/(y_size+1)));
+            glm::vec2 norm_bottom_left((float)x/(x_size+1), 1.0-(float(y+1)/(y_size+1)));
+            glm::vec2 norm_bottom_right((float)(x+1)/(x_size+1), 1.0-(float(y+1)/(y_size+1)));
 
-            model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=tex_top_left});
-            model.vertices.push_back(Vertex{.pos=top_right,.tex_coord=tex_top_right});
-            model.vertices.push_back(Vertex{.pos=bottom_left,.tex_coord=tex_bottom_left});
-            model.vertices.push_back(Vertex{.pos=bottom_right,.tex_coord=tex_bottom_right});
+            size_t x_texture = x % (texture_size+1);
+            size_t y_texture = y % (texture_size+1);
+
+            glm::vec2 tex_top_left((float)x_texture/(texture_size+1), 1.0-((float)y_texture/(texture_size+1)));
+            glm::vec2 tex_top_right((float)(x_texture+1)/(texture_size+1), 1.0-((float)y_texture/(texture_size+1)));
+            glm::vec2 tex_bottom_left((float)x_texture/(texture_size+1), 1.0-(float(y_texture+1)/(texture_size+1)));
+            glm::vec2 tex_bottom_right((float)(x_texture+1)/(texture_size+1), 1.0-(float(y_texture+1)/(texture_size+1)));
+
+
+            model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=tex_top_left, .normal_coord=norm_top_left});
+            model.vertices.push_back(Vertex{.pos=top_right,.tex_coord=tex_top_right, .normal_coord=norm_top_right});
+            model.vertices.push_back(Vertex{.pos=bottom_left,.tex_coord=tex_bottom_left, .normal_coord=norm_bottom_left});
+            model.vertices.push_back(Vertex{.pos=bottom_right,.tex_coord=tex_bottom_right, .normal_coord=norm_bottom_right});
 
             /*
             model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=glm::vec2(top_left.x, top_left.y)});

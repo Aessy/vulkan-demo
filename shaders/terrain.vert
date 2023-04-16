@@ -31,45 +31,34 @@ layout(set = 3, binding = 0) uniform UniformTerrain{
     uint displacement_map;
     uint normal_map;
     uint texture_id;
+
+    float lod_min;
+    float lod_max;
+    float weight;
 } terrain;
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 in_color;
 layout(location = 2) in vec2 in_tex_coord;
 layout(location = 3) in vec3 in_normal;
+layout(location = 4) in vec2 in_normal_coord;
 
 layout(location = 0) out vec3 position_worldspace;
 layout(location = 1) out vec3 normal;
 layout(location = 2) out vec2 uv;
-layout(location = 3) out vec2 tex_coord;
+layout(location = 3) out vec2 normal_coord;
 
 void main()
 {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
 
-    tex_coord = in_tex_coord;
-
-    vec2 uv_top_left = vec2(0,1);
-    vec2 uv_top_right = vec2(1,1);
-    vec2 uv_bottom_left = vec2(0,0);
-    vec2 uv_bottom_right = vec2(1,0);
-
-    vec2 uvs[4];
-    uvs[0] = uv_top_left;
-    uvs[1] = uv_top_right;
-    uvs[2] = uv_bottom_left;
-    uvs[3] = uv_bottom_right;
-
-    vec2 uv_pos = uvs[gl_VertexIndex%4];
+    normal_coord = in_normal_coord;
 
     vec3 pos = inPosition;
-
-    normal = vec3(0,0,0);
     
-    uv = uv_pos;
+    uv = in_tex_coord;
 
-
-    vec4 displace = texture(texSampler[terrain.displacement_map], in_tex_coord);
+    vec4 displace = texture(texSampler[terrain.displacement_map], normal_coord);
     pos.y += displace.r * terrain.max_height;
 
     gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);

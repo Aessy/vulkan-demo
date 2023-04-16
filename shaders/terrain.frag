@@ -22,28 +22,45 @@ layout(set = 3, binding = 0) uniform UniformTerrain{
     uint displacement_map;
     uint normal_map;
     uint texture_id;
+    
+    float lod_min;
+    float lod_max;
+    float weight;
 } terrain;
 
 layout(location = 0) in vec3 position_worldspace;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 uv;
-layout(location = 3) in vec2 tex_coord;
+layout(location = 3) in vec2 normal_coord;
 
 layout(location = 0) out vec4 out_color;
 
 float findLod()
 {
-
     float distance = length(world.pos - position_worldspace);
 
-    return clamp(distance / 100 * 11, 0, 7);
+    float n = smoothstep(0, terrain.weight, distance);
+    float diff = terrain.lod_max-terrain.lod_min;
+
+    return (n*diff)+terrain.lod_min;
+
+    // Dist = 200
+    // Weight = 400
+
+    // lod_min = 3
+    // lod_max = 6
+
+    // n = 0.5
+    //
+    // (n * (lod_max-lod_min))+lod_min
+    // lod = 4.5 
 }
 
 void main()
 {
     vec3 light_color = vec3(1,1,1);
 
-    vec3 normal_color = 2.0 * texture(texSampler[terrain.normal_map], tex_coord).rgb - 1.0;
+    vec3 normal_color = 2.0 * texture(texSampler[terrain.normal_map], normal_coord).rgb - 1.0;
     vec3 n = normalize(normal_color);
 
     float lod = findLod();

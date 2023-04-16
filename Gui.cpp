@@ -351,6 +351,9 @@ void showScene(Application& app, Scene& scene, Models& models)
     ImGui::InputInt("Normal map", &app.scene.terrain.normal_map);
     ImGui::InputInt("Texture id", &app.scene.terrain.texture_id);
     ImGui::DragFloat("Height", &app.scene.terrain.max_height, 1.0f, 0.0f, 200.0f);
+    ImGui::DragFloat("Lod min", &app.scene.terrain.lod_min, 1.0, 0, app.scene.terrain.lod_max);
+    ImGui::DragFloat("Lod max", &app.scene.terrain.lod_max, 1.0f, app.scene.terrain.lod_min, 11.0f);
+    ImGui::DragFloat("Lod weight", &app.scene.terrain.weight, 1.0f, 0, 2000);
 
 
     createObject(app);

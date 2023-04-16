@@ -1039,9 +1039,9 @@ static constexpr vk::VertexInputBindingDescription getBindingDescription()
 };
 
 template<typename Vertex>
-static constexpr std::array<vk::VertexInputAttributeDescription, 4> getAttributeDescriptions()
+static constexpr std::array<vk::VertexInputAttributeDescription, 5> getAttributeDescriptions()
 {
-    std::array<vk::VertexInputAttributeDescription, 4> desc;
+    std::array<vk::VertexInputAttributeDescription, 5> desc;
 
     desc[0].binding = 0;
     desc[0].location = 0;
@@ -1062,6 +1062,12 @@ static constexpr std::array<vk::VertexInputAttributeDescription, 4> getAttribute
     desc[3].location = 3;
     desc[3].format = vk::Format::eR32G32B32Sfloat;
     desc[3].offset = offsetof(Vertex, normal);
+
+    desc[4].binding = 0;
+    desc[4].location = 4;
+    desc[4].format = vk::Format::eR32G32Sfloat;
+    desc[4].offset = offsetof(Vertex, normal_coord);
+
     return  desc;
 }
 

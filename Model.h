@@ -34,10 +34,14 @@ struct WorldBufferObject
 
 struct TerrainBufferObject
 {
-     float max_height{};
+     float max_height{24};
      int displacement_map{};
-     int normal_map{};
-     int texture_id{};
+     int normal_map{2};
+     int texture_id{4};
+
+     float lod_min{0};
+     float lod_max{5};
+     float weight{409};
 };
 
 struct Vertex
@@ -46,6 +50,7 @@ struct Vertex
     glm::vec3 color;
     glm::vec2 tex_coord;
     glm::vec3 normal;
+    glm::vec2 normal_coord;
 };
 
 struct Camera
