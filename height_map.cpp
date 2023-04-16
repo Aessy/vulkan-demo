@@ -13,7 +13,7 @@
 
 #include "Model.h"
 
-Model createFlatGround(std::size_t size, float length)
+Model createFlatGround(std::size_t size, float length, size_t texture_size)
 {
     size_t x_size = size;
     size_t y_size = size;
@@ -27,7 +27,6 @@ Model createFlatGround(std::size_t size, float length)
     Model model{};
     size_t count = 0;
 
-    size_t texture_size = 32;
     for (size_t y = 0; y < y_size; ++y)
     {
         float y_top_left = y_left  + y_interval*(y%y_size);
@@ -99,7 +98,7 @@ Model createModeFromHeightMap(std::string const& height_map_path, float size, fl
         return {};
     }
 
-    auto m = createFlatGround(width-1, size);
+    auto m = createFlatGround(width-1, size, 8);
 
     size_t index = 0;
 

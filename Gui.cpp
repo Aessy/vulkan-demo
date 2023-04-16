@@ -25,6 +25,7 @@ void createModel(RenderingState const& state, Models& models)
         static int item_current = 0;
         static float size = 1;
         static int boxes_per_row = 1;
+        static int texture_size = 8;
         static std::array<char, 20> name {{}};
         ImGui::Combo("Mesh type", &item_current, items, 2);
 
@@ -45,7 +46,7 @@ void createModel(RenderingState const& state, Models& models)
         {
             if (item_current == 1)
             {
-                Model m = createFlatGround(boxes_per_row, size);
+                Model m = createFlatGround(boxes_per_row, size, texture_size);
                 m.path = name.data();
                 models.models.insert({m.id, m});
             }
@@ -53,6 +54,7 @@ void createModel(RenderingState const& state, Models& models)
             item_current = 0;
             size = 1;
             boxes_per_row = 1;
+            texture_size = 8;
             name = {{}};
             ImGui::CloseCurrentPopup();
         }
@@ -100,6 +102,10 @@ void createMesh(RenderingState const& core, Application& app)
 
         ImGui::EndPopup();
     }
+}
+
+void comboMeshes(Application& app, int& current_id)
+{
 }
 
 void createObject(Application& app)
@@ -265,11 +271,25 @@ void showLight(LightBufferObject& light)
         ImGui::EndPopup();
     }
 }
-void showObject(Object& obj, Application const& app)
+void showObject(Object& obj, Application& app)
 {
     if (ImGui::BeginPopup("object"))
     {
-        std::cout << "object\n";
+        static int mesh_id = obj.mesh.id;
+
+        for (auto const& [key, value] : app.meshes.meshes)
+        {
+            if (ImGui::Button(value.name.c_str()))
+            {
+                mesh_id = key;
+            }
+        }
+
+        if (mesh_id != obj.mesh.id)
+        {
+            obj.mesh = app.meshes.meshes[mesh_id];
+        }
+
         ImGui::Text("Position");
         ImGui::DragFloat("Pos x", &obj.position.x, 0.1f, -100.0f, 100.0f);
         ImGui::DragFloat("Pos y", &obj.position.y, 0.1f, -100.0f, 100.0f);
@@ -280,12 +300,14 @@ void showObject(Object& obj, Application const& app)
         ImGui::InputFloat("Z", &obj.rotation.z, 1.0f, 10.0f);
         ImGui::Text("Angle");
         ImGui::DragFloat("Angle", &obj.angel, 0.01, 0, 360);
+
         ImGui::Text("Texture");
         ImGui::DragInt("Texture", &obj.texture_index, 1, 0, app.textures.textures.size());
         if (obj.texture_index < app.textures.textures.size())
         {
             ImGui::Text("Texture: %s", app.textures.textures[obj.texture_index].name.c_str());
         }
+
 
         ImGui::EndPopup();
     }
@@ -317,9 +339,10 @@ void showScene(Application& app, Scene& scene, Models& models)
 
     for (auto& prog: scene.objects)
     {
+        int index = 0;
         for (auto& obj : prog.second)
         {
-            if (ImGui::TreeNode((std::string(obj.mesh.name) + std::to_string(obj.id)).c_str()))
+            if (ImGui::TreeNode(std::to_string(index++).c_str()))
             {
                 showObject(obj, app);
                 ImGui::Text("Pos: x:%f, y:%f, z:%f",obj.position.x, obj.position.y, obj.position.z);

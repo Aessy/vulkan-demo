@@ -418,8 +418,10 @@ int main()
     Models models;
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
-    auto height_map_model = createFlatGround(512, 512);
-    models.models.insert({height_map_model.id, height_map_model});
+    auto height_map_512_model = createFlatGround(512, 512, 8);
+    auto height_map_1024_model = createFlatGround(1024, 512, 16);
+    models.models.insert({height_map_512_model.id, height_map_512_model});
+    models.models.insert({height_map_1024_model.id, height_map_1024_model});
 
     std::vector<std::unique_ptr<Program>> programs;
     programs.push_back(createProgram(program_desc, core, textures));
@@ -433,7 +435,8 @@ int main()
     camera.pos = glm::vec3(0,1,0);
 
     Meshes meshes;
-    meshes.loadMesh(core, models.models.at(height_map_model.id), "height_map");
+    auto mesh_id = meshes.loadMesh(core, models.models.at(height_map_512_model.id), "height_map_512");
+    meshes.loadMesh(core, models.models.at(height_map_1024_model.id), "height_map_1024");
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
     Scene scene;
@@ -441,10 +444,7 @@ int main()
     scene.light.position = glm::vec3(0,10,0);
     scene.light.light_color = glm::vec3(1,1,1);
     scene.light.strength = 50.0f;
-    for (auto const& mesh : meshes.meshes)
-    {
-        scene.objects[1].push_back(createObject(mesh.second));
-    }
+    scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
 
     Application application{
         .textures = std::move(textures),
