@@ -28,10 +28,21 @@ layout(set = 3, binding = 0) uniform UniformTerrain{
     float weight;
 } terrain;
 
+struct ObjectData
+{
+    mat4 model;
+    uint texture_index;
+};
+
+layout(std140,set = 2, binding = 0) readonly buffer ObjectBuffer{
+    ObjectData objects[];
+} ubo2;
+
 layout(location = 0) in vec3 position_worldspace;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 uv;
 layout(location = 3) in vec2 normal_coord;
+layout(location = 4) in mat4 model;
 
 layout(location = 0) out vec4 out_color;
 
@@ -43,39 +54,26 @@ float findLod()
     float diff = terrain.lod_max-terrain.lod_min;
 
     return (n*diff)+terrain.lod_min;
-
-    // Dist = 200
-    // Weight = 400
-
-    // lod_min = 3
-    // lod_max = 6
-
-    // n = 0.5
-    //
-    // (n * (lod_max-lod_min))+lod_min
-    // lod = 4.5 
 }
 
 void main()
 {
     vec3 light_color = vec3(1,1,1);
 
-    vec3 normal_color = 2.0 * texture(texSampler[terrain.normal_map], normal_coord).rgb - 1.0;
-    vec3 n = normalize(normal_color);
+    vec3 n = normalize(normal);
+    mat3 normal_matrix = transpose(inverse(mat3(model)));
+    n = normalize(normal_matrix * n);
+
 
     float lod = findLod();
 
-    vec3 material_diffuse_color = textureLod(texSampler[terrain.texture_id], uv, lod).xyz; //texture(texSampler[terrain.texture_id], uv).rgb;
+    vec3 material_diffuse_color = textureLod(texSampler[terrain.texture_id], uv, lod).xyz;
     vec3 material_ambient_color = vec3(0.3, 0.3, 0.3) * material_diffuse_color;
 
     vec3 light_dir = normalize(-world.light.position);
 
 
-    float cos_theta = 0.1;
-    if (world.light.position.y >= -80) 
-    {
-        cos_theta = clamp(dot(n,light_dir), 0.1,1);
-    }
+    float cos_theta = clamp(dot(n,light_dir), 0.1,1);
 
     vec3 color = material_diffuse_color * light_color * cos_theta;
 

@@ -1,4 +1,5 @@
 #include "VulkanRenderSystem.h"
+#include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_enums.hpp>
 #include <vulkan/vulkan_handles.hpp>
 
@@ -298,7 +299,9 @@ static vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device,
 
     static const std::vector<const char*> device_extensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
+        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
+        VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME
+        
     };
 
     vk::DeviceCreateInfo device_info;

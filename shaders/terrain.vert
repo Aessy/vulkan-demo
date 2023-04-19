@@ -1,5 +1,6 @@
 #version 460
 #extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_debug_printf : enable
 
 layout(set = 0, binding = 0) uniform sampler2D texSampler[];
 
@@ -47,14 +48,20 @@ layout(location = 0) out vec3 position_worldspace;
 layout(location = 1) out vec3 normal;
 layout(location = 2) out vec2 uv;
 layout(location = 3) out vec2 normal_coord;
+layout(location = 4) out mat4 model;
 
 void main()
 {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
+    vec3 pos = inPosition;
+
+    vec3 normal_color = texture(texSampler[terrain.normal_map], in_normal_coord).rgb;
+    debugPrintfEXT("Normal coord: x:%f y%f", in_normal_coord.x, in_normal_coord.y);
+    debugPrintfEXT("R:%f G:%f B:%f", normal_color.x, normal_color.y, normal_color.z);
 
     normal_coord = in_normal_coord;
-
-    vec3 pos = inPosition;
+    normal = normalize(2.0 * normal_color - 1.0);
+    model = ubo.model;
     
     uv = in_tex_coord;
 

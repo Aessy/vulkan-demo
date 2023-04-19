@@ -420,8 +420,11 @@ int main()
     int cylinder_id = models.loadModel("./models/cylinder.obj");
     auto height_map_512_model = createFlatGround(512, 512, 8);
     auto height_map_1024_model = createFlatGround(1024, 512, 16);
+    auto height_map_with_height_512_model = createModeFromHeightMap("./textures/terrain.png", 512, 34);
+
     models.models.insert({height_map_512_model.id, height_map_512_model});
     models.models.insert({height_map_1024_model.id, height_map_1024_model});
+    models.models.insert({height_map_with_height_512_model.id, height_map_with_height_512_model});
 
     std::vector<std::unique_ptr<Program>> programs;
     programs.push_back(createProgram(program_desc, core, textures));
@@ -437,6 +440,7 @@ int main()
     Meshes meshes;
     auto mesh_id = meshes.loadMesh(core, models.models.at(height_map_512_model.id), "height_map_512");
     meshes.loadMesh(core, models.models.at(height_map_1024_model.id), "height_map_1024");
+    meshes.loadMesh(core, models.models.at(height_map_with_height_512_model.id), "height_map_with_height_512");
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
     Scene scene;
