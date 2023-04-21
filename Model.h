@@ -51,6 +51,8 @@ struct Vertex
     glm::vec2 tex_coord;
     glm::vec3 normal;
     glm::vec2 normal_coord;
+    glm::vec3 tangent;
+    glm::vec3 bitangent;
 };
 
 struct Camera

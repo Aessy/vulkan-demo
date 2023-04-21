@@ -368,9 +368,14 @@ int main()
     srand (time(NULL));
     RenderingState core = createVulkanRenderState();
 
-    Textures textures = createTextures(core, {"./textures/terrain.png", "./textures/terrain_norm_high.png", "./textures/terrain_norm_low.png", "./textures/terrain_norm_flat.png", "./textures/stone.jpg", "./textures/grass.png"});
-
-                        //"./textures/brown_mud_03_disp_1k.png", "./textures/brown_mud_03_nor_gl_1k.jpg", "./textures/brown_mud_03_diff_1k.jpg"});
+    Textures textures = createTextures(core,
+        { {"./textures/terrain.png", TextureType::Map},
+          {"./textures/terrain_norm_high.png", TextureType::Map},
+          {"./textures/terrain_norm_low.png", TextureType::Map},
+          {"./textures/terrain_norm_flat.png", TextureType::Map},
+          {"./textures/stone.jpg", TextureType::MipMap},
+          {"./textures/grass.png", TextureType::MipMap}
+        });
 
     layer_types::Program program_desc;
     program_desc.fragment_shader = {{"./shaders/frag.spv"}};
@@ -420,7 +425,7 @@ int main()
     int cylinder_id = models.loadModel("./models/cylinder.obj");
     auto height_map_512_model = createFlatGround(512, 512, 8);
     auto height_map_1024_model = createFlatGround(1024, 512, 16);
-    auto height_map_with_height_512_model = createModeFromHeightMap("./textures/terrain.png", 512, 34);
+    auto height_map_with_height_512_model = createModeFromHeightMap("./textures/terrain.png", 512, 0);
 
     models.models.insert({height_map_512_model.id, height_map_512_model});
     models.models.insert({height_map_1024_model.id, height_map_1024_model});

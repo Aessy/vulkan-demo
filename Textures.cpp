@@ -78,6 +78,28 @@ void generateMipmaps(RenderingState const& state, vk::Image const& image, int32_
     endSingleTimeCommands(state, cmd_buffer);
 }
 
+static std::tuple<vk::Image, vk::DeviceMemory, uint32_t> createImageMapTexture(RenderingState const& state, void* pixels, std::size_t width, std::size_t height)
+{
+    vk::DeviceSize image_size = width*height*4;
+    vk::DeviceMemory staging_buffer_memory;
+
+    auto staging_buffer = createBuffer(state, image_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, staging_buffer_memory);
+    auto data = state.device.mapMemory(staging_buffer_memory, 0, image_size, static_cast<vk::MemoryMapFlagBits>(0));
+    memcpy(data.value, pixels, static_cast<size_t>(image_size));
+    state.device.unmapMemory(staging_buffer_memory);
+
+    auto image = createImage(state, width, height, 1, vk::Format::eR8G8B8A8Unorm, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
+
+    transitionImageLayout(state, image.first, vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, 1);
+    copyBufferToImage(state, staging_buffer, image.first, width, height);
+    transitionImageLayout(state, image.first, vk::Format::eR8G8B8A8Unorm, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
+
+    state.device.destroyBuffer(staging_buffer);
+    state.device.freeMemory(staging_buffer_memory);
+
+    return {image.first, image.second, 1};
+}
+
 static std::tuple<vk::Image, vk::DeviceMemory, uint32_t> createTextureImage(RenderingState const& state, std::string const& path)
 {
     int width, height, channels {};
@@ -115,30 +137,59 @@ static std::tuple<vk::Image, vk::DeviceMemory, uint32_t> createTextureImage(Rend
     return {image.first, image.second, mip_levels};
 }
 
-Texture createTexture(RenderingState const& state, std::string const& path, vk::Sampler sampler)
+Texture createTexture(RenderingState const& state, std::string const& path, TextureType type, vk::Sampler sampler)
 {
-    auto [image, mem, mip_maps] = createTextureImage(state, path);
-    auto image_view = createTextureImageView(state, image, mip_maps);
+    if (type == TextureType::MipMap)
+    {
+        auto [image, mem, mip_maps] = createTextureImage(state, path);
+        auto image_view = createTextureImageView(state, image, vk::Format::eR8G8B8A8Srgb, mip_maps);
 
-    auto file_name = std::filesystem::path(path).filename();
+        auto file_name = std::filesystem::path(path).filename();
 
-    return Texture {
-        .image = image,
-        .memory = mem,
-        .view = image_view,
-        .sampler = sampler,
-        .name = file_name
-    };
+        return Texture {
+            .image = image,
+            .memory = mem,
+            .view = image_view,
+            .sampler = sampler,
+            .name = file_name
+        };
+    }
+    else
+    {
+        int width, height, channels{};
+        auto pixels = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+
+        if (!pixels)
+        {
+            std::cout << std::string("Could not load texture") + path + "\n";
+            return {};
+        }
+
+        auto [image, mem, mip_maps] = createImageMapTexture(state, pixels, width,height);
+        stbi_image_free(pixels);
+        auto image_view = createTextureImageView(state, image, vk::Format::eR8G8B8A8Unorm, mip_maps);
+
+        auto file_name = std::filesystem::path(path).filename();
+
+        return Texture {
+            .image = image,
+            .memory = mem,
+            .view = image_view,
+            .sampler = sampler,
+            .name = file_name
+        };
+
+    }
 }
 
-Textures createTextures(RenderingState const& core, std::vector<std::string> const& paths)
+Textures createTextures(RenderingState const& core, std::vector<std::pair<std::string, TextureType>> const& paths)
 {
     auto sampler = createTextureSampler(core);
 
     Textures textures {sampler, {}};
     for (auto const& path : paths)
     {
-        textures.textures.push_back(createTexture(core, path, sampler));
+        textures.textures.push_back(createTexture(core, path.first, path.second, sampler));
     }
 
     return textures;

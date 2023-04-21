@@ -144,7 +144,7 @@ vk::Buffer createVertexBuffer(RenderingState const& state, std::vector<Vertex> c
 vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> indices);
 void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels);
 void copyBufferToImage(RenderingState const& state, vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height);
-vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, uint32_t mip_levels);
+vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels);
 vk::Sampler createTextureSampler(RenderingState const& state);
 vk::Buffer createBuffer(RenderingState const& state,
                         vk::DeviceSize size, vk::BufferUsageFlags usage,

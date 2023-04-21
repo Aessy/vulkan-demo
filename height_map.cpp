@@ -122,6 +122,38 @@ Model createModeFromHeightMap(std::string const& height_map_path, float size, fl
     //
     // 2. Loop over the map and calculate the normal for each point, the normal is shared between all neighbouring vertices.
 
+    for (auto index = m.indices.begin(); index < m.indices.end(); index += 3)
+    {
+        auto v0 = m.vertices[*index].pos;
+        auto v1 = m.vertices[*(index+1)].pos;
+        auto v2 = m.vertices[*(index+2)].pos;
+
+        auto uv0 = m.vertices[*index].normal_coord;
+        auto uv1 = m.vertices[*(index+1)].normal_coord;
+        auto uv2 = m.vertices[*(index+2)].normal_coord;
+
+        glm::vec3 e1 = v1-v0;
+        glm::vec3 e2 = v2-v0;
+
+        glm::vec2 delta_uv1 = uv1-uv0;
+        glm::vec2 delta_uv2 = uv2-uv0;
+
+        float r = 1.0f / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
+
+        glm::vec3 tangent = glm::normalize(((e1 * delta_uv2.y) - (e2 * delta_uv1.y)) * r);
+        glm::vec3 bitangent = glm::normalize(((e2 * delta_uv1.y) - (e1 * delta_uv2.y)) * r);
+        glm::vec3 normal = glm::normalize(glm::cross(glm::normalize(bitangent), glm::normalize(tangent)));
+
+        m.vertices[*index].tangent = tangent;
+        m.vertices[*index].bitangent = bitangent;
+
+        m.vertices[*index+1].tangent = tangent;
+        m.vertices[*index+1].bitangent = bitangent;
+
+        m.vertices[*index+2].tangent = tangent;
+        m.vertices[*index+2].bitangent = bitangent;
+    }
+
     std::map<glm::vec3, std::vector<glm::vec3>, Comp> normal_map;
     for (auto index = m.indices.begin(); index != m.indices.end(); index += 3)
     {

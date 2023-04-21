@@ -43,32 +43,34 @@ layout(location = 1) in vec3 in_color;
 layout(location = 2) in vec2 in_tex_coord;
 layout(location = 3) in vec3 in_normal;
 layout(location = 4) in vec2 in_normal_coord;
+layout(location = 5) in vec3 in_tangent;
+layout(location = 6) in vec3 in_bitangent;
 
 layout(location = 0) out vec3 position_worldspace;
 layout(location = 1) out vec3 normal;
 layout(location = 2) out vec2 uv;
 layout(location = 3) out vec2 normal_coord;
-layout(location = 4) out mat4 model;
+layout(location = 4) out vec3 tangent;
+layout(location = 5) out vec3 bitangent;
 
 void main()
 {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
     vec3 pos = inPosition;
-
-    vec3 normal_color = texture(texSampler[terrain.normal_map], in_normal_coord).rgb;
-    debugPrintfEXT("Normal coord: x:%f y%f", in_normal_coord.x, in_normal_coord.y);
-    debugPrintfEXT("R:%f G:%f B:%f", normal_color.x, normal_color.y, normal_color.z);
-
     normal_coord = in_normal_coord;
-    normal = normalize(2.0 * normal_color - 1.0);
-    model = ubo.model;
     
     uv = in_tex_coord;
 
     vec4 displace = texture(texSampler[terrain.displacement_map], normal_coord);
     pos.y += displace.r * terrain.max_height;
 
+    vec3 normal_color = normalize(2*texture(texSampler[terrain.normal_map], normal_coord).rbg-1.0);
+    debugPrintfEXT("Wat: r:%f g:%f b:%f", normal_color.x, normal_color.y, normal_color.z);
+
     gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);
 
-    position_worldspace = (ubo.model * vec4(pos, 1)).xyz;
+    position_worldspace = (ubo.model * vec4(pos,          1)).xyz;
+    tangent             = (ubo.model * vec4(normalize(in_tangent),   1)).xyz;
+    bitangent           = (ubo.model * vec4(normalize(in_bitangent), 1)).xyz;
+    normal              = (ubo.model * vec4(normal_color, 1)).xyz;
 }

@@ -1,6 +1,7 @@
 #version 460
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_shader_texture_lod : enable
+#extension GL_EXT_debug_printf : enable
 
 layout(set = 0, binding = 0) uniform sampler2D texSampler[];
 
@@ -42,7 +43,8 @@ layout(location = 0) in vec3 position_worldspace;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 uv;
 layout(location = 3) in vec2 normal_coord;
-layout(location = 4) in mat4 model;
+layout(location = 4) in vec3 tangent;
+layout(location = 5) in vec3 bitangent;
 
 layout(location = 0) out vec4 out_color;
 
@@ -60,18 +62,15 @@ void main()
 {
     vec3 light_color = vec3(1,1,1);
 
-    vec3 n = normalize(normal);
-    mat3 normal_matrix = transpose(inverse(mat3(model)));
-    n = normalize(normal_matrix * n);
-
+    mat3 TBN = transpose(mat3(tangent, normal, bitangent));
 
     float lod = findLod();
+    vec3 n = normalize(normal);
 
     vec3 material_diffuse_color = textureLod(texSampler[terrain.texture_id], uv, lod).xyz;
     vec3 material_ambient_color = vec3(0.3, 0.3, 0.3) * material_diffuse_color;
 
-    vec3 light_dir = normalize(-world.light.position);
-
+    vec3 light_dir = normalize(world.light.position);
 
     float cos_theta = clamp(dot(n,light_dir), 0.1,1);
 

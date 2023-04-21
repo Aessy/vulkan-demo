@@ -27,4 +27,10 @@ struct Textures
     std::vector<Texture> textures;
 };
 
-Textures createTextures(RenderingState const& core, std::vector<std::string> const& paths);
+enum class TextureType
+{
+    MipMap,
+    Map
+};
+
+Textures createTextures(RenderingState const& core, std::vector<std::pair<std::string, TextureType>> const& paths);

@@ -923,9 +923,9 @@ vk::Buffer createBuffer(RenderingState const& state,
     return buffer;
 }
 
-vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, uint32_t mip_levels)
+vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels)
 {
-    auto texture_image_view = createImageView(state.device, texture_image, vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor, mip_levels);
+    auto texture_image_view = createImageView(state.device, texture_image, format, vk::ImageAspectFlagBits::eColor, mip_levels);
     return texture_image_view;
 }
 
@@ -1042,9 +1042,9 @@ static constexpr vk::VertexInputBindingDescription getBindingDescription()
 };
 
 template<typename Vertex>
-static constexpr std::array<vk::VertexInputAttributeDescription, 5> getAttributeDescriptions()
+static constexpr std::array<vk::VertexInputAttributeDescription, 7> getAttributeDescriptions()
 {
-    std::array<vk::VertexInputAttributeDescription, 5> desc;
+    std::array<vk::VertexInputAttributeDescription, 7> desc;
 
     desc[0].binding = 0;
     desc[0].location = 0;
@@ -1070,6 +1070,16 @@ static constexpr std::array<vk::VertexInputAttributeDescription, 5> getAttribute
     desc[4].location = 4;
     desc[4].format = vk::Format::eR32G32Sfloat;
     desc[4].offset = offsetof(Vertex, normal_coord);
+
+    desc[5].binding = 0;
+    desc[5].location = 5;
+    desc[5].format = vk::Format::eR32G32Sfloat;
+    desc[5].offset = offsetof(Vertex, tangent);
+
+    desc[6].binding = 0;
+    desc[6].location = 6;
+    desc[6].format = vk::Format::eR32G32Sfloat;
+    desc[6].offset = offsetof(Vertex, bitangent);
 
     return  desc;
 }
