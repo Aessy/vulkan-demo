@@ -58,16 +58,33 @@ float findLod()
     return (n*diff)+terrain.lod_min;
 }
 
+vec3 getBlending(vec3 world_normal)
+{
+    vec3 blending = abs(world_normal);
+    blending = normalize(max(blending, 0.00001));
+    float b = (blending.x + blending.y + blending.z);
+    blending /= vec3(b,b,b);
+    
+    return blending;
+}
+
 void main()
 {
     vec3 light_color = vec3(1,1,1);
 
-    mat3 TBN = transpose(mat3(tangent, normal, bitangent));
+    float scale = 0.1;
 
     float lod = findLod();
     vec3 n = normalize(normal);
 
-    vec3 material_diffuse_color = textureLod(texSampler[terrain.texture_id], uv, lod).xyz;
+    vec4 xaxis = textureLod(texSampler[terrain.texture_id], position_worldspace.yz*scale, lod);
+    vec4 yaxis = textureLod(texSampler[terrain.texture_id], position_worldspace.xz*scale, lod);
+    vec4 zaxis = textureLod(texSampler[terrain.texture_id], position_worldspace.xy*scale, lod);
+
+    vec3 blending = getBlending(n);
+    vec4 tex = xaxis * blending.x + yaxis * blending.y + zaxis * blending.z;
+
+    vec3 material_diffuse_color = tex.rgb;
     vec3 material_ambient_color = vec3(0.3, 0.3, 0.3) * material_diffuse_color;
 
     vec3 light_dir = normalize(world.light.position);
