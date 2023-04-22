@@ -38,6 +38,7 @@ struct TerrainBufferObject
      int displacement_map{};
      int normal_map{2};
      int texture_id{4};
+     float texture_scale{1};
 
      float lod_min{0};
      float lod_max{5};

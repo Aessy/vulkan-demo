@@ -32,6 +32,7 @@ layout(set = 3, binding = 0) uniform UniformTerrain{
     uint displacement_map;
     uint normal_map;
     uint texture_id;
+    float texture_scale;
 
     float lod_min;
     float lod_max;
@@ -69,8 +70,10 @@ void main()
 
     gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);
 
+    mat3 inv_trans = inverse(transpose(mat3(ubo.model)));
+
     position_worldspace = (ubo.model * vec4(pos,          1)).xyz;
     tangent             = (ubo.model * vec4(normalize(in_tangent),   1)).xyz;
     bitangent           = (ubo.model * vec4(normalize(in_bitangent), 1)).xyz;
-    normal              = (ubo.model * vec4(normal_color, 1)).xyz;
+    normal              = (inv_trans * normal_color).xyz;
 }

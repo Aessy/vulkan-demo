@@ -23,6 +23,8 @@ layout(set = 3, binding = 0) uniform UniformTerrain{
     uint displacement_map;
     uint normal_map;
     uint texture_id;
+
+    float texture_scale;
     
     float lod_min;
     float lod_max;
@@ -72,7 +74,7 @@ void main()
 {
     vec3 light_color = vec3(1,1,1);
 
-    float scale = 0.1;
+    float scale = terrain.texture_scale;
 
     float lod = findLod();
     vec3 n = normalize(normal);

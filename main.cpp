@@ -374,7 +374,8 @@ int main()
           {"./textures/terrain_norm_low.png", TextureType::Map},
           {"./textures/terrain_norm_flat.png", TextureType::Map},
           {"./textures/stone.jpg", TextureType::MipMap},
-          {"./textures/grass.png", TextureType::MipMap}
+          {"./textures/grass.png", TextureType::MipMap},
+          {"./textures/checkerboard.jpg", TextureType::MipMap}
         });
 
     layer_types::Program program_desc;
@@ -440,7 +441,7 @@ int main()
     camera.camera_front = glm::vec3(0,0,-1);
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
-    camera.pos = glm::vec3(0,1,0);
+    camera.pos = glm::vec3(43,16,-92);
 
     Meshes meshes;
     auto mesh_id = meshes.loadMesh(core, models.models.at(height_map_512_model.id), "height_map_512");
