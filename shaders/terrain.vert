@@ -65,8 +65,7 @@ void main()
     vec4 displace = texture(texSampler[terrain.displacement_map], normal_coord);
     pos.y += displace.r * terrain.max_height;
 
-    vec3 normal_color = normalize(2*texture(texSampler[terrain.normal_map], normal_coord).rbg-1.0);
-    debugPrintfEXT("Wat: r:%f g:%f b:%f", normal_color.x, normal_color.y, normal_color.z);
+    vec3 normal_color = in_normal; //normalize(2*texture(texSampler[terrain.normal_map], normal_coord).rbg-1.0);
 
     gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);
 

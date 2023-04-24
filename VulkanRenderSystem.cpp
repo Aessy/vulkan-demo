@@ -356,7 +356,7 @@ vk::PresentModeKHR chooseSwapPresentMode(std::vector<vk::PresentModeKHR>const& p
     }
 
     std::cout << "Using fifo present mode\n";
-    return vk::PresentModeKHR::eImmediate;
+    return vk::PresentModeKHR::eFifo;
 }
 
 vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities, GLFWwindow* window)

@@ -101,7 +101,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
     render_pass_info.renderArea.extent = state.swap_chain.extent;
 
     std::array<vk::ClearValue, 2> clear_values{};
-    clear_values[0].color = vk::ClearColorValue(std::array<float,4>{0,0,0,1});
+    clear_values[0].color = vk::ClearColorValue(std::array<float,4>{0.3984,0.695,1});
     clear_values[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
     render_pass_info.clearValueCount = clear_values.size();
@@ -254,6 +254,16 @@ bool processEvent(Event const& event, App& app)
     return true;
 }
 
+void updateCameraFront(Camera& camera)
+{
+    glm::vec3 direction;
+    direction.x = std::cos(glm::radians(camera.pitch_yawn.x)) * cos(glm::radians(camera.pitch_yawn.y));
+    direction.y = std::sin(glm::radians(camera.pitch_yawn.y));
+    direction.z = std::sin(glm::radians(camera.pitch_yawn.x)) * cos(glm::radians(camera.pitch_yawn.y));
+
+    camera.camera_front = glm::normalize(direction);
+}
+
 void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, Camera& camera, App& app, GLFWwindow* window)
 {
     if (app.keyboard.up)
@@ -273,13 +283,22 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
         camera.pos -= camera_speed * glm::normalize(glm::cross(camera.camera_front, camera.up)) * delta;
     }
 
-    if (app.keyboard.shift && (app.cursor_pos.x != uint32_t(extent.width/2) || app.cursor_pos.y != uint32_t(extent.height/2)))
+    static bool shift_was_up = true;
+    if (shift_was_up && app.keyboard.shift)
+    {
+        app.cursor_pos = CursorPos{uint32_t(extent.width/2), uint32_t(extent.height/2)};
+        glfwSetCursorPos(window, app.cursor_pos.x, app.cursor_pos.y);
+        shift_was_up = false;
+    }
+    else if(app.keyboard.shift && (app.cursor_pos.x != uint32_t(extent.width/2) || app.cursor_pos.y != uint32_t(extent.height/2)))
     {
         glm::vec2 center = glm::vec2(extent.width/2, extent.height/2);
         glm::vec2 diff = glm::vec2(app.cursor_pos.x, app.cursor_pos.y) - center;
         diff.y = -diff.y;
 
         camera.pitch_yawn += diff * camera_speed * delta;
+
+        std::cout << glm::to_string(camera.pitch_yawn);
 
         if (camera.pitch_yawn.y >= 90)
         {
@@ -290,15 +309,14 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
             camera.pitch_yawn.y = -89;
         }
 
-        glm::vec3 direction;
-        direction.x = std::cos(glm::radians(camera.pitch_yawn.x)) * cos(glm::radians(camera.pitch_yawn.y));
-        direction.y = std::sin(glm::radians(camera.pitch_yawn.y));
-        direction.z = std::sin(glm::radians(camera.pitch_yawn.x)) * cos(glm::radians(camera.pitch_yawn.y));
-
-        camera.camera_front = glm::normalize(direction);
+        updateCameraFront(camera);
 
         app.cursor_pos = CursorPos{uint32_t(extent.width/2), uint32_t(extent.height/2)};
         glfwSetCursorPos(window, app.cursor_pos.x, app.cursor_pos.y);
+    }
+    else
+    {
+        shift_was_up = true;
     }
 }
 
@@ -426,11 +444,13 @@ int main()
     int cylinder_id = models.loadModel("./models/cylinder.obj");
     auto height_map_512_model = createFlatGround(512, 512, 8);
     auto height_map_1024_model = createFlatGround(1024, 512, 16);
-    auto height_map_with_height_512_model = createModeFromHeightMap("./textures/terrain.png", 512, 0);
+    auto height_map_with_height_512_model = createModeFromHeightMap("./textures/terrain.png", 512, 40);
+    auto box = createBox();
 
     models.models.insert({height_map_512_model.id, height_map_512_model});
     models.models.insert({height_map_1024_model.id, height_map_1024_model});
     models.models.insert({height_map_with_height_512_model.id, height_map_with_height_512_model});
+    models.models.insert({box.id, box});
 
     std::vector<std::unique_ptr<Program>> programs;
     programs.push_back(createProgram(program_desc, core, textures));
@@ -438,15 +458,18 @@ int main()
 
     Camera camera;
     camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.1f, 1000.0f);
-    camera.camera_front = glm::vec3(0,0,-1);
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
-    camera.pos = glm::vec3(43,16,-92);
+    camera.pos = glm::vec3(0,0,-5);
+
+    updateCameraFront(camera);
 
     Meshes meshes;
     auto mesh_id = meshes.loadMesh(core, models.models.at(height_map_512_model.id), "height_map_512");
     meshes.loadMesh(core, models.models.at(height_map_1024_model.id), "height_map_1024");
     meshes.loadMesh(core, models.models.at(height_map_with_height_512_model.id), "height_map_with_height_512");
+    auto box_id = meshes.loadMesh(core, models.models.at(box.id), "box");
+
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
     Scene scene;
@@ -454,7 +477,8 @@ int main()
     scene.light.position = glm::vec3(0,10,0);
     scene.light.light_color = glm::vec3(1,1,1);
     scene.light.strength = 50.0f;
-    scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
+    //scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
+    scene.objects[1].push_back(createObject(meshes.meshes.at(box_id)));
 
     Application application{
         .textures = std::move(textures),

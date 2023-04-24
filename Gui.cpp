@@ -295,11 +295,12 @@ void showObject(Object& obj, Application& app)
         ImGui::DragFloat("Pos y", &obj.position.y, 0.1f, -100.0f, 100.0f);
         ImGui::DragFloat("Pos z", &obj.position.z, 0.1f, -100.0f, 100.0f);
         ImGui::Text("Rotation");
+        ImGui::DragFloat("Scale", &obj.scale, 0.01f, 0.01f, 100.0f);
         ImGui::InputFloat("X", &obj.rotation.x, 1.0f, 10.0f);
         ImGui::InputFloat("Y", &obj.rotation.y, 1.0f, 10.0f);
         ImGui::InputFloat("Z", &obj.rotation.z, 1.0f, 10.0f);
         ImGui::Text("Angle");
-        ImGui::DragFloat("Angle", &obj.angel, 0.01, 0, 360);
+        ImGui::DragFloat("Angle", &obj.angel, 1, 0, 360);
 
         ImGui::Text("Texture");
         ImGui::DragInt("Texture", &obj.texture_index, 1, 0, app.textures.textures.size());

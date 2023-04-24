@@ -45,7 +45,7 @@ inline ModelBufferObject createModelBufferObject(Object const& object)
 {
     ModelBufferObject model_buffer{};
 
-    auto rotation = glm::rotate(glm::mat4(1.0f), object.angel, object.rotation);
+    auto rotation = glm::rotate(glm::mat4(1.0f), glm::radians(object.angel), object.rotation);
     auto translation = glm::translate(glm::mat4(1.0f), object.position);
     auto scale = glm::scale(glm::mat4(1.0f), glm::vec3(object.scale, object.scale, object.scale));
     model_buffer.model = translation * rotation * scale;

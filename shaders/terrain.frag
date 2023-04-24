@@ -79,9 +79,15 @@ void main()
     float lod = findLod();
     vec3 n = normalize(normal);
 
-    vec4 xaxis = textureLod(texSampler[terrain.texture_id], position_worldspace.yz*scale, lod);
-    vec4 yaxis = textureLod(texSampler[terrain.texture_id], position_worldspace.xz*scale, lod);
-    vec4 zaxis = textureLod(texSampler[terrain.texture_id], position_worldspace.xy*scale, lod);
+    float y = -position_worldspace.y;
+    float x = position_worldspace.x;
+    float z = position_worldspace.z;
+    
+    debugPrintfEXT("Normal: x:%d, y:%f, z:%f\nUV: x:%f y:%f z:%f",n.x,n.y,n.zx,y,z);
+
+    vec4 xaxis = textureLod(texSampler[terrain.texture_id], vec2(y,z)*scale, lod);
+    vec4 yaxis = textureLod(texSampler[terrain.texture_id], vec2(x,z)*scale, lod);
+    vec4 zaxis = textureLod(texSampler[terrain.texture_id], vec2(x,y)*scale, lod);
 
     vec3 blending = getBlending(n);
     vec4 tex = xaxis * blending.x + yaxis * blending.y + zaxis * blending.z;
@@ -93,7 +99,7 @@ void main()
 
     float cos_theta = clamp(dot(n,light_dir), 0.1,1);
 
-    vec3 color = material_diffuse_color * light_color * cos_theta;
+    vec3 color = material_diffuse_color; // * light_color * cos_theta;
 
     out_color = vec4(color, 1);
     //out_color = vec4(normal_color, 1);

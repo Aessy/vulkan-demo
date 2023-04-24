@@ -37,11 +37,11 @@ struct TerrainBufferObject
      float max_height{24};
      int displacement_map{};
      int normal_map{2};
-     int texture_id{4};
-     float texture_scale{1};
+     int texture_id{6};
+     float texture_scale{0.2};
 
      float lod_min{0};
-     float lod_max{5};
+     float lod_max{0};
      float weight{409};
 };
 
@@ -80,3 +80,5 @@ struct Models
     std::map<int, Model> models;
     int loadModel(std::string const& model_path);
 };
+
+Model createBox();
