@@ -23,6 +23,7 @@ layout(set = 3, binding = 0) uniform UniformTerrain{
     uint displacement_map;
     uint normal_map;
     uint texture_id;
+    float blend_sharpness;
 
     float texture_scale;
     
@@ -63,6 +64,7 @@ float findLod()
 vec3 getBlending(vec3 world_normal)
 {
     vec3 blending = abs(world_normal);
+    blending = pow(blending, vec3(terrain.blend_sharpness));
     blending = normalize(max(blending, 0.00001));
     float b = (blending.x + blending.y + blending.z);
     blending /= vec3(b,b,b);
@@ -79,7 +81,7 @@ void main()
     float lod = findLod();
     vec3 n = normalize(normal);
 
-    float y = -position_worldspace.y;
+    float y = position_worldspace.y;
     float x = position_worldspace.x;
     float z = position_worldspace.z;
     
@@ -99,7 +101,7 @@ void main()
 
     float cos_theta = clamp(dot(n,light_dir), 0.1,1);
 
-    vec3 color = material_diffuse_color; // * light_color * cos_theta;
+    vec3 color = material_diffuse_color * light_color * cos_theta;
 
     out_color = vec4(color, 1);
     //out_color = vec4(normal_color, 1);

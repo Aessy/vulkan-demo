@@ -374,6 +374,7 @@ void showScene(Application& app, Scene& scene, Models& models)
     ImGui::InputInt("Displacement map", &app.scene.terrain.displacement_map);
     ImGui::InputInt("Normal map", &app.scene.terrain.normal_map);
     ImGui::InputInt("Texture id", &app.scene.terrain.texture_id);
+    ImGui::DragFloat("Blend sharpness", &app.scene.terrain.blend_sharpness, 1.0f, 0.01f, 100.0f);
     ImGui::DragFloat("Texture scale", &app.scene.terrain.texture_scale, 0.01f, 0.001, 100);
     ImGui::DragFloat("Height", &app.scene.terrain.max_height, 1.0f, 0.0f, 200.0f);
     ImGui::DragFloat("Lod min", &app.scene.terrain.lod_min, 1.0, 0, app.scene.terrain.lod_max);

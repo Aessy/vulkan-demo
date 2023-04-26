@@ -444,7 +444,7 @@ int main()
     int cylinder_id = models.loadModel("./models/cylinder.obj");
     auto height_map_512_model = createFlatGround(512, 512, 8);
     auto height_map_1024_model = createFlatGround(1024, 512, 16);
-    auto height_map_with_height_512_model = createModeFromHeightMap("./textures/terrain.png", 512, 40);
+    auto height_map_with_height_512_model = createModeFromHeightMap("./textures/terrain.png", 512, 120);
     auto box = createBox();
 
     models.models.insert({height_map_512_model.id, height_map_512_model});
