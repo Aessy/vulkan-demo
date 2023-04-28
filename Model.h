@@ -34,25 +34,25 @@ struct WorldBufferObject
 
 struct TerrainBufferObject
 {
-    float max_height{24};
+    float max_height{0};
     int displacement_map{};
     int normal_map{2};
-    int texture_id{6};
+    int texture_id{8};
+    int texture_normal_map{7};
     
-    float blend_sharpness{1};
+    float blend_sharpness{6};
 
-    float texture_scale{0.2};
+    float texture_scale{0.06};
 
 
     float lod_min{0};
-    float lod_max{0};
-    float weight{409};
+    float lod_max{8};
+    float weight{386};
 };
 
 struct Vertex
 {
     glm::vec3 pos;
-    glm::vec3 color;
     glm::vec2 tex_coord;
     glm::vec3 normal;
     glm::vec2 normal_coord;

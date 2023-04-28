@@ -393,7 +393,9 @@ int main()
           {"./textures/terrain_norm_flat.png", TextureType::Map},
           {"./textures/stone.jpg", TextureType::MipMap},
           {"./textures/grass.png", TextureType::MipMap},
-          {"./textures/checkerboard.jpg", TextureType::MipMap}
+          {"./textures/checkerboard.jpg", TextureType::MipMap},
+          {"./textures/forest_normal.png", TextureType::Map},
+          {"./textures/forest_diff.png", TextureType::MipMap}
         });
 
     layer_types::Program program_desc;
@@ -442,11 +444,13 @@ int main()
     Models models;
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
+    auto height_map_1_model = createFlatGround(2, 2, 1);
     auto height_map_512_model = createFlatGround(512, 512, 8);
     auto height_map_1024_model = createFlatGround(1024, 512, 16);
-    auto height_map_with_height_512_model = createModeFromHeightMap("./textures/terrain.png", 512, 120);
+    auto height_map_with_height_512_model = createModelFromHeightMap("./textures/terrain.png", 512, 20);
     auto box = createBox();
 
+    models.models.insert({height_map_1_model.id, height_map_1_model});
     models.models.insert({height_map_512_model.id, height_map_512_model});
     models.models.insert({height_map_1024_model.id, height_map_1024_model});
     models.models.insert({height_map_with_height_512_model.id, height_map_with_height_512_model});
@@ -465,10 +469,11 @@ int main()
     updateCameraFront(camera);
 
     Meshes meshes;
-    auto mesh_id = meshes.loadMesh(core, models.models.at(height_map_512_model.id), "height_map_512");
+    auto mesh_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
+    meshes.loadMesh(core, models.models.at(height_map_512_model.id), "height_map_512");
     meshes.loadMesh(core, models.models.at(height_map_1024_model.id), "height_map_1024");
     meshes.loadMesh(core, models.models.at(height_map_with_height_512_model.id), "height_map_with_height_512");
-    auto box_id = meshes.loadMesh(core, models.models.at(box.id), "box");
+    meshes.loadMesh(core, models.models.at(box.id), "box");
 
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
@@ -478,7 +483,7 @@ int main()
     scene.light.light_color = glm::vec3(1,1,1);
     scene.light.strength = 50.0f;
     //scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
-    scene.objects[1].push_back(createObject(meshes.meshes.at(box_id)));
+    scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
 
     Application application{
         .textures = std::move(textures),

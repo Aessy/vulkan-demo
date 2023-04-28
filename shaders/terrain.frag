@@ -23,6 +23,7 @@ layout(set = 3, binding = 0) uniform UniformTerrain{
     uint displacement_map;
     uint normal_map;
     uint texture_id;
+    uint texture_normal_id;
     float blend_sharpness;
 
     float texture_scale;
@@ -46,8 +47,7 @@ layout(location = 0) in vec3 position_worldspace;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 uv;
 layout(location = 3) in vec2 normal_coord;
-layout(location = 4) in vec3 tangent;
-layout(location = 5) in vec3 bitangent;
+layout(location = 4) in mat3 TBN;
 
 layout(location = 0) out vec4 out_color;
 
@@ -85,7 +85,7 @@ void main()
     float x = position_worldspace.x;
     float z = position_worldspace.z;
     
-    debugPrintfEXT("Normal: x:%d, y:%f, z:%f\nUV: x:%f y:%f z:%f",n.x,n.y,n.zx,y,z);
+    //debugPrintfEXT("Normal: x:%d, y:%f, z:%f\nUV: x:%f y:%f z:%f",n.x,n.y,n.zx,y,z);
 
     vec4 xaxis = textureLod(texSampler[terrain.texture_id], vec2(y,z)*scale, lod);
     vec4 yaxis = textureLod(texSampler[terrain.texture_id], vec2(x,z)*scale, lod);
@@ -94,15 +94,22 @@ void main()
     vec3 blending = getBlending(n);
     vec4 tex = xaxis * blending.x + yaxis * blending.y + zaxis * blending.z;
 
+    vec3 xaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(y,z)*scale).rgb-1;
+    vec3 yaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(x,z)*scale).rgb-1;
+    vec3 zaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(x,y)*scale).rgb-1;
+    
+    vec3 normal_tex =  normalize(xaxis_normal * blending.x + yaxis_normal * blending.y + zaxis_normal * blending.z).xyz;
+
+    n = normalize(TBN * normal_tex);
+
     vec3 material_diffuse_color = tex.rgb;
     vec3 material_ambient_color = vec3(0.3, 0.3, 0.3) * material_diffuse_color;
 
-    vec3 light_dir = normalize(world.light.position);
+    vec3 light_dir = normalize(TBN * normalize(world.light.position));
 
     float cos_theta = clamp(dot(n,light_dir), 0.1,1);
 
     vec3 color = material_diffuse_color * light_color * cos_theta;
 
     out_color = vec4(color, 1);
-    //out_color = vec4(normal_color, 1);
 }

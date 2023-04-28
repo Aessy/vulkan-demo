@@ -10,8 +10,42 @@
 #include "glm/gtx/string_cast.hpp"
 
 #include <stb/stb_image.h>
+#include <vulkan/vulkan_core.h>
 
 #include "Model.h"
+
+struct BTN
+{
+    glm::vec3 tangent;
+    glm::vec3 bitangent;
+    glm::vec3 normal;
+};
+
+BTN createBtn(glm::vec3 p1, glm::vec3 p2, glm::vec3 p3, glm::vec2 uv1, glm::vec2 uv2, glm::vec2 uv3)
+{
+    glm::vec3 edge1 = p1 - p3;
+    glm::vec3 edge2 = p2 - p3;
+
+    glm::vec2 delta_uv1 = uv1 - uv3;
+    glm::vec2 delta_uv2 = uv2 - uv3;
+
+    float f = 1.0f / (delta_uv1.x * delta_uv2.y - delta_uv2.x * delta_uv2.y);
+
+    glm::vec3 tangent;
+    tangent.x = f * (delta_uv2.y * edge1.x - delta_uv1.y * edge2.x);
+    tangent.y = f * (delta_uv2.y * edge1.y - delta_uv1.y * edge2.y);
+    tangent.z = f * (delta_uv2.y * edge1.z - delta_uv1.y * edge2.z);
+
+    glm::vec3 bitangent;
+    bitangent.x = f * (-delta_uv2.x * edge1.x + delta_uv1.x * edge2.x);
+    bitangent.y = f * (-delta_uv2.x * edge1.y + delta_uv1.x * edge2.y);
+    bitangent.z = f * (-delta_uv2.x * edge1.z + delta_uv1.x * edge2.z);
+
+    glm::vec3 normal(0,1,0);
+
+    return BTN{glm::normalize(tangent), glm::normalize(bitangent), glm::normalize(normal)};
+
+}
 
 Model createFlatGround(std::size_t size, float length, size_t texture_size)
 {
@@ -34,10 +68,10 @@ Model createFlatGround(std::size_t size, float length, size_t texture_size)
         {
             float x_top_left = x_left + x_interval*(x%x_size);
 
-            glm::vec3 top_left  (x_top_left, 0, y_top_left);
-            glm::vec3 top_right (x_top_left+x_interval, 0, y_top_left);
-            glm::vec3 bottom_left (x_top_left, 0, y_top_left+y_interval);
-            glm::vec3 bottom_right (x_top_left+x_interval, 0, y_top_left+y_interval);
+            glm::vec3 top_left  (x_top_left, 0, y_top_left);                             // 2      3 
+            glm::vec3 top_right (x_top_left+x_interval, 0, y_top_left);                  // 1
+            glm::vec3 bottom_left (x_top_left, 0, y_top_left+y_interval);                //        4
+            glm::vec3 bottom_right (x_top_left+x_interval, 0, y_top_left+y_interval);    // 0      5
 
             glm::vec2 norm_top_left((float)x/(x_size+1), 1.0-((float)y/(y_size+1)));
             glm::vec2 norm_top_right((float)(x+1)/(x_size+1), 1.0-((float)y/(y_size+1)));
@@ -52,26 +86,27 @@ Model createFlatGround(std::size_t size, float length, size_t texture_size)
             glm::vec2 tex_bottom_left((float)x_texture/(texture_size+1), 1.0-(float(y_texture+1)/(texture_size+1)));
             glm::vec2 tex_bottom_right((float)(x_texture+1)/(texture_size+1), 1.0-(float(y_texture+1)/(texture_size+1)));
 
+            auto btn   = createBtn(top_right, top_left, bottom_right, norm_top_right, norm_top_left, norm_bottom_right);
+            auto btn_2 = createBtn(bottom_left, bottom_right, top_left, norm_bottom_left, norm_bottom_right, norm_top_left);
 
-            model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=tex_top_left, .normal_coord=norm_top_left});
-            model.vertices.push_back(Vertex{.pos=top_right,.tex_coord=tex_top_right, .normal_coord=norm_top_right});
-            model.vertices.push_back(Vertex{.pos=bottom_left,.tex_coord=tex_bottom_left, .normal_coord=norm_bottom_left});
-            model.vertices.push_back(Vertex{.pos=bottom_right,.tex_coord=tex_bottom_right, .normal_coord=norm_bottom_right});
+            // TODO: Make BTN per triangle. I think we need two more vertices per quad
 
-            /*
-            model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=glm::vec2(top_left.x, top_left.y)});
-            model.vertices.push_back(Vertex{.pos=top_right,.tex_coord=glm::vec2(top_right.x, top_right.y)});
-            model.vertices.push_back(Vertex{.pos=bottom_left,.tex_coord=glm::vec2(bottom_left.x, bottom_left.y)});
-            model.vertices.push_back(Vertex{.pos=bottom_right,.tex_coord=glm::vec2(bottom_left.x, bottom_right.y)});
-            */
+            glm::vec3 normal(0,1,0);
+            model.vertices.push_back(Vertex{.pos=bottom_right,.tex_coord=tex_bottom_right, .normal=normal, .normal_coord=norm_bottom_right, .tangent=btn.tangent, .bitangent=btn.bitangent});
+            model.vertices.push_back(Vertex{.pos=top_right,.tex_coord=tex_top_right, .normal=normal, .normal_coord=norm_top_right, .tangent=btn.tangent, .bitangent=btn.bitangent});
+            model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=tex_top_left, .normal=normal, .normal_coord=norm_top_left, .tangent=btn.tangent, .bitangent=btn.bitangent});
 
-            model.indices.push_back(count+3);
+            model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=tex_top_left, .normal=normal, .normal_coord=norm_top_left, .tangent=btn_2.tangent, .bitangent=btn_2.bitangent});
+            model.vertices.push_back(Vertex{.pos=bottom_left,.tex_coord=tex_bottom_left, .normal=normal, .normal_coord=norm_bottom_left, .tangent=btn_2.tangent, .bitangent=btn_2.bitangent});
+            model.vertices.push_back(Vertex{.pos=bottom_right,.tex_coord=tex_bottom_right, .normal=normal, .normal_coord=norm_bottom_right, .tangent=btn_2.tangent, .bitangent=btn_2.bitangent});
+
+            model.indices.push_back(count+0);
             model.indices.push_back(count+1);
-            model.indices.push_back(count+0);
-
-            model.indices.push_back(count+0);
             model.indices.push_back(count+2);
+
             model.indices.push_back(count+3);
+            model.indices.push_back(count+4);
+            model.indices.push_back(count+5);
 
             count += 4;
         }
@@ -88,7 +123,7 @@ struct Comp
     }
 };
 
-Model createModeFromHeightMap(std::string const& height_map_path, float size, float max_height)
+Model createModelFromHeightMap(std::string const& height_map_path, float size, float max_height)
 {
     int width, height, channels {};
     auto pixels = stbi_load(height_map_path.c_str(), &width, &height, &channels, STBI_grey);
@@ -179,6 +214,31 @@ Model createModeFromHeightMap(std::string const& height_map_path, float size, fl
             auto normal = glm::normalize(std::accumulate(normals.begin(), normals.end(), glm::vec3(0,0,0)));
             vertex.normal = normal;
         }
+    }
+
+    for (int i = 0; i < m.vertices.size(); ++i)
+    {
+        auto &p1 = m.vertices[i];
+
+
+        glm::vec3 init_vec;
+        if  (p1.normal.x != 0)
+        {
+            init_vec = glm::vec3(1,0,0);
+        }
+        else if (p1.normal.y != 0)
+        {
+            init_vec = glm::vec3(0,1,0);
+        }
+        else if (p1.normal.z != 0)
+        {
+            init_vec = glm::vec3(0,0,1);
+        }
+
+        glm::vec3 tangent = glm::normalize(init_vec - glm::dot(p1.normal, init_vec) * p1.normal);
+        glm::vec3 bitangent = glm::cross(p1.normal, tangent);
+        p1.tangent = tangent;
+        p1.bitangent = glm::normalize(bitangent);
     }
 
     stbi_image_free(pixels);

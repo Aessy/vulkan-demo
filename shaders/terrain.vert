@@ -32,6 +32,7 @@ layout(set = 3, binding = 0) uniform UniformTerrain{
     uint displacement_map;
     uint normal_map;
     uint texture_id;
+    uint texture_normal_id;
     float texture_scale;
 
     float lod_min;
@@ -40,19 +41,17 @@ layout(set = 3, binding = 0) uniform UniformTerrain{
 } terrain;
 
 layout(location = 0) in vec3 inPosition;
-layout(location = 1) in vec3 in_color;
-layout(location = 2) in vec2 in_tex_coord;
-layout(location = 3) in vec3 in_normal;
-layout(location = 4) in vec2 in_normal_coord;
-layout(location = 5) in vec3 in_tangent;
-layout(location = 6) in vec3 in_bitangent;
+layout(location = 1) in vec2 in_tex_coord;
+layout(location = 2) in vec3 in_normal;
+layout(location = 3) in vec2 in_normal_coord;
+layout(location = 4) in vec3 in_tangent;
+layout(location = 5) in vec3 in_bitangent;
 
 layout(location = 0) out vec3 position_worldspace;
 layout(location = 1) out vec3 normal;
 layout(location = 2) out vec2 uv;
 layout(location = 3) out vec2 normal_coord;
-layout(location = 4) out vec3 tangent;
-layout(location = 5) out vec3 bitangent;
+layout(location = 4) out mat3 TBN;
 
 void main()
 {
@@ -69,10 +68,15 @@ void main()
 
     gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);
 
+    vec3 T = normalize(vec3(ubo.model * vec4(in_tangent, 0.0)));
+    vec3 B = normalize(vec3(ubo.model * vec4(in_bitangent, 0.0)));
+    vec3 N = normalize(vec3(ubo.model * vec4(in_normal, 0.0)));
+    TBN = transpose(mat3(T, B, N));
+
+    debugPrintfEXT("B: %v3f", in_bitangent);
+
     mat3 inv_trans = inverse(transpose(mat3(ubo.model)));
 
     position_worldspace = (ubo.model * vec4(pos,          1)).xyz;
-    tangent             = (ubo.model * vec4(normalize(in_tangent),   1)).xyz;
-    bitangent           = (ubo.model * vec4(normalize(in_bitangent), 1)).xyz;
     normal              = (inv_trans * normal_color).xyz;
 }

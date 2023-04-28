@@ -250,7 +250,7 @@ void showLight(LightBufferObject& light)
         ImGui::DragFloat("Pos y", &light.position.y, 0.1f, -100.0f, 100);
         ImGui::DragFloat("Pos z", &light.position.z, 0.1f, -100.0f, 100);
 
-        static float drag = 0.0f;
+        static float drag = 2.4f;
         if (ImGui::DragFloat("sin/cos", &drag, 0.01,0,100))
         {
             light.position.x = std::cos(drag)*300;
@@ -374,6 +374,7 @@ void showScene(Application& app, Scene& scene, Models& models)
     ImGui::InputInt("Displacement map", &app.scene.terrain.displacement_map);
     ImGui::InputInt("Normal map", &app.scene.terrain.normal_map);
     ImGui::InputInt("Texture id", &app.scene.terrain.texture_id);
+    ImGui::InputInt("Texture normal", &app.scene.terrain.texture_normal_map);
     ImGui::DragFloat("Blend sharpness", &app.scene.terrain.blend_sharpness, 1.0f, 0.01f, 100.0f);
     ImGui::DragFloat("Texture scale", &app.scene.terrain.texture_scale, 0.01f, 0.001, 100);
     ImGui::DragFloat("Height", &app.scene.terrain.max_height, 1.0f, 0.0f, 200.0f);
