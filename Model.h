@@ -40,14 +40,14 @@ struct TerrainBufferObject
     int texture_id{8};
     int texture_normal_map{7};
     
-    float blend_sharpness{6};
+    float blend_sharpness{20};
 
-    float texture_scale{0.06};
+    float texture_scale{0.090};
 
 
     float lod_min{0};
-    float lod_max{8};
-    float weight{386};
+    float lod_max{4};
+    float weight{441};
 };
 
 struct Vertex

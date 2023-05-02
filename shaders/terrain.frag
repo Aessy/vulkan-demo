@@ -48,7 +48,6 @@ layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 uv;
 layout(location = 3) in vec2 normal_coord;
 layout(location = 4) in mat3 TBN;
-
 layout(location = 0) out vec4 out_color;
 
 float findLod()
@@ -100,7 +99,7 @@ void main()
     
     vec3 normal_tex =  normalize(xaxis_normal * blending.x + yaxis_normal * blending.y + zaxis_normal * blending.z).xyz;
 
-    n = normalize(TBN * normal_tex);
+    n = normalize(normal_tex);
 
     vec3 material_diffuse_color = tex.rgb;
     vec3 material_ambient_color = vec3(0.3, 0.3, 0.3) * material_diffuse_color;

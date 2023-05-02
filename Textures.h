@@ -23,7 +23,6 @@ struct Texture
 struct Textures
 {
     vk::Sampler sampler;
-
     std::vector<Texture> textures;
 };
 
@@ -33,4 +32,11 @@ enum class TextureType
     Map
 };
 
-Textures createTextures(RenderingState const& core, std::vector<std::pair<std::string, TextureType>> const& paths);
+struct TextureInput
+{
+    std::string path;
+    TextureType texture_type;
+    vk::Format format;
+};
+
+Textures createTextures(RenderingState const& core, std::vector<TextureInput> const& paths);

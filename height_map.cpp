@@ -108,7 +108,7 @@ Model createFlatGround(std::size_t size, float length, size_t texture_size)
             model.indices.push_back(count+4);
             model.indices.push_back(count+5);
 
-            count += 4;
+            count += 6;
         }
     }
     return model;
@@ -157,37 +157,6 @@ Model createModelFromHeightMap(std::string const& height_map_path, float size, f
     //
     // 2. Loop over the map and calculate the normal for each point, the normal is shared between all neighbouring vertices.
 
-    for (auto index = m.indices.begin(); index < m.indices.end(); index += 3)
-    {
-        auto v0 = m.vertices[*index].pos;
-        auto v1 = m.vertices[*(index+1)].pos;
-        auto v2 = m.vertices[*(index+2)].pos;
-
-        auto uv0 = m.vertices[*index].normal_coord;
-        auto uv1 = m.vertices[*(index+1)].normal_coord;
-        auto uv2 = m.vertices[*(index+2)].normal_coord;
-
-        glm::vec3 e1 = v1-v0;
-        glm::vec3 e2 = v2-v0;
-
-        glm::vec2 delta_uv1 = uv1-uv0;
-        glm::vec2 delta_uv2 = uv2-uv0;
-
-        float r = 1.0f / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
-
-        glm::vec3 tangent = glm::normalize(((e1 * delta_uv2.y) - (e2 * delta_uv1.y)) * r);
-        glm::vec3 bitangent = glm::normalize(((e2 * delta_uv1.y) - (e1 * delta_uv2.y)) * r);
-        glm::vec3 normal = glm::normalize(glm::cross(glm::normalize(bitangent), glm::normalize(tangent)));
-
-        m.vertices[*index].tangent = tangent;
-        m.vertices[*index].bitangent = bitangent;
-
-        m.vertices[*index+1].tangent = tangent;
-        m.vertices[*index+1].bitangent = bitangent;
-
-        m.vertices[*index+2].tangent = tangent;
-        m.vertices[*index+2].bitangent = bitangent;
-    }
 
     std::map<glm::vec3, std::vector<glm::vec3>, Comp> normal_map;
     for (auto index = m.indices.begin(); index != m.indices.end(); index += 3)
@@ -220,25 +189,35 @@ Model createModelFromHeightMap(std::string const& height_map_path, float size, f
     {
         auto &p1 = m.vertices[i];
 
-
         glm::vec3 init_vec;
-        if  (p1.normal.x != 0)
+
+        if (std::abs(p1.normal.x) < std::abs(p1.normal.y))
         {
-            init_vec = glm::vec3(1,0,0);
+            if (std::abs(p1.normal.x) < std::abs(p1.normal.z))
+            {
+                init_vec = glm::cross(p1.normal, glm::vec3(1,0,0));
+            }
+            else
+            {
+                init_vec = glm::cross(p1.normal, glm::vec3(0,0,1));
+            }
         }
-        else if (p1.normal.y != 0)
+        else
         {
-            init_vec = glm::vec3(0,1,0);
-        }
-        else if (p1.normal.z != 0)
-        {
-            init_vec = glm::vec3(0,0,1);
+            if (std::abs(p1.normal.y) < std::abs(p1.normal.z))
+            {
+                init_vec = glm::cross(p1.normal, glm::vec3(0,1,0));
+            }
+            else
+            {
+                init_vec = glm::cross(p1.normal, glm::vec3(0,0,1));
+            }
         }
 
         glm::vec3 tangent = glm::normalize(init_vec - glm::dot(p1.normal, init_vec) * p1.normal);
-        glm::vec3 bitangent = glm::cross(p1.normal, tangent);
+        glm::vec3 bitangent = glm::normalize(glm::cross(p1.normal, tangent));
         p1.tangent = tangent;
-        p1.bitangent = glm::normalize(bitangent);
+        p1.bitangent = bitangent;
     }
 
     stbi_image_free(pixels);

@@ -32,9 +32,8 @@ layout(set = 3, binding = 0) uniform UniformTerrain{
     uint displacement_map;
     uint normal_map;
     uint texture_id;
-    uint texture_normal_id;
+    float blend_sharpness;
     float texture_scale;
-
     float lod_min;
     float lod_max;
     float weight;
@@ -68,14 +67,12 @@ void main()
 
     gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);
 
-    vec3 T = normalize(vec3(ubo.model * vec4(in_tangent, 0.0)));
-    vec3 B = normalize(vec3(ubo.model * vec4(in_bitangent, 0.0)));
-    vec3 N = normalize(vec3(ubo.model * vec4(in_normal, 0.0)));
-    TBN = transpose(mat3(T, B, N));
-
-    debugPrintfEXT("B: %v3f", in_bitangent);
-
     mat3 inv_trans = inverse(transpose(mat3(ubo.model)));
+
+    vec3 T = normalize(vec3(inv_trans * in_tangent));
+    vec3 B = normalize(vec3(inv_trans * in_bitangent));
+    vec3 N = normalize(vec3(inv_trans * in_normal));
+    TBN = transpose(mat3(T, B, N));
 
     position_worldspace = (ubo.model * vec4(pos,          1)).xyz;
     normal              = (inv_trans * normal_color).xyz;
