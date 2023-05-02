@@ -28,7 +28,7 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
             [&rendering_state](auto const& set){return createDescriptorSetLayout(rendering_state.device, set);});
 
     // Create the default pipeline
-    auto const graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, rendering_state.render_pass, descriptor_set_layouts, readFile(shader_vert), readFile(shader_frag));
+    auto const graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, rendering_state.render_pass, descriptor_set_layouts, readFile(shader_vert), readFile(shader_frag), rendering_state.msaa);
 
     // Create descriptor set for the textures, lights, and matrices
     int i = 0;

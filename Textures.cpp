@@ -88,7 +88,7 @@ static std::tuple<vk::Image, vk::DeviceMemory, uint32_t> createImageMapTexture(R
     memcpy(data.value, pixels, static_cast<size_t>(image_size));
     state.device.unmapMemory(staging_buffer_memory);
 
-    auto image = createImage(state, width, height, 1, format, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
+    auto image = createImage(state, width, height, 1, format, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::SampleCountFlagBits::e1);
 
     transitionImageLayout(state, image.first, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, 1);
     copyBufferToImage(state, staging_buffer, image.first, width, height);
@@ -125,7 +125,7 @@ static std::tuple<vk::Image, vk::DeviceMemory, uint32_t> createTextureImage(Rend
     stbi_image_free(pixels);
 
     auto image = createImage(state, width, height, mip_levels, format, vk::ImageTiling::eOptimal,
-                        vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal);
+                        vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::SampleCountFlagBits::e1);
 
     transitionImageLayout(state, image.first, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, mip_levels);
     copyBufferToImage(state, staging_buffer, image.first, width, height);

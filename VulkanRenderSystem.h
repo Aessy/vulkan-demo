@@ -119,6 +119,7 @@ struct RenderingState
 
     vk::CommandPool command_pool;
     std::vector<vk::CommandBuffer> command_buffer;
+    DepthResources color_resources;
     DepthResources depth_resources;
     std::vector<vk::Framebuffer> framebuffers;
 
@@ -128,10 +129,12 @@ struct RenderingState
     uint32_t current_frame{};
 
     Camera camera;
+    vk::SampleCountFlagBits msaa;
+    
 };
 
 RenderingState createVulkanRenderState();
-std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties);
+std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::SampleCountFlagBits num_samples = vk::SampleCountFlagBits::e1);
 vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels);
 
 
@@ -150,8 +153,7 @@ vk::Buffer createBuffer(RenderingState const& state,
                         vk::DeviceSize size, vk::BufferUsageFlags usage,
                         vk::MemoryPropertyFlags properties, vk::DeviceMemory& buffer_memory);
 
-std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout,
-                                                                                std::vector<char> const& vertex_shader, std::vector<char> const& fragment_shader);
+std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<char> const& vertex_shader, std::vector<char> const& fragment_shader, vk::SampleCountFlagBits msaa);
 void recreateSwapchain(RenderingState& state);
 
 template<typename BufferObject>

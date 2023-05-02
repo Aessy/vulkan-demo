@@ -190,6 +190,31 @@ static int scoreDevice(vk::PhysicalDevice const& device)
     return score;
 }
 
+vk::SampleCountFlagBits getMaxUsableSampleCount(vk::PhysicalDevice device)
+{
+    auto properties = device.getProperties();
+
+    auto counts = properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts;
+    if (counts & vk::SampleCountFlagBits::e64) { return vk::SampleCountFlagBits::e64;}
+    if (counts & vk::SampleCountFlagBits::e32) { return vk::SampleCountFlagBits::e32;}
+    if (counts & vk::SampleCountFlagBits::e16) { return vk::SampleCountFlagBits::e16;}
+    if (counts & vk::SampleCountFlagBits::e8) { return vk::SampleCountFlagBits::e8;}
+    if (counts & vk::SampleCountFlagBits::e4) { return vk::SampleCountFlagBits::e4;}
+    if (counts & vk::SampleCountFlagBits::e2) { return vk::SampleCountFlagBits::e2;}
+
+    return vk::SampleCountFlagBits::e1;
+}
+
+static auto createColorResources(RenderingState const& state)
+{
+    auto image = createImage(state, state.swap_chain.extent.width, state.swap_chain.extent.height, 1, 
+        state.swap_chain.swap_chain_image_format, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransientAttachment | vk::ImageUsageFlagBits::eColorAttachment,
+        vk::MemoryPropertyFlagBits::eDeviceLocal, state.msaa);
+
+    auto view = createImageView(state.device, image.first, state.swap_chain.swap_chain_image_format, vk::ImageAspectFlagBits::eColor, 1);
+
+    return DepthResources{image.first, image.second, view};
+}
 
 static vk::PhysicalDevice createPhysicalDevice(vk::Instance const& instance)
 {
@@ -474,27 +499,37 @@ static vk::Format getDepthFormat()
     return format;
 }
 
-static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format const& swap_chain_image_format)
+static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format const& swap_chain_image_format, vk::SampleCountFlagBits msaa)
 {
     vk::AttachmentDescription color_attachment{};
     color_attachment.format = swap_chain_image_format;
-    color_attachment.samples = vk::SampleCountFlagBits::e1;
+    color_attachment.samples = msaa;
     color_attachment.loadOp = vk::AttachmentLoadOp::eClear;
     color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
     color_attachment.stencilLoadOp =  vk::AttachmentLoadOp::eDontCare;
     color_attachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
     color_attachment.initialLayout = vk::ImageLayout::eUndefined;
-    color_attachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;
+    color_attachment.finalLayout = vk::ImageLayout::eColorAttachmentOptimal;
 
     vk::AttachmentDescription depth_attachment{};
     depth_attachment.format = getDepthFormat();
-    depth_attachment.samples = vk::SampleCountFlagBits::e1;
+    depth_attachment.samples = msaa;
     depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
     depth_attachment.storeOp = vk::AttachmentStoreOp::eDontCare;
     depth_attachment.stencilLoadOp =  vk::AttachmentLoadOp::eDontCare;
     depth_attachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
     depth_attachment.initialLayout = vk::ImageLayout::eUndefined;
     depth_attachment.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
+    vk::AttachmentDescription color_attachment_resolve{};
+    color_attachment_resolve.format = swap_chain_image_format;
+    color_attachment_resolve.samples = vk::SampleCountFlagBits::e1;
+    color_attachment_resolve.loadOp = vk::AttachmentLoadOp::eDontCare;
+    color_attachment_resolve.storeOp = vk::AttachmentStoreOp::eStore;
+    color_attachment_resolve.stencilLoadOp =  vk::AttachmentLoadOp::eDontCare;
+    color_attachment_resolve.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+    color_attachment_resolve.initialLayout = vk::ImageLayout::eUndefined;
+    color_attachment_resolve.finalLayout = vk::ImageLayout::ePresentSrcKHR;
 
     vk::AttachmentReference color_attachment_ref;
     color_attachment_ref.attachment = 0;
@@ -504,11 +539,16 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     depth_attachment_ref.attachment = 1;
     depth_attachment_ref.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
+    vk::AttachmentReference color_attachment_resolve_ref;
+    color_attachment_resolve_ref.attachment = 2;
+    color_attachment_resolve_ref.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
     vk::SubpassDescription subpass {};
     subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
     subpass.colorAttachmentCount = 1;
     subpass.setColorAttachments(color_attachment_ref);
     subpass.setPDepthStencilAttachment(&depth_attachment_ref);
+    subpass.setResolveAttachments(color_attachment_resolve_ref);
 
     vk::SubpassDependency dependency{};
     dependency.setSrcSubpass(VK_SUBPASS_EXTERNAL);
@@ -520,7 +560,7 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     dependency.setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests);
     dependency.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite);
 
-    std::array<vk::AttachmentDescription, 2> attachments {color_attachment, depth_attachment};
+    std::array<vk::AttachmentDescription, 3> attachments {color_attachment, depth_attachment, color_attachment_resolve};
 
     vk::RenderPassCreateInfo render_pass_info{};
     render_pass_info.sType = vk::StructureType::eRenderPassCreateInfo;
@@ -585,14 +625,14 @@ DepthResources createDepth(RenderingState const& state)
 
     auto depth_image = createImage(state, state.swap_chain.extent.width, state.swap_chain.extent.height, 1, format,
                             vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment,
-                            vk::MemoryPropertyFlagBits::eDeviceLocal);
+                            vk::MemoryPropertyFlagBits::eDeviceLocal, state.msaa);
 
     auto depth_image_view = createImageView(state.device, depth_image.first, format, vk::ImageAspectFlagBits::eDepth, 1);
 
     return {depth_image.first, depth_image.second, depth_image_view};
 }
 
-std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties)
+std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::SampleCountFlagBits n_samples)
 {
     vk::ImageCreateInfo image_info;
     image_info.sType = vk::StructureType::eImageCreateInfo;
@@ -607,7 +647,7 @@ std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, 
     image_info.initialLayout = vk::ImageLayout::eUndefined;
     image_info.usage = usage;
     image_info.sharingMode = vk::SharingMode::eExclusive;
-    image_info.samples = vk::SampleCountFlagBits::e1;
+    image_info.samples = n_samples;
     image_info.flags = static_cast<vk::ImageCreateFlagBits>(0);
 
     auto texture_image = state.device.createImage(image_info);
@@ -644,13 +684,13 @@ vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, 
     return texture_image_view.value;
 }
 
-static std::vector<vk::Framebuffer> createFrameBuffers(vk::Device const& device, std::vector<vk::ImageView> const& swap_chain_image_views, vk::RenderPass const& render_pass, vk::Extent2D const& swap_chain_extent, DepthResources const& depth_resources)
+static std::vector<vk::Framebuffer> createFrameBuffers(vk::Device const& device, std::vector<vk::ImageView> const& swap_chain_image_views, vk::RenderPass const& render_pass, vk::Extent2D const& swap_chain_extent, DepthResources const& depth_resources, DepthResources const& color_resources)
 {
     std::vector<vk::Framebuffer> swap_chain_frame_buffers;
 
     for (auto const& swap_chain_image_view : swap_chain_image_views)
     {
-        std::array<vk::ImageView, 2> attachments = {swap_chain_image_view, depth_resources.depth_image_view};
+        std::array<vk::ImageView, 3> attachments = {color_resources.depth_image_view, depth_resources.depth_image_view, swap_chain_image_view};
 
         vk::FramebufferCreateInfo framebuffer_info{};
         framebuffer_info.sType = vk::StructureType::eFramebufferCreateInfo;
@@ -669,7 +709,7 @@ static std::vector<vk::Framebuffer> createFrameBuffers(vk::Device const& device,
 
 void initImgui(vk::Device const& device, vk::PhysicalDevice const& physical, vk::Instance const& instance,
                vk::Queue const& queue, vk::RenderPass const& render_pass,
-               RenderingState& state, GLFWwindow* window)
+               RenderingState& state, GLFWwindow* window, vk::SampleCountFlagBits msaa)
 {
     std::vector<vk::DescriptorPoolSize> pool_sizes
     {
@@ -707,7 +747,7 @@ void initImgui(vk::Device const& device, vk::PhysicalDevice const& physical, vk:
     init_info.Queue = queue;
     init_info.MinImageCount = 3;
     init_info.ImageCount = 3;
-    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    init_info.MSAASamples = VkSampleCountFlagBits(msaa);
 
     ImGui_ImplVulkan_Init(&init_info, render_pass);
 
@@ -730,6 +770,7 @@ RenderingState createVulkanRenderState()
     auto const surface = createSurface(instance, window);
 
     auto const physical_device = createPhysicalDevice(instance);
+    auto const msaa_samples = getMaxUsableSampleCount(physical_device);
 
     auto const indices = findQueueFamilies(physical_device, surface);
     auto const device = createLogicalDevice(physical_device, indices);
@@ -738,7 +779,7 @@ RenderingState createVulkanRenderState()
 
     auto swap_chain_image_views = createImageViews(sc, device);
 
-    auto const render_pass = createRenderPass(device, sc.swap_chain_image_format);
+    auto const render_pass = createRenderPass(device, sc.swap_chain_image_format, msaa_samples);
 
     auto const command_pool = createCommandPool(device, indices);
     auto const command_buffers = createCommandBuffer(device, command_pool);
@@ -764,14 +805,18 @@ RenderingState createVulkanRenderState()
         .command_buffer = command_buffers,
         .graphics_queue = graphics_queue,
         .present_queue = present_queue,
+        .msaa = msaa_samples
     };
 
-    initImgui(device, physical_device, instance, graphics_queue, render_pass, render_state, window);
 
+    initImgui(device, physical_device, instance, graphics_queue, render_pass, render_state, window, msaa_samples);
+
+    auto color_resources = createColorResources(render_state);
     auto depth_image = createDepth(render_state);
-    auto swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, sc.extent, depth_image);
+    auto swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, sc.extent, depth_image, color_resources);
 
     render_state.framebuffers = swap_chain_framebuffers;
+    render_state.color_resources = color_resources;
     render_state.depth_resources = depth_image;
 
     return render_state;
@@ -1079,11 +1124,7 @@ static constexpr std::array<vk::VertexInputAttributeDescription, 6> getAttribute
     return  desc;
 }
 
-
-
-
-std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout,
-                                                                                std::vector<char> const& vertex_shader, std::vector<char> const& fragment_shader)
+std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<char> const& vertex_shader, std::vector<char> const& fragment_shader, vk::SampleCountFlagBits msaa)
 {
     std::string path;
 
@@ -1170,7 +1211,7 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     vk::PipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = vk::StructureType::ePipelineMultisampleStateCreateInfo;
     multisampling.sampleShadingEnable = false;
-    multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+    multisampling.rasterizationSamples = msaa;
     multisampling.minSampleShading = 1.0f;
     multisampling.pSampleMask = nullptr;
     multisampling.alphaToCoverageEnable = false;
@@ -1268,9 +1309,10 @@ void recreateSwapchain(RenderingState& state)
     // Create new swapchain
     state.swap_chain = createSwapchain(state.physical_device, state.device, state.surface, state.window, state.indices);
     state.image_views = createImageViews(state.swap_chain, state.device);
+    state.color_resources = createColorResources(state);
     state.depth_resources = createDepth(state);
     state.framebuffers = createFrameBuffers(state.device, state.image_views, state.render_pass,
-                                           state.swap_chain.extent, state.depth_resources);
+                                           state.swap_chain.extent, state.depth_resources, state.color_resources);
 
     std::cout << "Finish recreating\n";
 }
