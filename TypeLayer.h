@@ -30,6 +30,8 @@ struct Binding
     int size{};
     bool vertex = false;
     bool fragment = false;
+    bool tess_ctrl = false;
+    bool tess_evu = false;
 };
 
 struct Buffer
@@ -48,6 +50,8 @@ struct Program
     std::array<char, 50> name{{}};
     std::array<char, 50> vertex_shader{{}};
     std::array<char, 50> fragment_shader{{}};
+    std::array<char, 50> tesselation_ctrl_shader{{}};
+    std::array<char, 50> tesselation_evaluation_shader{{}};
 
     std::vector<Buffer> buffers;
 };

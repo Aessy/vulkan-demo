@@ -325,6 +325,8 @@ layer_types::Program createTerrainProgram()
     layer_types::Program program_desc;
     program_desc.fragment_shader = {{"./shaders/terrain_frag.spv"}};
     program_desc.vertex_shader= {{"./shaders/terrain_vert.spv"}};
+    program_desc.tesselation_ctrl_shader = {{"./shaders/terrain_tess_ctrl.spv"}};
+    program_desc.tesselation_evaluation_shader= {{"./shaders/terrain_tess_evu.spv"}};
     program_desc.buffers.push_back({layer_types::Buffer{
         .name = {{"texture_buffer"}},
         .type = layer_types::BufferType::NoBuffer,
@@ -348,7 +350,8 @@ layer_types::Program createTerrainProgram()
             .type = layer_types::BindingType::Uniform,
             .size = 1,
             .vertex = true,
-            .fragment = true
+            .fragment = true,
+            .tess_evu = true
         }
     }});
     program_desc.buffers.push_back({layer_types::Buffer{

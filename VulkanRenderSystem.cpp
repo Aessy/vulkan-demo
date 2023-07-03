@@ -2,6 +2,7 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_enums.hpp>
 #include <vulkan/vulkan_handles.hpp>
+#include <vulkan/vulkan_structs.hpp>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
@@ -309,6 +310,7 @@ static vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device,
 
     vk::PhysicalDeviceFeatures device_features{};
     device_features.samplerAnisotropy = true;
+    device_features.tessellationShader = true;
     
     vk::PhysicalDeviceVulkan11Features f{};
     f.shaderDrawParameters = true;
@@ -1059,7 +1061,7 @@ vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> 
     return index_buffer;
 }
 
-static vk::ShaderModule createShaderModule(std::vector<char> const& code, vk::Device const& device)
+vk::ShaderModule createShaderModule(std::vector<char> const& code, vk::Device const& device)
 {
     std::cout << code.size() << '\n';
 
@@ -1070,6 +1072,10 @@ static vk::ShaderModule createShaderModule(std::vector<char> const& code, vk::De
 
     auto shader_module = device.createShaderModule(create_info);
 
+    if (shader_module.result != vk::Result::eSuccess)
+    {
+        std::cout << "Failed creating shader module\n";
+    }
     return shader_module.value;
 
 
@@ -1124,29 +1130,23 @@ static constexpr std::array<vk::VertexInputAttributeDescription, 6> getAttribute
     return  desc;
 }
 
-std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<char> const& vertex_shader, std::vector<char> const& fragment_shader, vk::SampleCountFlagBits msaa)
+std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<ShaderStage> shader_stages, vk::SampleCountFlagBits msaa)
 {
     std::string path;
+    std::vector<vk::PipelineShaderStageCreateInfo> stages;
 
-    std::cout << "Create vertex\n";
-    auto const vertex = createShaderModule(vertex_shader, device);
-    std::cout << "Create frag\n";
-    auto const frag = createShaderModule(fragment_shader, device);
+    vk::ShaderStageFlags shader_flags;
+    for (auto& stage : shader_stages)
+    {
+        vk::PipelineShaderStageCreateInfo stage_info;
+        stage_info.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+        stage_info.stage = stage.stage;
+        stage_info.module = stage.module;
+        stage_info.pName = "main";
+        stages.push_back(stage_info);
 
-
-    vk::PipelineShaderStageCreateInfo vert_shader_stage_info;
-    vert_shader_stage_info.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
-    vert_shader_stage_info.stage = vk::ShaderStageFlagBits::eVertex;
-    vert_shader_stage_info.module = vertex;
-    vert_shader_stage_info.pName = "main";
-
-    vk::PipelineShaderStageCreateInfo frag_shader_stage_info;
-    frag_shader_stage_info.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
-    frag_shader_stage_info.stage = vk::ShaderStageFlagBits::eFragment;
-    frag_shader_stage_info.module = frag;
-    frag_shader_stage_info.pName = "main";
-
-    vk::PipelineShaderStageCreateInfo shader_stages[] = {vert_shader_stage_info, frag_shader_stage_info};
+        shader_flags |= stage_info.stage;
+    }
 
 
     std::vector<vk::DynamicState> dynamic_states {
@@ -1171,7 +1171,15 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
 
     vk::PipelineInputAssemblyStateCreateInfo input_assembly{};
     input_assembly.sType = vk::StructureType::ePipelineInputAssemblyStateCreateInfo;
-    input_assembly.setTopology(vk::PrimitiveTopology::eTriangleList);
+    if (shader_flags | vk::ShaderStageFlagBits::eTessellationControl)
+    {
+        input_assembly.setTopology(vk::PrimitiveTopology::ePatchList);
+    }
+    else
+    {
+        input_assembly.setTopology(vk::PrimitiveTopology::eTriangleList);
+    }
+
     input_assembly.setPrimitiveRestartEnable(false);
 
     vk::Viewport viewport{};
@@ -1199,7 +1207,7 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     rasterizer.sType = vk::StructureType::ePipelineRasterizationStateCreateInfo;
     rasterizer.depthClampEnable = false;
     rasterizer.rasterizerDiscardEnable = false;
-    rasterizer.polygonMode = vk::PolygonMode::eFill;
+    rasterizer.polygonMode = vk::PolygonMode::eLine;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = vk::CullModeFlagBits::eBack;
     rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
@@ -1246,9 +1254,10 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     pipeline_layout_info.setSetLayouts(desc_set_layout);
     //
     vk::PushConstantRange range;
-    range.setStageFlags(vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
+    range.setStageFlags(shader_flags);
     range.setSize(sizeof(ModelBufferObject));
     range.setOffset(0);
+
 
     //pipeline_layout_info.setPushConstantRanges(range);
     // pipeline_layout_info.pushConstantRangeCount = 0;
@@ -1271,8 +1280,8 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
 
     vk::GraphicsPipelineCreateInfo pipeline_info;
     pipeline_info.sType = vk::StructureType::eGraphicsPipelineCreateInfo;
-    pipeline_info.stageCount = 2;
-    pipeline_info.setStages(shader_stages);
+    pipeline_info.stageCount = stages.size();
+    pipeline_info.setStages(stages);
 
 
     pipeline_info.setPVertexInputState(&vertex_input_info);
@@ -1290,6 +1299,15 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     pipeline_info.basePipelineIndex = 0;
     pipeline_info.basePipelineIndex = -1;
 
+    vk::PipelineTessellationStateCreateInfo tess {};
+    if (shader_flags | vk::ShaderStageFlagBits::eTessellationControl)
+    {
+        tess.sType = vk::StructureType::ePipelineTessellationStateCreateInfo;
+        tess.pNext = nullptr;
+        tess.patchControlPoints = 3;
+
+        pipeline_info.setPTessellationState(&tess);
+    }
     auto pipelines = device.createGraphicsPipelines(VK_NULL_HANDLE, pipeline_info);
 
     return std::make_pair(pipelines.value, pipeline_layout.value);

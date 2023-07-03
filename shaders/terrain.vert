@@ -51,10 +51,12 @@ layout(location = 1) out vec3 normal;
 layout(location = 2) out vec2 uv;
 layout(location = 3) out vec2 normal_coord;
 layout(location = 4) out mat3 TBN;
+layout(location = 10) out mat4 model;
 
 void main()
 {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
+    
     vec3 pos = inPosition;
     normal_coord = in_normal_coord;
     
@@ -76,4 +78,5 @@ void main()
 
     position_worldspace = (ubo.model * vec4(pos,          1)).xyz;
     normal              = (inv_trans * normal_color).xyz;
+    model = ubo.model;
 }

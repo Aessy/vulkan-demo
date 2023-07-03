@@ -3,6 +3,7 @@
 #include "VulkanRenderSystem.h"
 #include "utilities.h"
 #include "Textures.h"
+#include <vulkan/vulkan_enums.hpp>
 
 DescriptionPoolAndSet createDescriptorSet(vk::Device const& device, vk::DescriptorSetLayout const& layout,
                                           std::vector<vk::DescriptorSetLayoutBinding> const& layout_bindings)
@@ -20,15 +21,54 @@ DescriptionPoolAndSet createDescriptorSet(vk::Device const& device, vk::Descript
 }
 
 GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings, RenderingState const& rendering_state,
-                                                                            std::string const& shader_vert, std::string const& shader_frag)
+                                                                            std::string const& shader_vert, std::string const& shader_frag, std::string const& tess_ctrl, std::string const& tess_evu)
 {
     // Create layouts for the descriptor sets
     std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
     std::transform(descriptor_set_layout_bindings.begin(), descriptor_set_layout_bindings.end(), std::back_inserter(descriptor_set_layouts),
             [&rendering_state](auto const& set){return createDescriptorSetLayout(rendering_state.device, set);});
 
+
+    std::vector<ShaderStage> shader_stages;
+    if (shader_vert.size())
+    {
+        ShaderStage s {
+            .module = createShaderModule(readFile(shader_vert), rendering_state.device),
+            .stage = vk::ShaderStageFlagBits::eVertex
+        };
+
+        shader_stages.push_back(s);
+    }
+    if (shader_frag.size())
+    {
+        ShaderStage s {
+            .module = createShaderModule(readFile(shader_frag), rendering_state.device),
+            .stage = vk::ShaderStageFlagBits::eFragment
+        };
+
+        shader_stages.push_back(s);
+    }
+    if (tess_ctrl.size())
+    {
+        ShaderStage s {
+            .module = createShaderModule(readFile(tess_ctrl), rendering_state.device),
+            .stage = vk::ShaderStageFlagBits::eTessellationControl
+        };
+
+        shader_stages.push_back(s);
+    }
+    if (tess_evu.size())
+    {
+        ShaderStage s {
+            .module = createShaderModule(readFile(tess_evu), rendering_state.device),
+            .stage = vk::ShaderStageFlagBits::eTessellationEvaluation
+        };
+
+        shader_stages.push_back(s);
+    }
+
     // Create the default pipeline
-    auto const graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, rendering_state.render_pass, descriptor_set_layouts, readFile(shader_vert), readFile(shader_frag), rendering_state.msaa);
+    auto const graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, rendering_state.render_pass, descriptor_set_layouts, shader_stages, rendering_state.msaa);
 
     // Create descriptor set for the textures, lights, and matrices
     int i = 0;
@@ -77,6 +117,8 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
         vk::ShaderStageFlags shader_flags {};
         if (binding.fragment) shader_flags |= vk::ShaderStageFlagBits::eFragment;
         if (binding.vertex) shader_flags |= vk::ShaderStageFlagBits::eVertex;
+        if (binding.tess_ctrl) shader_flags |= vk::ShaderStageFlagBits::eTessellationControl;
+        if (binding.tess_evu) shader_flags |= vk::ShaderStageFlagBits::eTessellationEvaluation;
 
 
         switch(binding.type)
@@ -95,8 +137,10 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
 
     std::string vertex_path = program_data.vertex_shader.data();
     std::string fragment_path = program_data.fragment_shader.data();
+    std::string tess_ctrl_path = program_data.tesselation_ctrl_shader.data();
+    std::string tess_evu_path = program_data.tesselation_evaluation_shader.data();
 
-    auto program = createGpuProgram(descriptor_set_layout_bindings, core, vertex_path, fragment_path);
+    auto program = createGpuProgram(descriptor_set_layout_bindings, core, vertex_path, fragment_path, tess_ctrl_path, tess_evu_path);
 
     std::vector<buffer_types::ModelType> model_types;
 

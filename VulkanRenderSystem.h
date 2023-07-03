@@ -137,9 +137,7 @@ RenderingState createVulkanRenderState();
 std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::SampleCountFlagBits num_samples = vk::SampleCountFlagBits::e1);
 vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels);
 
-
-
-
+vk::ShaderModule createShaderModule(std::vector<char> const& code, vk::Device const& device);
 
 vk::CommandBuffer beginSingleTimeCommands(RenderingState const& state);;
 void endSingleTimeCommands(RenderingState const& state, vk::CommandBuffer const& cmd_buffer);
@@ -153,7 +151,15 @@ vk::Buffer createBuffer(RenderingState const& state,
                         vk::DeviceSize size, vk::BufferUsageFlags usage,
                         vk::MemoryPropertyFlags properties, vk::DeviceMemory& buffer_memory);
 
-std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<char> const& vertex_shader, std::vector<char> const& fragment_shader, vk::SampleCountFlagBits msaa);
+
+struct ShaderStage
+{
+    vk::ShaderModule module;
+    vk::ShaderStageFlagBits stage;
+};
+
+std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<ShaderStage> shader_stages, vk::SampleCountFlagBits msaa);
+
 void recreateSwapchain(RenderingState& state);
 
 template<typename BufferObject>
