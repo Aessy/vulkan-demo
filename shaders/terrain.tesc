@@ -54,9 +54,21 @@ void main()
  
         //vec3 middleOfTriangle = GetMiddlePoint(middlePoint1, middlePoint2, middlePoint3);
  
-        gl_TessLevelInner[0] = 2;//GetTesselationLevel(LengthSquared2D(world.pos - middleOfTriangle));
-        gl_TessLevelOuter[0] = 2;//GetTesselationLevel(LengthSquared2D(world.pos - middlePoint1));
-        gl_TessLevelOuter[1] = 2;//GetTesselationLevel(LengthSquared2D(world.pos - middlePoint2));
-        gl_TessLevelOuter[2] = 2;//GetTesselationLevel(LengthSquared2D(world.pos - middlePoint3));
+        float distance = length(world.pos - position1);
+        gl_TessLevelInner[0] = 1;
+        gl_TessLevelOuter[0] = 1;
+        gl_TessLevelOuter[1] = 1;
+        gl_TessLevelOuter[2] = 1;
+
+        if (distance < 20)
+        {
+            gl_TessLevelInner[0] = 2;
+            gl_TessLevelOuter[0] = 3;
+            gl_TessLevelOuter[1] = 3;
+            gl_TessLevelOuter[2] = 3;
+        }
+        else
+        {
+        }
     }
 }

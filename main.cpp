@@ -351,6 +351,7 @@ layer_types::Program createTerrainProgram()
             .size = 1,
             .vertex = true,
             .fragment = true,
+            .tess_ctrl = true,
             .tess_evu = true
         }
     }});
