@@ -89,7 +89,6 @@ void main()
     vec3 tangent = normalize(init_vec - dot(normal_color, init_vec) * normal_color);
     vec3 bitangent = normalize(cross(normal_color, tangent));
 
-
     gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);
 
     mat3 inv_trans = inverse(transpose(mat3(ubo.model)));
