@@ -5,6 +5,8 @@
 
 layout (triangles, equal_spacing, ccw) in;
 
+layout(set = 0, binding = 0) uniform sampler2D texSampler[];
+
 struct LightBufferData
 {
     vec3 position;
@@ -28,6 +30,17 @@ layout(std140,set = 2, binding = 0) readonly buffer ObjectBuffer{
     ObjectData objects[];
 } ubo2;
 
+layout(set = 3, binding = 0) uniform UniformTerrain{
+    float max_height;
+    uint displacement_map;
+    uint normal_map;
+    uint texture_id;
+    float blend_sharpness;
+    float texture_scale;
+    float lod_min;
+    float lod_max;
+    float weight;
+} terrain;
 
 layout(location = 0) in vec3 evaluation_position_worldspace[];
 layout(location = 1) in vec3 evaluation_normal[];
@@ -52,6 +65,9 @@ void main()
     uv = (gl_TessCoord.x * evaluation_uv[0] + gl_TessCoord.y * evaluation_uv[1] + gl_TessCoord.z * evaluation_uv[2]);
     normal_coord = (gl_TessCoord.x * evaluation_normal_coord[0] + gl_TessCoord.y * evaluation_normal_coord[1] + gl_TessCoord.z * evaluation_normal_coord[2]);
     TBN = (gl_TessCoord.x * evaluation_TBN[0] + gl_TessCoord.y * evaluation_TBN[1] + gl_TessCoord.z * evaluation_TBN[2]);
+
+    vec4 displace = texture(texSampler[terrain.displacement_map], normal_coord);
+    pos.y = displace.r * terrain.max_height;
 
     gl_Position = world.proj * world.view * model * vec4(pos, 1.0);
     position_worldspace = (model * vec4(pos, 1)).xyz;

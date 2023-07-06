@@ -63,7 +63,7 @@ void main()
     uv = in_tex_coord;
 
     vec4 displace = texture(texSampler[terrain.displacement_map], normal_coord);
-    pos.y += displace.r * terrain.max_height;
+    pos.y = displace.r * terrain.max_height;
 
     vec3 normal_color = in_normal; //normalize(2*texture(texSampler[terrain.normal_map], normal_coord).rbg-1.0);
 

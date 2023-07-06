@@ -337,7 +337,8 @@ layer_types::Program createTerrainProgram()
             .type = layer_types::BindingType::TextureSampler,
             .size = 32,
             .vertex = true,
-            .fragment = true
+            .fragment = true,
+            .tess_evu = true
         }
     }});
     program_desc.buffers.push_back({layer_types::Buffer{
@@ -378,7 +379,8 @@ layer_types::Program createTerrainProgram()
             .type = layer_types::BindingType::Uniform,
             .size = 1,
             .vertex = true,
-            .fragment = true
+            .fragment = true,
+            .tess_evu = true
         }
     }});
 
@@ -452,7 +454,7 @@ int main()
     auto height_map_1_model = createFlatGround(2, 100, 2);
     auto height_map_512_model = createFlatGround(512, 512, 8);
     auto height_map_1024_model = createFlatGround(1024, 512, 16);
-    auto height_map_with_height_512_model = createModelFromHeightMap("./textures/terrain.png", 512, 50);
+    auto height_map_with_height_512_model = createModelFromHeightMap("./textures/terrain.png", 128, 50);
     auto box = createBox();
 
     models.models.insert({height_map_1_model.id, height_map_1_model});
