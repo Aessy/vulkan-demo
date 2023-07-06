@@ -1229,7 +1229,6 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     color_blend_attachement.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
                                              vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
 
-    
     color_blend_attachement.blendEnable = false;
     color_blend_attachement.srcColorBlendFactor = vk::BlendFactor::eOne;
     color_blend_attachement.dstColorBlendFactor = vk::BlendFactor::eZero;
