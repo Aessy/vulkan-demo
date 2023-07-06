@@ -1,3 +1,7 @@
+#include "X11/Xlib.h"
+#undef True
+#undef False
+
 #define VK_USE_PLATFORM_XLIB_KHR
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"

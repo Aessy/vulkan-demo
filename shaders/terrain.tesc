@@ -61,7 +61,7 @@ void main()
         gl_TessLevelOuter[1] = 1;
         gl_TessLevelOuter[2] = 1;
 
-        if (distance < 15)
+        if (distance < 0)
         {
             gl_TessLevelInner[0] = 1;
             gl_TessLevelOuter[0] = 2;
