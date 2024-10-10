@@ -358,6 +358,13 @@ void showScene(Application& app, Scene& scene, Models& models)
                     std::cout << "Open\n";
                     ImGui::OpenPopup("object");
                 }
+
+                int material = prog.first;
+                ImGui::DragInt("Change Material", &material, 1, 0, scene.objects.size());
+                if (material != prog.first)
+                {
+                    std::cout << "Changing program\n";
+                }
                 ImGui::TreePop();
             }
         }

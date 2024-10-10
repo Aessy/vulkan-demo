@@ -406,7 +406,9 @@ int main()
           {"./textures/forest_normal.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/forest_normal.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb},
-          {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm}
+          {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/mountain/height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/mountain/normal.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm}
         });
 
     layer_types::Program program_desc;
@@ -455,7 +457,7 @@ int main()
     Models models;
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
-    auto height_map_1_model = createFlatGround(100, 500, 4);
+    auto height_map_1_model = createFlatGround(256, 500, 4);
     auto height_map_512_model = createFlatGround(512, 512, 8);
     auto height_map_1024_model = createFlatGround(1024, 512, 16);
     auto height_map_with_height_512_model = createModelFromHeightMap("./textures/terrain.png", 128, 50);
@@ -467,9 +469,14 @@ int main()
     models.models.insert({height_map_with_height_512_model.id, height_map_with_height_512_model});
     models.models.insert({box.id, box});
 
+    auto terrain_program_fill = createTerrainProgram();
+    auto terrain_program_wireframe = terrain_program_fill;
+    terrain_program_wireframe.polygon_mode = layer_types::PolygonMode::Line;
+
     std::vector<std::unique_ptr<Program>> programs;
     programs.push_back(createProgram(program_desc, core, textures));
-    programs.push_back(createProgram(createTerrainProgram(), core, textures));
+    programs.push_back(createProgram(terrain_program_fill, core, textures));
+    programs.push_back(createProgram(terrain_program_wireframe, core, textures));
 
     Camera camera;
     camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.1f, 1000.0f);

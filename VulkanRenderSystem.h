@@ -164,7 +164,7 @@ struct ShaderStage
     vk::ShaderStageFlagBits stage;
 };
 
-std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<ShaderStage> shader_stages, vk::SampleCountFlagBits msaa);
+std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<ShaderStage> shader_stages, vk::SampleCountFlagBits msaa, vk::PolygonMode polygon_mode);
 
 void recreateSwapchain(RenderingState& state);
 

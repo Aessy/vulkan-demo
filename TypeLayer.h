@@ -22,6 +22,12 @@ enum class BufferType : int
     NoBuffer
 };
 
+enum class PolygonMode : int
+{
+    Fill,
+    Line
+};
+
 struct Binding
 {
     std::array<char, 50> name;
@@ -52,6 +58,8 @@ struct Program
     std::array<char, 50> fragment_shader{{}};
     std::array<char, 50> tesselation_ctrl_shader{{}};
     std::array<char, 50> tesselation_evaluation_shader{{}};
+
+    PolygonMode polygon_mode = PolygonMode::Fill;
 
     std::vector<Buffer> buffers;
 };

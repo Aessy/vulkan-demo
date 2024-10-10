@@ -21,7 +21,7 @@ DescriptionPoolAndSet createDescriptorSet(vk::Device const& device, vk::Descript
 }
 
 GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings, RenderingState const& rendering_state,
-                                                                            std::string const& shader_vert, std::string const& shader_frag, std::string const& tess_ctrl, std::string const& tess_evu)
+                                                                            std::string const& shader_vert, std::string const& shader_frag, std::string const& tess_ctrl, std::string const& tess_evu, vk::PolygonMode polygon_mode)
 {
     // Create layouts for the descriptor sets
     std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
@@ -68,7 +68,7 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
     }
 
     // Create the default pipeline
-    auto const graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, rendering_state.render_pass, descriptor_set_layouts, shader_stages, rendering_state.msaa);
+    auto const graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, rendering_state.render_pass, descriptor_set_layouts, shader_stages, rendering_state.msaa, polygon_mode);
 
     // Create descriptor set for the textures, lights, and matrices
     int i = 0;
@@ -140,7 +140,18 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
     std::string tess_ctrl_path = program_data.tesselation_ctrl_shader.data();
     std::string tess_evu_path = program_data.tesselation_evaluation_shader.data();
 
-    auto program = createGpuProgram(descriptor_set_layout_bindings, core, vertex_path, fragment_path, tess_ctrl_path, tess_evu_path);
+    vk::PolygonMode polygon_mode = vk::PolygonMode::eFill;
+    switch(program_data.polygon_mode)
+    {
+        case lt::PolygonMode::Fill:
+            polygon_mode = vk::PolygonMode::eFill;
+            break;
+        case lt::PolygonMode::Line:
+            polygon_mode = vk::PolygonMode::eLine;
+            break;
+    };
+
+    auto program = createGpuProgram(descriptor_set_layout_bindings, core, vertex_path, fragment_path, tess_ctrl_path, tess_evu_path, polygon_mode);
 
     std::vector<buffer_types::ModelType> model_types;
 

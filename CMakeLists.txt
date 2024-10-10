@@ -15,6 +15,7 @@ set(SRC VulkanRenderSystem.cpp
 
 add_executable(vulkan-test ${SRC})
 target_compile_options(vulkan-test PUBLIC -g -std=c++23)
+target_compile_definitions(vulkan-test PUBLIC GLM_ENABLE_EXPERIMENTAL)
 target_link_libraries(vulkan-test glfw vulkan X11 imgui)
 
 add_custom_target(shaders
