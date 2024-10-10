@@ -14,19 +14,29 @@
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
 
+#include <boost/container/flat_map.hpp>
+
 #include <map>
 #include <vector>
 
 struct Scene
 {
     Camera camera;
+
+    boost::container::flat_map<int, Object> objs;
+
     std::map<int, std::vector<Object>> objects;
 
     LightBufferObject light;
 
     TerrainBufferObject terrain;
-
 };
+
+void addObject(Scene& scene, Object obj)
+{
+    scene.objs.insert_or_assign(obj.id, obj);
+
+}
 
 inline WorldBufferObject createWorldBufferObject(Scene const& scene)
 {
