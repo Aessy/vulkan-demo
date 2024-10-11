@@ -21,6 +21,13 @@ struct DrawableMesh
     int id = Id();
 };
 
+inline void test()
+{
+    DrawableMesh m;
+
+    auto m2 = m;
+}
+
 struct Meshes
 {
     std::map<int, DrawableMesh> meshes;

@@ -501,7 +501,16 @@ int main()
     scene.light.light_color = glm::vec3(1,1,1);
     scene.light.strength = 50.0f;
     //scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
-    scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
+
+    for (int i = 0; i < programs.size(); ++i)
+    {
+        scene.materials[i] = {};
+    }
+
+    auto object = createObject(meshes.meshes.at(mesh_id));
+    object.material = 1;
+    addObject(scene, object);
+
 
     Application application{
         .textures = std::move(textures),

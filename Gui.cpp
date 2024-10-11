@@ -338,35 +338,31 @@ void showScene(Application& app, Scene& scene, Models& models)
         ImGui::TreePop();
     }
 
-    for (auto& prog: scene.objects)
+    int index = 0;
+    for (auto& obj: scene.objs)
     {
-        int index = 0;
-        for (auto& obj : prog.second)
+        if (ImGui::TreeNode(std::to_string(index++).c_str()))
         {
-            if (ImGui::TreeNode(std::to_string(index++).c_str()))
+            showObject(obj, app);
+            ImGui::Text("Pos: x:%f, y:%f, z:%f",obj.position.x, obj.position.y, obj.position.z);
+            ImGui::Text("Angle: %f", obj.angel);
+            ImGui::Text("Scale: %f", obj.scale);
+            ImGui::Text("Indices: %d", obj.mesh.indices_size);
+            ImGui::Text("Material: %d", obj.material);
+            ImGui::Text("Texture: %s", app.textures.textures[obj.texture_index].name.c_str());
+            showMeshTree(obj.mesh, models, std::string("Mesh: ") + obj.mesh.name + " " + std::to_string(obj.mesh.id));
+            if (ImGui::Button("Edit"))
             {
-                showObject(obj, app);
-                ImGui::Text("Pos: x:%f, y:%f, z:%f",obj.position.x, obj.position.y, obj.position.z);
-                ImGui::Text("Angle: %f", obj.angel);
-                ImGui::Text("Scale: %f", obj.scale);
-                ImGui::Text("Indices: %d", obj.mesh.indices_size);
-                ImGui::Text("Material: %d", prog.first);
-                ImGui::Text("Texture: %s", app.textures.textures[obj.texture_index].name.c_str());
-                showMeshTree(obj.mesh, models, std::string("Mesh: ") + obj.mesh.name + " " + std::to_string(obj.mesh.id));
-                if (ImGui::Button("Edit"))
-                {
-                    std::cout << "Open\n";
-                    ImGui::OpenPopup("object");
-                }
-
-                int material = prog.first;
-                ImGui::DragInt("Change Material", &material, 1, 0, scene.objects.size());
-                if (material != prog.first)
-                {
-                    std::cout << "Changing program\n";
-                }
-                ImGui::TreePop();
+                ImGui::OpenPopup("object");
             }
+
+            int material = obj.material;
+            ImGui::InputInt("Change Material", &material);
+            if (material != obj.material && material < scene.materials.size())
+            {
+                changeMaterial(scene, index-1, material);
+            }
+            ImGui::TreePop();
         }
     }
 

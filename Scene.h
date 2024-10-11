@@ -23,7 +23,9 @@ struct Scene
 {
     Camera camera;
 
-    boost::container::flat_map<int, Object> objs;
+    std::vector<Object> objs;
+    std::vector<std::pair<int, int>> obj_inx;
+    std::map<int, std::vector<int>> materials;
 
     std::map<int, std::vector<Object>> objects;
 
@@ -32,10 +34,33 @@ struct Scene
     TerrainBufferObject terrain;
 };
 
-void addObject(Scene& scene, Object obj)
+inline void addObject(Scene& scene, Object o)
 {
-    scene.objs.insert_or_assign(obj.id, obj);
+    scene.objs.push_back(o);
+    int const inx = scene.objs.size()-1;
 
+    auto& material = scene.materials[o.material];
+    material.push_back(inx);
+    int const material_inx = material.size()-1;
+
+    scene.obj_inx.push_back({o.material, material_inx});
+}
+
+inline void changeMaterial(Scene& scene, int obj_ix, int new_material)
+{
+    auto& obj = scene.objs[obj_ix];
+    auto& obj_inx_mapper = scene.obj_inx[obj_ix];
+
+    auto& old_material = scene.materials[obj_inx_mapper.first][obj_inx_mapper.second];
+    std::swap(old_material, scene.materials[obj_inx_mapper.first].back());
+    scene.materials[obj_inx_mapper.first].pop_back();
+
+    obj.material = new_material;
+    auto& material = scene.materials[obj.material];
+    material.push_back(obj_ix);
+
+    obj_inx_mapper.first = new_material;
+    obj_inx_mapper.second = material.size()-1;
 }
 
 inline WorldBufferObject createWorldBufferObject(Scene const& scene)

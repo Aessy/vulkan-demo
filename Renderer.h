@@ -13,7 +13,7 @@ inline void writeBuffer(UniformBuffer& dst, BufferObject const& src, size_t inde
 
 inline void renderScene(vk::CommandBuffer& cmd_buffer, Scene const& scene, std::vector<std::unique_ptr<Program>>& programs, int frame)
 {
-    for (auto const& o : scene.objects)
+    for (auto const& o : scene.materials)
     {
         auto& program = *programs[o.first].get();
 
@@ -30,7 +30,8 @@ inline void renderScene(vk::CommandBuffer& cmd_buffer, Scene const& scene, std::
             {
                 for (size_t i = 0; i < o.second.size(); ++i)
                 {
-                    auto ubo = createModelBufferObject(o.second[i]);
+                    auto &obj = scene.objs[o.second[i]];
+                    auto ubo = createModelBufferObject(obj);
                     writeBuffer(model->buffers[frame],ubo,i);
                 }
             }
@@ -58,7 +59,7 @@ inline void renderScene(vk::CommandBuffer& cmd_buffer, Scene const& scene, std::
 
         for (size_t i = 0; i < o.second.size(); ++i)
         {
-            auto const& drawable = o.second[i];
+            auto &drawable = scene.objs[o.second[i]];
             cmd_buffer.bindVertexBuffers(0, drawable.mesh.vertex_buffer, {0});
             cmd_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
 
