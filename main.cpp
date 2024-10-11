@@ -408,7 +408,10 @@ int main()
           {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb},
           {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/mountain/height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/mountain/normal.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm}
+          {"./textures/mountain/normal.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/GroundSand005_DISP_2K.jpg", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/GroundSand005_NRM_2K.jpg", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/GroundSand005_COL_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm}
         });
 
     layer_types::Program program_desc;

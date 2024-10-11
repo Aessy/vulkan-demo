@@ -153,8 +153,9 @@ void createObject(Application& app)
         {
             auto obj = createObject(app.meshes.meshes.at(current_id), glm::vec3(pos[0], pos[1], pos[2]));
             obj.texture_index = texture_id;
+            obj.material = material;
 
-            app.scene.objects[material].push_back(std::move(obj));
+            addObject(app.scene, obj);
             name = {{}};
             pos[0] = 0;
             pos[1] = 0;
