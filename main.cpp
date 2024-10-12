@@ -91,11 +91,21 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
     begin_info.pInheritanceInfo = nullptr;
 
     auto result = command_buffer.begin(begin_info);
+    checkResult(result);
 
     //auto desc_set = state.descriptor_sets[0].set[0];
     //auto desc_set_2 = state.descriptor_sets[0].set[1];
 
+/*
+    runPipeline(command_buffer, render_system.scene, render_system.fog_program, state.current_frame);
 
+    vk::MemoryBarrier memory_barrier{};
+    memory_barrier.sType = vk::StructureType::eMemoryBarrier;
+    memory_barrier.srcAccessMask = vk::AccessFlagBits::eShaderWrite;
+    memory_barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+    command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eFragmentShader, vk::DependencyFlags{}, memory_barrier, {}, {});
+*/
 
     vk::RenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
@@ -132,6 +142,11 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
 
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
     command_buffer.endRenderPass();
+
+    transitionImageLayout(command_buffer, state.depth_resources.depth_image, vk::Format::eD32Sfloat,
+        vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
+
+    runPipeline(command_buffer, render_system.scene, render_system.fog_program, state.current_frame);
 
     result = command_buffer.end();
 }
@@ -324,6 +339,51 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
     }
 }
 
+layer_types::Program createComputeFogProgram(vk::ImageView fog_view)
+{
+    layer_types::Program program_desc;
+    program_desc.compute_shader = {("./shaders/fog.spv")};
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"binding image"}},
+        .type = layer_types::BufferType::NoBuffer,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding image"}},
+            .binding = 0,
+            .type = layer_types::BindingType::StorageImage,
+            .size = 1,
+            .compute = true,
+            .storage_image = fog_view
+        }
+    }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"texture_buffer"}},
+        .type = layer_types::BufferType::NoBuffer,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding textures"}},
+            .binding = 0,
+            .type = layer_types::BindingType::TextureSampler,
+            .size = 1,
+            .compute = true
+        }
+    }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"test_program"}},
+        .type = layer_types::BufferType::WorldBufferObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding world"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .compute = true
+        }
+    }});
+
+    return program_desc;
+}
+
 layer_types::Program createTerrainProgram()
 {
     layer_types::Program program_desc;
@@ -407,8 +467,6 @@ int main()
           {"./textures/forest_normal.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb},
           {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/mountain/height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/mountain/normal.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_DISP_2K.jpg", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_NRM_2K.jpg", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_COL_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm}
@@ -476,13 +534,33 @@ int main()
     auto terrain_program_wireframe = terrain_program_fill;
     terrain_program_wireframe.polygon_mode = layer_types::PolygonMode::Line;
 
+    auto fog_buffer = createFogBuffer(core, vk::MemoryPropertyFlagBits::eDeviceLocal);
+    transitionImageLayout(core, fog_buffer.first, vk::Format::eR16G16B16A16Sfloat,
+        vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, 1);
+
+    auto fog_sampler = createTextureSampler(core);
+    Texture fog_depth_tex {
+        .image = core.depth_resources.depth_image,
+        .memory = core.depth_resources.depth_image_memory,
+        .view = core.depth_resources.depth_image_view,
+        .sampler = fog_sampler,
+        .mip_levels = 1
+    };
+
+    auto fog_desc = createComputeFogProgram(fog_buffer.second);
+    auto fog_program = createProgram(fog_desc, core, {.sampler=fog_sampler, .textures={fog_depth_tex}});
+
+    std::cout << "Created fog program\n";
+
+    
+
     std::vector<std::unique_ptr<Program>> programs;
     programs.push_back(createProgram(program_desc, core, textures));
     programs.push_back(createProgram(terrain_program_fill, core, textures));
     programs.push_back(createProgram(terrain_program_wireframe, core, textures));
 
     Camera camera;
-    camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.1f, 1000.0f);
+    camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 500.0f);
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
     camera.pos = glm::vec3(0,0,-5);
@@ -520,7 +598,8 @@ int main()
         .models = std::move(models),
         .meshes = std::move(meshes),
         .programs = std::move(programs),
-        .scene = std::move(scene)
+        .scene = std::move(scene),
+        .fog_program = std::move(fog_program)
     };
 
     static auto start_time = std::chrono::high_resolution_clock::now();

@@ -212,6 +212,8 @@ static auto createColorResources(RenderingState const& state)
         state.swap_chain.swap_chain_image_format, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransientAttachment | vk::ImageUsageFlagBits::eColorAttachment,
         vk::MemoryPropertyFlagBits::eDeviceLocal, state.msaa);
 
+    transitionImageLayout(state, image.first, state.swap_chain.swap_chain_image_format, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal, 1);
+
     auto view = createImageView(state.device, image.first, state.swap_chain.swap_chain_image_format, vk::ImageAspectFlagBits::eColor, 1);
 
     return DepthResources{image.first, image.second, view};
@@ -517,7 +519,7 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     depth_attachment.format = getDepthFormat();
     depth_attachment.samples = msaa;
     depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
-    depth_attachment.storeOp = vk::AttachmentStoreOp::eDontCare;
+    depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
     depth_attachment.stencilLoadOp =  vk::AttachmentLoadOp::eDontCare;
     depth_attachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
     depth_attachment.initialLayout = vk::ImageLayout::eUndefined;
@@ -621,18 +623,24 @@ static Semaphores createSemaphores(vk::Device const& device)
     return semaphores;
 }
 
-DepthResources createDepth(RenderingState const& state)
+DepthResources createDepth(RenderingState const& state, vk::SampleCountFlagBits msaa)
 {
     vk::Format format = getDepthFormat();
 
     auto depth_image = createImage(state, state.swap_chain.extent.width, state.swap_chain.extent.height, 1, format,
-                            vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment,
-                            vk::MemoryPropertyFlagBits::eDeviceLocal, state.msaa);
+                            vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,
+                            vk::MemoryPropertyFlagBits::eDeviceLocal, msaa);
+
+    
+
+    transitionImageLayout(state, depth_image.first, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal, 1);
 
     auto depth_image_view = createImageView(state.device, depth_image.first, format, vk::ImageAspectFlagBits::eDepth, 1);
 
+
     return {depth_image.first, depth_image.second, depth_image_view};
 }
+
 
 std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::SampleCountFlagBits n_samples)
 {
@@ -668,12 +676,12 @@ std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, 
     return std::make_pair(texture_image.value, texture_image_memory.value);
 }
 
-vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels)
+vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels, vk::ImageViewType view_type)
 {
     vk::ImageViewCreateInfo view_info;
     view_info.sType = vk::StructureType::eImageViewCreateInfo;
     view_info.image = image;
-    view_info.viewType = vk::ImageViewType::e2D;
+    view_info.viewType = view_type;
     view_info.format = format;
     view_info.subresourceRange.aspectMask = aspec_flags;
     view_info.subresourceRange.baseMipLevel = 0;
@@ -707,6 +715,43 @@ static std::vector<vk::Framebuffer> createFrameBuffers(vk::Device const& device,
     }
 
     return swap_chain_frame_buffers;
+}
+
+std::pair<vk::Image, vk::ImageView> createFogBuffer(RenderingState const& state, vk::MemoryPropertyFlags properties)
+{
+    vk::ImageCreateInfo create_info;
+    create_info.sType = vk::StructureType::eImageCreateInfo;
+    create_info.imageType = vk::ImageType::e3D;
+    create_info.format = vk::Format::eR16G16B16A16Sfloat;
+    create_info.extent.width = 512;
+    create_info.extent.height = 512;
+    create_info.extent.depth = 512;
+    create_info.mipLevels = 1;
+    create_info.arrayLayers = 1;
+    create_info.samples = vk::SampleCountFlagBits::e1;
+    create_info.tiling = vk::ImageTiling::eOptimal;
+    create_info.usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eStorage;
+    create_info.sharingMode = vk::SharingMode::eExclusive;
+    create_info.initialLayout = vk::ImageLayout::eUndefined;
+
+    auto fog_3d_texture = state.device.createImage(create_info);
+    checkResult(fog_3d_texture.result);
+
+    auto mem_reqs = state.device.getImageMemoryRequirements(fog_3d_texture.value);
+
+    vk::MemoryAllocateInfo alloc_info{};
+    alloc_info.sType = vk::StructureType::eMemoryAllocateInfo;
+    alloc_info.allocationSize = mem_reqs.size;
+    alloc_info.setMemoryTypeIndex(findMemoryType(state.physical_device, mem_reqs.memoryTypeBits, properties));
+
+    auto buffer_memory = state.device.allocateMemory(alloc_info).value;
+
+    auto result = state.device.bindImageMemory(fog_3d_texture.value, buffer_memory, 0);
+    checkResult(result);
+
+    auto image_view = createImageView(state.device, fog_3d_texture.value, vk::Format::eR16G16B16A16Sfloat, vk::ImageAspectFlagBits::eColor, 1, vk::ImageViewType::e3D);
+
+    return {fog_3d_texture.value, image_view};
 }
 
 void initImgui(vk::Device const& device, vk::PhysicalDevice const& physical, vk::Instance const& instance,
@@ -814,14 +859,51 @@ RenderingState createVulkanRenderState()
     initImgui(device, physical_device, instance, graphics_queue, render_pass, render_state, window, msaa_samples);
 
     auto color_resources = createColorResources(render_state);
-    auto depth_image = createDepth(render_state);
+    auto depth_image = createDepth(render_state, render_state.msaa);
+    auto depth_image_sample_1_bit = createDepth(render_state, vk::SampleCountFlagBits::e1);
     auto swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, sc.extent, depth_image, color_resources);
 
     render_state.framebuffers = swap_chain_framebuffers;
     render_state.color_resources = color_resources;
     render_state.depth_resources = depth_image;
+    render_state.depth_1_bit_resource = depth_image_sample_1_bit;
 
     return render_state;
+}
+
+void resolveMultisampleDepthImage(vk::CommandBuffer& command_buffer, vk::Image multisampledDepthImage, vk::Image singleSampledDepthImage, vk::Extent2D extent) {
+    // Specify the region to resolve
+    vk::ImageResolve resolveRegion{};
+    resolveRegion.srcSubresource.aspectMask = vk::ImageAspectFlagBits::eDepth;
+    resolveRegion.srcSubresource.baseArrayLayer = 0;
+    resolveRegion.srcSubresource.mipLevel = 0;
+    resolveRegion.srcSubresource.layerCount = 1;
+    
+    resolveRegion.dstSubresource.aspectMask = vk::ImageAspectFlagBits::eDepth;
+    resolveRegion.dstSubresource.baseArrayLayer = 0;
+    resolveRegion.dstSubresource.mipLevel = 0;
+    resolveRegion.dstSubresource.layerCount = 1;
+    
+    resolveRegion.extent.width = extent.width;
+    resolveRegion.extent.height = extent.height;
+    resolveRegion.extent.depth = 1;
+
+    auto format = getDepthFormat();
+    // Transition layouts before resolving (this might already be done depending on your case)
+    transitionImageLayout(command_buffer, multisampledDepthImage, format, vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eTransferSrcOptimal, 1);
+    
+    transitionImageLayout(command_buffer, singleSampledDepthImage, format, vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eTransferDstOptimal, 1);
+
+    // Issue the resolve command
+    command_buffer.resolveImage(
+        multisampledDepthImage, vk::ImageLayout::eTransferSrcOptimal,
+        singleSampledDepthImage, vk::ImageLayout::eTransferDstOptimal,
+        resolveRegion
+    );
+
+    // Transition back to layouts after resolving
+    transitionImageLayout(command_buffer, multisampledDepthImage, format, vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eDepthStencilAttachmentOptimal, 1);
+    transitionImageLayout(command_buffer, singleSampledDepthImage, format, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
 }
 
 
@@ -871,10 +953,13 @@ static void copyBuffer(RenderingState const& state, vk::Buffer src_buffer, vk::B
     endSingleTimeCommands(state, cmd_buffer);
 }
 
-void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels)
+bool hasStencilComponent(vk::Format format)
 {
-    auto cmd_buffer = beginSingleTimeCommands(state);
+    return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
+}
 
+void transitionImageLayout(vk::CommandBuffer& cmd_buffer, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels)
+{
     vk::ImageMemoryBarrier barrier{};
     barrier.sType = vk::StructureType::eImageMemoryBarrier;
     barrier.oldLayout = old_layout;
@@ -882,7 +967,23 @@ void transitionImageLayout(RenderingState const& state, vk::Image const& image, 
     barrier.srcQueueFamilyIndex = 0;
     barrier.dstQueueFamilyIndex = 0;
     barrier.image = image;
-    barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+
+    if (new_layout == vk::ImageLayout::eDepthStencilAttachmentOptimal ||
+        old_layout == vk::ImageLayout::eDepthStencilAttachmentOptimal)
+    {
+        barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eDepth;
+
+        if (hasStencilComponent(format))
+        {
+            barrier.subresourceRange.aspectMask |= vk::ImageAspectFlagBits::eStencil;
+        }
+    }
+    else
+    {
+        barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+    }
+    
+    
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = mip_levels;
     barrier.subresourceRange.baseArrayLayer = 0;
@@ -901,6 +1002,46 @@ void transitionImageLayout(RenderingState const& state, vk::Image const& image, 
         src_stage = vk::PipelineStageFlagBits::eTopOfPipe;
         dest_stage = vk::PipelineStageFlagBits::eTransfer;
     }
+    else if (old_layout == vk::ImageLayout::eUndefined && new_layout == vk::ImageLayout::eDepthStencilAttachmentOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlags{};
+        barrier.dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+
+        src_stage = vk::PipelineStageFlagBits::eTopOfPipe;
+        dest_stage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
+    }
+    else if (old_layout == vk::ImageLayout::eUndefined && new_layout == vk::ImageLayout::eColorAttachmentOptimal)
+    {
+        barrier.srcAccessMask = static_cast<vk::AccessFlagBits>(0);
+        barrier.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+
+        src_stage = vk::PipelineStageFlagBits::eTopOfPipe;
+        dest_stage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+    }
+    else if (old_layout == vk::ImageLayout::eColorAttachmentOptimal && new_layout == vk::ImageLayout::ePresentSrcKHR)
+    {
+        barrier.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+        barrier.dstAccessMask = vk::AccessFlags{};
+
+        src_stage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+        dest_stage = vk::PipelineStageFlagBits::eBottomOfPipe;
+    }
+    else if (old_layout == vk::ImageLayout::eUndefined && new_layout == vk::ImageLayout::eGeneral)
+    {
+        barrier.srcAccessMask = static_cast<vk::AccessFlagBits>(0);
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+
+        src_stage = vk::PipelineStageFlagBits::eTopOfPipe;
+        dest_stage = vk::PipelineStageFlagBits::eTransfer;
+    }
+    else if (old_layout == vk::ImageLayout::eDepthStencilAttachmentOptimal && new_layout == vk::ImageLayout::eShaderReadOnlyOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+        src_stage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
+        dest_stage = vk::PipelineStageFlagBits::eComputeShader;
+    }
     else if (old_layout == vk::ImageLayout::eTransferDstOptimal && new_layout == vk::ImageLayout::eShaderReadOnlyOptimal)
     {
         barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
@@ -909,6 +1050,51 @@ void transitionImageLayout(RenderingState const& state, vk::Image const& image, 
         src_stage = vk::PipelineStageFlagBits::eTransfer;
         dest_stage = vk::PipelineStageFlagBits::eFragmentShader;
     }
+    else if (   old_layout == vk::ImageLayout::eShaderReadOnlyOptimal
+             && new_layout == vk::ImageLayout::eDepthStencilAttachmentOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlagBits::eShaderRead;
+        barrier.dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+
+        src_stage = vk::PipelineStageFlagBits::eComputeShader;
+        dest_stage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
+    }
+    else if (   old_layout == vk::ImageLayout::eDepthStencilAttachmentOptimal
+             && new_layout == vk::ImageLayout::eTransferSrcOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+
+        src_stage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
+        dest_stage = vk::PipelineStageFlagBits::eTransfer;
+    }
+    else if (   old_layout == vk::ImageLayout::eDepthStencilAttachmentOptimal
+             && new_layout == vk::ImageLayout::eTransferDstOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+
+        src_stage = vk::PipelineStageFlagBits::eLateFragmentTests;
+        dest_stage = vk::PipelineStageFlagBits::eTransfer;
+    }
+    else if (   old_layout == vk::ImageLayout::eUndefined
+             && new_layout == vk::ImageLayout::eTransferDstOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlags{};
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+
+        src_stage = vk::PipelineStageFlagBits::eTopOfPipe;
+        dest_stage = vk::PipelineStageFlagBits::eTransfer;
+    }
+    else if (   old_layout == vk::ImageLayout::eTransferSrcOptimal
+             && new_layout == vk::ImageLayout::eDepthStencilAttachmentOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+        barrier.dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+
+        src_stage = vk::PipelineStageFlagBits::eTransfer;
+        dest_stage = vk::PipelineStageFlagBits::eLateFragmentTests;
+    }
     else
     {
         std::cout << "Error transition image\n";
@@ -916,6 +1102,14 @@ void transitionImageLayout(RenderingState const& state, vk::Image const& image, 
     }
 
     cmd_buffer.pipelineBarrier(src_stage, dest_stage, vk::DependencyFlags{}, {}, {}, barrier);
+
+}
+
+void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels)
+{
+    auto cmd_buffer = beginSingleTimeCommands(state);
+
+    transitionImageLayout(cmd_buffer, image, format, old_layout, new_layout, mip_levels);
 
     endSingleTimeCommands(state, cmd_buffer);
 }
@@ -1130,6 +1324,36 @@ static constexpr std::array<vk::VertexInputAttributeDescription, 6> getAttribute
     return  desc;
 }
 
+std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout> createComputePipeline(vk::Device const& device, ShaderStage const& compute_stage, std::vector<vk::DescriptorSetLayout> const& desc_set_layouts)
+{
+    vk::PipelineLayoutCreateInfo pipeline_layout_create_info;
+
+    pipeline_layout_create_info.sType = vk::StructureType::ePipelineLayoutCreateInfo;
+    pipeline_layout_create_info.setLayoutCount = 1;
+    pipeline_layout_create_info.setSetLayouts(desc_set_layouts);
+    auto result = device.createPipelineLayout(pipeline_layout_create_info);
+    checkResult(result.result);
+    auto pipeline_layout = result.value;
+
+    vk::PipelineShaderStageCreateInfo stage_info;
+    stage_info.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+    stage_info.stage = compute_stage.stage;
+    stage_info.module = compute_stage.module;
+    stage_info.pName = "main";
+
+    vk::ComputePipelineCreateInfo pipeline_create_info{};
+    pipeline_create_info.sType = vk::StructureType::eComputePipelineCreateInfo;
+    pipeline_create_info.stage = stage_info;
+    pipeline_create_info.setLayout(pipeline_layout);
+
+    auto pipeline_result = device.createComputePipelines(VK_NULL_HANDLE, pipeline_create_info);
+    checkResult(pipeline_result.result);
+
+    auto pipeline = pipeline_result.value;
+
+    return std::make_pair(pipeline, pipeline_layout);
+}
+
 std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<ShaderStage> shader_stages, vk::SampleCountFlagBits msaa, vk::PolygonMode polygon_mode)
 {
     std::string path;
@@ -1327,7 +1551,7 @@ void recreateSwapchain(RenderingState& state)
     state.swap_chain = createSwapchain(state.physical_device, state.device, state.surface, state.window, state.indices);
     state.image_views = createImageViews(state.swap_chain, state.device);
     state.color_resources = createColorResources(state);
-    state.depth_resources = createDepth(state);
+    state.depth_resources = createDepth(state, state.msaa);
     state.framebuffers = createFrameBuffers(state.device, state.image_views, state.render_pass,
                                            state.swap_chain.extent, state.depth_resources, state.color_resources);
 

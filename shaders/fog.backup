@@ -1,0 +1,51 @@
+#version 460
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(set = 0, binding = 0) writeonly uniform image3D fog_volume;
+layout(set = 1, binding = 0) uniform sampler2D texSampler[];
+
+struct LightBufferData
+{
+    vec3 position;
+    vec3 light_color;
+    float strength;
+};
+
+layout(set = 2, binding = 0) uniform UniformWorld{
+    mat4 view;
+    mat4 proj;
+    vec3 pos;
+    LightBufferData light;
+} world;
+
+void main()
+{
+// Get voxel position
+    ivec3 voxelPos = ivec3(gl_GlobalInvocationID.xyz);
+
+    // Convert voxel position to world space coordinates
+    vec3 worldPos = vec3(voxelPos) * vec3(1.0 / 128.0);  // Assuming 128x128x128 fog volume
+
+    // Get depth texture UV coordinates (simple projection)
+    vec2 uv = worldPos.xy;  // Convert to UV, may need proper projection
+
+    // Sample depth from depth texture
+    float depth = texture(texSampler[0], uv).r;
+
+    // Calculate distances
+    float distToCamera = distance(worldPos, world.pos);
+    float distToLight = distance(worldPos, world.light.position);
+
+    // Compute fog density
+    float fogDensity = exp(-distToCamera * 0.1);  // Distance attenuation
+    fogDensity *= clamp(1.0 - distToLight * 0.01, 0.0, 1.0);  // Light attenuation
+    float depthBasedFog = smoothstep(0.0, 1.0, depth - worldPos.z);  // Depth fog
+
+    // Final fog value
+    fogDensity *= depthBasedFog;
+
+    // Store the result in the fog volume
+    imageStore(fog_volume, voxelPos, vec4(fogDensity));
+}

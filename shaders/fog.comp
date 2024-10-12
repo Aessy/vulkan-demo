@@ -1,0 +1,60 @@
+#version 460
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_debug_printf : enable
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(rgba32f, set = 0, binding = 0) writeonly uniform image3D depthOutput;
+layout(set = 1, binding = 0) uniform sampler2DMS depthTexture;
+
+struct LightBufferData
+{
+    vec3 position;
+    vec3 light_color;
+    float strength;
+};
+
+layout(set = 2, binding = 0) uniform UniformWorld{
+    mat4 view;
+    mat4 proj;
+    vec3 pos;
+    LightBufferData light;
+} world;
+
+void main()
+{
+ // Get the coordinates of the current work item
+    ivec3 voxelCoord = ivec3(gl_GlobalInvocationID.xyz);
+
+    // Get the size of the multisampled texture
+    ivec2 texSize = imageSize(depthOutput).xy;
+
+    // Ensure we're within the bounds of the texture
+    if (voxelCoord.x >= texSize.x || voxelCoord.y >= texSize.y) {
+        return;
+    }
+
+    // Accumulate depth values from all samples
+    double depthSum = 0.0;
+    const int sampleCount = 8; // Assume 4 samples for the multisampled depth texture
+    for (int sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+        // Fetch depth value from each sample
+        depthSum += texelFetch(depthTexture, voxelCoord.xy, sampleIndex).r;
+    }
+
+    // Calculate the average depth value
+    double resolvedDepth = depthSum / double(sampleCount);
+
+    //debugPrintfEXT("Depth: %d", resolvedDepth);
+
+    // Store the resolved depth value in the 3D image
+    imageStore(depthOutput, voxelCoord, vec4(resolvedDepth, resolvedDepth, resolvedDepth, 1.0)); // Write to the 3D image
+
+
+
+    //vec2 v;
+    //v.x = 600/800;
+    //v.y = 600/800;
+    //float depth = texture(texSampler, v).r;
+    //debugPrintfEXT("Depth: %f", depth);
+}

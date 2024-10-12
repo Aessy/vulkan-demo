@@ -3,6 +3,8 @@
 #include <array>
 #include <vector>
 
+#include <vulkan/vulkan_core.h>
+
 // Types here  work as a translation layer between GUI and rendering enginee
 namespace layer_types
 {
@@ -11,7 +13,8 @@ enum class BindingType : int
 {
     Uniform = 0,
     Storage = 1,
-    TextureSampler = 2
+    TextureSampler = 2,
+    StorageImage = 3
 };
 
 enum class BufferType : int
@@ -19,7 +22,7 @@ enum class BufferType : int
     ModelBufferObject,
     WorldBufferObject,
     TerrainBufferObject,
-    NoBuffer
+    NoBuffer,
 };
 
 enum class PolygonMode : int
@@ -38,6 +41,8 @@ struct Binding
     bool fragment = false;
     bool tess_ctrl = false;
     bool tess_evu = false;
+    bool compute = true;
+    vk::ImageView storage_image;
 };
 
 struct Buffer
@@ -58,6 +63,7 @@ struct Program
     std::array<char, 50> fragment_shader{{}};
     std::array<char, 50> tesselation_ctrl_shader{{}};
     std::array<char, 50> tesselation_evaluation_shader{{}};
+    std::array<char, 50> compute_shader{{}};
 
     PolygonMode polygon_mode = PolygonMode::Fill;
 

@@ -57,6 +57,11 @@ inline auto createStorageBufferBinding(int binding, int count, vk::ShaderStageFl
     return createLayoutBinding(binding, vk::DescriptorType::eStorageBuffer, count, shader_flags);
 }
 
+inline auto createStorageImageBinding(int binding, int count, vk::ShaderStageFlags shader_flags)
+{
+    return createLayoutBinding(binding, vk::DescriptorType::eStorageImage, count, shader_flags);
+}
+
 template<typename Device>
 inline auto createDescriptorPoolInfo(Device const& device, std::vector<vk::DescriptorSetLayoutBinding> const& bindings)
 {
@@ -198,6 +203,30 @@ inline void updateImageSampler(Device const& device,
         desc_writes.dstArrayElement = 0;
         desc_writes.descriptorType = binding.descriptorType;
         desc_writes.descriptorCount = image_info.size();
+        desc_writes.setImageInfo(image_info);
+
+        device.updateDescriptorSets(desc_writes, nullptr);
+    }
+}
+
+template<typename Device>
+inline void updateImage(Device const& device,
+        vk::ImageView view,
+        std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding)
+{
+    for (auto const& set : sets)
+    {
+        vk::DescriptorImageInfo image_info{};
+        image_info.imageLayout = vk::ImageLayout::eGeneral;
+        image_info.imageView = view;
+
+        vk::WriteDescriptorSet desc_writes{};
+        desc_writes.sType = vk::StructureType::eWriteDescriptorSet;
+        desc_writes.setDstSet(set);
+        desc_writes.dstBinding = binding.binding;
+        desc_writes.dstArrayElement = 0;
+        desc_writes.descriptorType = binding.descriptorType;
+        desc_writes.descriptorCount = 1;
         desc_writes.setImageInfo(image_info);
 
         device.updateDescriptorSets(desc_writes, nullptr);

@@ -28,6 +28,7 @@ add_custom_target(shaders
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/terrain.vert --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/terrain_vert.spv
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/terrain.tesc --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/terrain_tess_ctrl.spv
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/terrain.tese --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/terrain_tess_evu.spv
+                  COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/fog.compute --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/fog.spv
                   DEPENDS vulkan-test)
 
 add_custom_target(copy-models ALL
