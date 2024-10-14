@@ -1,0 +1,7 @@
+- Use multisampled color attachment
+- Resolve color attachment to single-sampled before post processing
+
+- Look into using single-sampled depth buffer, and how to resolve it.
+
+- Create one depth buffer, color attachment per buffer.
+- Create one volumetric fog 3d texture per buffer as well
