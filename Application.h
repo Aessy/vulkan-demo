@@ -18,4 +18,5 @@ struct Application
     std::vector<std::unique_ptr<Program>> programs;
     Scene scene;
     std::unique_ptr<Program> fog_program;
+    vk::Image fog_buffer;
 };

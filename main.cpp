@@ -148,6 +148,14 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
 
     runPipeline(command_buffer, render_system.scene, render_system.fog_program, state.current_frame);
 
+
+    vk::MemoryBarrier imageMemoryBarrier = {};
+    imageMemoryBarrier.sType = vk::StructureType::eMemoryBarrier;
+    imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eShaderWrite;
+    imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eMemoryRead;
+
+    command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                                    vk::PipelineStageFlagBits::eAllCommands, vk::DependencyFlags{0}, imageMemoryBarrier, {}, {});
     result = command_buffer.end();
 }
 
@@ -599,7 +607,8 @@ int main()
         .meshes = std::move(meshes),
         .programs = std::move(programs),
         .scene = std::move(scene),
-        .fog_program = std::move(fog_program)
+        .fog_program = std::move(fog_program),
+        .fog_buffer = std::move(fog_buffer.first)
     };
 
     static auto start_time = std::chrono::high_resolution_clock::now();

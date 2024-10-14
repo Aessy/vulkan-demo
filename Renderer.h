@@ -98,9 +98,9 @@ inline void runPipeline(vk::CommandBuffer& command_buffer, Scene const& scene, s
         }
     }
 
-    const uint32_t workGroupSizeX = (128 + 7) / 8;  // Round up workgroup size
-    const uint32_t workGroupSizeY = (128 + 7) / 8;
-    const uint32_t workGroupSizeZ = (128 + 7) / 8;
+    const uint32_t workGroupSizeX = 2;
+    const uint32_t workGroupSizeY = 2;
+    const uint32_t workGroupSizeZ = 2;
 
     command_buffer.dispatch(workGroupSizeX, workGroupSizeY, workGroupSizeZ);
 
