@@ -83,6 +83,25 @@ void draw(vk::CommandBuffer& command_buffer, Application& app, int frame)
 template<typename RenderingSystem>
 void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingSystem& render_system)
 {
+    // Bind the depth buffer to the fog program texture sampler
+    Application& app = render_system;
+    auto depth_descriptor_set = app.fog_program->program.descriptor_sets[1].set[state.current_frame];
+    auto depth_descriptor_binding = app.fog_program->program.descriptor_sets[1].layout_bindings[0];
+
+    DepthResources& resources = state.framebuffer_resources[image_index].depth_resolved_resources;
+    Texture depth_texture{.image=resources.depth_image, .memory=resources.depth_image_memory,
+                         .view=resources.depth_image_view,
+                         .sampler=app.textures.sampler,
+                         .name="",
+                         .mip_levels=1};
+
+    updateImageSampler(state.device, {depth_texture}, {depth_descriptor_set}, depth_descriptor_binding);
+
+    // Update the 3D texture descriptor set
+    auto desc_set = app.fog_program->program.descriptor_sets[0].set[state.current_frame];
+    auto desc_binding = app.fog_program->program.descriptor_sets[0].layout_bindings[0];
+    updateImage(state.device, app.fog_buffer[state.current_frame].second, {desc_set}, desc_binding);
+
     auto& command_buffer = state.command_buffer[state.current_frame];
 
     vk::CommandBufferBeginInfo begin_info{};
@@ -143,12 +162,12 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
     command_buffer.endRenderPass();
 
-/*
-    transitionImageLayout(command_buffer, state.depth_resources.depth_image, vk::Format::eD32Sfloat,
+    transitionImageLayout(command_buffer, depth_texture.image, vk::Format::eD32Sfloat,
         vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
 
     runPipeline(command_buffer, render_system.scene, render_system.fog_program, state.current_frame);
 
+/*
 
     vk::MemoryBarrier imageMemoryBarrier = {};
     imageMemoryBarrier.sType = vk::StructureType::eMemoryBarrier;
@@ -547,24 +566,10 @@ int main()
     terrain_program_wireframe.polygon_mode = layer_types::PolygonMode::Line;
 
     auto fog_buffer = createFogBuffer(core, vk::MemoryPropertyFlagBits::eDeviceLocal);
-    transitionImageLayout(core, fog_buffer.first, vk::Format::eR16G16B16A16Sfloat,
-        vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, 1);
-
-    auto fog_sampler = createTextureSampler(core);
-    Texture fog_depth_tex {
-        .image = core.depth_resources.depth_image,
-        .memory = core.depth_resources.depth_image_memory,
-        .view = core.depth_resources.depth_image_view,
-        .sampler = fog_sampler,
-        .mip_levels = 1
-    };
-
-    auto fog_desc = createComputeFogProgram(fog_buffer.second);
-    auto fog_program = createProgram(fog_desc, core, {.sampler=fog_sampler, .textures={fog_depth_tex}});
+    auto fog_desc = createComputeFogProgram(fog_buffer[0].second);
+    auto fog_program = createProgram(fog_desc, core, {.sampler=textures.sampler, .textures={}});
 
     std::cout << "Created fog program\n";
-
-    
 
     std::vector<std::unique_ptr<Program>> programs;
     programs.push_back(createProgram(program_desc, core, textures));
@@ -612,7 +617,7 @@ int main()
         .programs = std::move(programs),
         .scene = std::move(scene),
         .fog_program = std::move(fog_program),
-        .fog_buffer = std::move(fog_buffer.first)
+        .fog_buffer = fog_buffer
     };
 
     static auto start_time = std::chrono::high_resolution_clock::now();

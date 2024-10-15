@@ -718,31 +718,36 @@ vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, 
     return texture_image_view.value;
 }
 
-static std::vector<vk::Framebuffer> createFrameBuffers(vk::Device const& device, std::vector<vk::ImageView> const& swap_chain_image_views, vk::RenderPass const& render_pass, vk::Extent2D const& swap_chain_extent, DepthResources const& depth_resources, DepthResources const& color_resources, DepthResources const& depth_resolve)
+static std::vector<vk::Framebuffer> createFrameBuffers(RenderingState& state)
 {
     std::vector<vk::Framebuffer> swap_chain_frame_buffers;
 
-    for (auto const& swap_chain_image_view : swap_chain_image_views)
+    for (auto const& swap_chain_image_view : state.image_views)
     {
-        std::array<vk::ImageView, 4> attachments = {color_resources.depth_image_view, depth_resources.depth_image_view, swap_chain_image_view, 
-                                                        depth_resolve.depth_image_view};
+        auto color_resources = createColorResources(state);
+        auto depth_image = createDepth(state, state.msaa);
+        auto depth_resolve_image = createDepth(state, vk::SampleCountFlagBits::e1);
+        state.framebuffer_resources.push_back({color_resources, depth_image, depth_resolve_image});
+
+        std::array<vk::ImageView, 4> attachments = {color_resources.depth_image_view, depth_image.depth_image_view, swap_chain_image_view, 
+                                                        depth_resolve_image.depth_image_view};
 
         vk::FramebufferCreateInfo framebuffer_info{};
         framebuffer_info.sType = vk::StructureType::eFramebufferCreateInfo;
-        framebuffer_info.setRenderPass(render_pass);
+        framebuffer_info.setRenderPass(state.render_pass);
         framebuffer_info.attachmentCount = attachments.size();
         framebuffer_info.setAttachments(attachments);
-        framebuffer_info.width = swap_chain_extent.width;
-        framebuffer_info.height = swap_chain_extent.height;
+        framebuffer_info.width = state.swap_chain.extent.width;
+        framebuffer_info.height = state.swap_chain.extent.height;
         framebuffer_info.layers = 1;
 
-        swap_chain_frame_buffers.push_back(device.createFramebuffer(framebuffer_info).value);
+        swap_chain_frame_buffers.push_back(state.device.createFramebuffer(framebuffer_info).value);
     }
 
     return swap_chain_frame_buffers;
 }
 
-std::pair<vk::Image, vk::ImageView> createFogBuffer(RenderingState const& state, vk::MemoryPropertyFlags properties)
+std::vector<std::pair<vk::Image, vk::ImageView>> createFogBuffer(RenderingState const& state, vk::MemoryPropertyFlags properties)
 {
     vk::ImageCreateInfo create_info;
     create_info.sType = vk::StructureType::eImageCreateInfo;
@@ -759,24 +764,33 @@ std::pair<vk::Image, vk::ImageView> createFogBuffer(RenderingState const& state,
     create_info.sharingMode = vk::SharingMode::eExclusive;
     create_info.initialLayout = vk::ImageLayout::eUndefined;
 
-    auto fog_3d_texture = state.device.createImage(create_info);
-    checkResult(fog_3d_texture.result);
+    std::vector<std::pair<vk::Image, vk::ImageView>> fog;
+    for (int i = 0; i < 2; ++i)
+    {
+        auto fog_3d_texture = state.device.createImage(create_info);
+        checkResult(fog_3d_texture.result);
 
-    auto mem_reqs = state.device.getImageMemoryRequirements(fog_3d_texture.value);
+        auto mem_reqs = state.device.getImageMemoryRequirements(fog_3d_texture.value);
 
-    vk::MemoryAllocateInfo alloc_info{};
-    alloc_info.sType = vk::StructureType::eMemoryAllocateInfo;
-    alloc_info.allocationSize = mem_reqs.size;
-    alloc_info.setMemoryTypeIndex(findMemoryType(state.physical_device, mem_reqs.memoryTypeBits, properties));
+        vk::MemoryAllocateInfo alloc_info{};
+        alloc_info.sType = vk::StructureType::eMemoryAllocateInfo;
+        alloc_info.allocationSize = mem_reqs.size;
+        alloc_info.setMemoryTypeIndex(findMemoryType(state.physical_device, mem_reqs.memoryTypeBits, properties));
 
-    auto buffer_memory = state.device.allocateMemory(alloc_info).value;
+        auto buffer_memory = state.device.allocateMemory(alloc_info).value;
 
-    auto result = state.device.bindImageMemory(fog_3d_texture.value, buffer_memory, 0);
-    checkResult(result);
+        auto result = state.device.bindImageMemory(fog_3d_texture.value, buffer_memory, 0);
+        checkResult(result);
 
-    auto image_view = createImageView(state.device, fog_3d_texture.value, vk::Format::eR16G16B16A16Sfloat, vk::ImageAspectFlagBits::eColor, 1, vk::ImageViewType::e3D);
+        auto image_view = createImageView(state.device, fog_3d_texture.value, vk::Format::eR16G16B16A16Sfloat, vk::ImageAspectFlagBits::eColor, 1, vk::ImageViewType::e3D);
 
-    return {fog_3d_texture.value, image_view};
+        transitionImageLayout(state, fog_3d_texture.value, vk::Format::eR16G16B16A16Sfloat,
+            vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, 1);
+
+        fog.push_back({fog_3d_texture.value, image_view});
+    }
+
+    return fog;
 }
 
 void initImgui(vk::Device const& device, vk::PhysicalDevice const& physical, vk::Instance const& instance,
@@ -886,12 +900,9 @@ RenderingState createVulkanRenderState()
     auto color_resources = createColorResources(render_state);
     auto depth_image = createDepth(render_state, render_state.msaa);
     auto depth_resolve_image = createDepth(render_state, vk::SampleCountFlagBits::e1);
-    auto swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, sc.extent, depth_image, color_resources, depth_resolve_image);
+    auto swap_chain_framebuffers = createFrameBuffers(render_state);
 
     render_state.framebuffers = swap_chain_framebuffers;
-    render_state.color_resources = color_resources;
-    render_state.depth_resources = depth_image;
-    render_state.depth_resolved_resources = depth_resolve_image;
 
     return render_state;
 }
@@ -1575,10 +1586,9 @@ void recreateSwapchain(RenderingState& state)
     // Create new swapchain
     state.swap_chain = createSwapchain(state.physical_device, state.device, state.surface, state.window, state.indices);
     state.image_views = createImageViews(state.swap_chain, state.device);
-    state.color_resources = createColorResources(state);
-    state.depth_resources = createDepth(state, state.msaa);
-    state.framebuffers = createFrameBuffers(state.device, state.image_views, state.render_pass,
-                                           state.swap_chain.extent, state.depth_resources, state.color_resources, state.depth_resolved_resources);
+
+    state.framebuffer_resources.clear();
+    state.framebuffers = createFrameBuffers(state);
 
     std::cout << "Finish recreating\n";
 }

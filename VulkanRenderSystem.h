@@ -106,6 +106,13 @@ void checkResult(T result)
     }
 }
 
+struct FramebufferResources
+{
+    DepthResources color_resources;
+    DepthResources depth_resources;
+    DepthResources depth_resolved_resources;
+};
+
 struct RenderingState
 {
     std::unique_ptr<App> app;
@@ -125,9 +132,8 @@ struct RenderingState
 
     vk::CommandPool command_pool;
     std::vector<vk::CommandBuffer> command_buffer;
-    DepthResources color_resources;
-    DepthResources depth_resources;
-    DepthResources depth_resolved_resources;
+    
+    std::vector<FramebufferResources> framebuffer_resources;
     std::vector<vk::Framebuffer> framebuffers;
 
     vk::Queue graphics_queue;
@@ -159,7 +165,7 @@ vk::Buffer createBuffer(RenderingState const& state,
                         vk::DeviceSize size, vk::BufferUsageFlags usage,
                         vk::MemoryPropertyFlags properties, vk::DeviceMemory& buffer_memory);
 
-std::pair<vk::Image, vk::ImageView> createFogBuffer(RenderingState const& state, vk::MemoryPropertyFlags properties);
+std::vector<std::pair<vk::Image, vk::ImageView>> createFogBuffer(RenderingState const& state, vk::MemoryPropertyFlags properties);
 void resolveMultisampleDepthImage(vk::CommandBuffer& command_buffer, vk::Image multisampledDepthImage, vk::Image singleSampledDepthImage, vk::Extent2D extent);
 
 void dispatchPipeline(RenderingState const& state);

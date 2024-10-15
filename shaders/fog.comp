@@ -2,10 +2,10 @@
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_debug_printf : enable
 
-layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 layout(rgba32f, set = 0, binding = 0) writeonly uniform image3D depthOutput;
-layout(set = 1, binding = 0) uniform sampler2DMS depthTexture;
+layout(set = 1, binding = 0) uniform sampler2D depthTexture;
 
 struct LightBufferData
 {
@@ -35,20 +35,20 @@ void main()
     }
 
     // Accumulate depth values from all samples
-    double depthSum = 0.0;
-    const int sampleCount = 8; // Assume 4 samples for the multisampled depth texture
-    for (int sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
-        // Fetch depth value from each sample
-        depthSum += texelFetch(depthTexture, voxelCoord.xy, sampleIndex).r;
-    }
+    //double depthSum = 0.0;
+    //const int sampleCount = 8; // Assume 4 samples for the multisampled depth texture
+    //for (int sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+    //    // Fetch depth value from each sample
+    //    depthSum += texelFetch(depthTexture, voxelCoord.xy, sampleIndex).r;
+   // }
 
     // Calculate the average depth value
-    double resolvedDepth = depthSum / double(sampleCount);
+    //double resolvedDepth = depthSum / double(sampleCount);
 
     //debugPrintfEXT("Depth: %d", resolvedDepth);
 
     // Store the resolved depth value in the 3D image
-    imageStore(depthOutput, voxelCoord, vec4(resolvedDepth, resolvedDepth, resolvedDepth, 1.0)); // Write to the 3D image
+    //imageStore(depthOutput, voxelCoord, vec4(resolvedDepth, resolvedDepth, resolvedDepth, 1.0)); // Write to the 3D image
 
 
 
