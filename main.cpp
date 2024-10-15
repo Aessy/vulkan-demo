@@ -617,7 +617,8 @@ int main()
         .programs = std::move(programs),
         .scene = std::move(scene),
         .fog_program = std::move(fog_program),
-        .fog_buffer = fog_buffer
+        .fog_buffer = fog_buffer,
+        .post_processing_pass = createPostProcessing(core)
     };
 
     static auto start_time = std::chrono::high_resolution_clock::now();
