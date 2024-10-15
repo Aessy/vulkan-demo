@@ -505,7 +505,7 @@ static vk::Format getDepthFormat()
 
 static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format const& swap_chain_image_format, vk::SampleCountFlagBits msaa)
 {
-    vk::AttachmentDescription color_attachment{};
+    vk::AttachmentDescription2 color_attachment{};
     color_attachment.format = swap_chain_image_format;
     color_attachment.samples = msaa;
     color_attachment.loadOp = vk::AttachmentLoadOp::eClear;
@@ -515,7 +515,7 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     color_attachment.initialLayout = vk::ImageLayout::eUndefined;
     color_attachment.finalLayout = vk::ImageLayout::eColorAttachmentOptimal;
 
-    vk::AttachmentDescription depth_attachment{};
+    vk::AttachmentDescription2 depth_attachment{};
     depth_attachment.format = getDepthFormat();
     depth_attachment.samples = msaa;
     depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
@@ -525,7 +525,7 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     depth_attachment.initialLayout = vk::ImageLayout::eUndefined;
     depth_attachment.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
-    vk::AttachmentDescription color_attachment_resolve{};
+    vk::AttachmentDescription2 color_attachment_resolve{};
     color_attachment_resolve.format = swap_chain_image_format;
     color_attachment_resolve.samples = vk::SampleCountFlagBits::e1;
     color_attachment_resolve.loadOp = vk::AttachmentLoadOp::eDontCare;
@@ -535,26 +535,50 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     color_attachment_resolve.initialLayout = vk::ImageLayout::eUndefined;
     color_attachment_resolve.finalLayout = vk::ImageLayout::ePresentSrcKHR;
 
-    vk::AttachmentReference color_attachment_ref;
+    vk::AttachmentDescription2 depth_attachment_resolve{};
+    depth_attachment_resolve.format = getDepthFormat();
+    depth_attachment_resolve.samples = vk::SampleCountFlagBits::e1;
+    depth_attachment_resolve.loadOp = vk::AttachmentLoadOp::eDontCare;
+    depth_attachment_resolve.storeOp = vk::AttachmentStoreOp::eStore;
+    depth_attachment_resolve.stencilLoadOp =  vk::AttachmentLoadOp::eDontCare;
+    depth_attachment_resolve.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+    depth_attachment_resolve.initialLayout = vk::ImageLayout::eUndefined;
+    depth_attachment_resolve.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
+    vk::AttachmentReference2 color_attachment_ref;
     color_attachment_ref.attachment = 0;
     color_attachment_ref.layout = vk::ImageLayout::eColorAttachmentOptimal;
 
-    vk::AttachmentReference depth_attachment_ref;
+    vk::AttachmentReference2 depth_attachment_ref;
     depth_attachment_ref.attachment = 1;
     depth_attachment_ref.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
-    vk::AttachmentReference color_attachment_resolve_ref;
+    vk::AttachmentReference2 color_attachment_resolve_ref;
     color_attachment_resolve_ref.attachment = 2;
     color_attachment_resolve_ref.layout = vk::ImageLayout::eColorAttachmentOptimal;
 
-    vk::SubpassDescription subpass {};
+    vk::AttachmentReference2 depth_attachment_resolve_ref;
+    depth_attachment_resolve_ref.attachment = 3;
+    depth_attachment_resolve_ref.layout = vk::ImageLayout::eDepthAttachmentOptimal;
+
+    vk::SubpassDescriptionDepthStencilResolve subpass_depth_resolve;
+    subpass_depth_resolve.sType = vk::StructureType::eSubpassDescriptionDepthStencilResolve;
+    subpass_depth_resolve.depthResolveMode = vk::ResolveModeFlagBits::eAverage;
+    subpass_depth_resolve.stencilResolveMode = vk::ResolveModeFlagBits::eNone;
+    subpass_depth_resolve.setPDepthStencilResolveAttachment(&depth_attachment_resolve_ref);
+
+    vk::SubpassDescription2 subpass {};
     subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
     subpass.colorAttachmentCount = 1;
     subpass.setColorAttachments(color_attachment_ref);
     subpass.setPDepthStencilAttachment(&depth_attachment_ref);
-    subpass.setResolveAttachments(color_attachment_resolve_ref);
+    
+    std::vector<vk::AttachmentReference2> resolve_refs{color_attachment_resolve_ref};
+    subpass.setResolveAttachments(resolve_refs);
+    subpass.pNext = &subpass_depth_resolve;
 
-    vk::SubpassDependency dependency{};
+
+    vk::SubpassDependency2 dependency{};
     dependency.setSrcSubpass(VK_SUBPASS_EXTERNAL);
     dependency.setDstSubpass(0);
 
@@ -564,17 +588,17 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     dependency.setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests);
     dependency.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite);
 
-    std::array<vk::AttachmentDescription, 3> attachments {color_attachment, depth_attachment, color_attachment_resolve};
+    std::array<vk::AttachmentDescription2, 4> attachments {color_attachment, depth_attachment, color_attachment_resolve, depth_attachment_resolve};
 
-    vk::RenderPassCreateInfo render_pass_info{};
-    render_pass_info.sType = vk::StructureType::eRenderPassCreateInfo;
+    vk::RenderPassCreateInfo2 render_pass_info{};
+    render_pass_info.sType = vk::StructureType::eRenderPassCreateInfo2;
     render_pass_info.attachmentCount = attachments.size();
     render_pass_info.setAttachments(attachments);
     render_pass_info.subpassCount = 1;
     render_pass_info.setSubpasses(subpass);
     render_pass_info.setDependencies(dependency);
 
-    return device.createRenderPass(render_pass_info).value;
+    return device.createRenderPass2(render_pass_info).value;
 }
 
 static vk::CommandPool createCommandPool(vk::Device const& device, QueueFamilyIndices const& queue_family_indices)
@@ -694,13 +718,14 @@ vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, 
     return texture_image_view.value;
 }
 
-static std::vector<vk::Framebuffer> createFrameBuffers(vk::Device const& device, std::vector<vk::ImageView> const& swap_chain_image_views, vk::RenderPass const& render_pass, vk::Extent2D const& swap_chain_extent, DepthResources const& depth_resources, DepthResources const& color_resources)
+static std::vector<vk::Framebuffer> createFrameBuffers(vk::Device const& device, std::vector<vk::ImageView> const& swap_chain_image_views, vk::RenderPass const& render_pass, vk::Extent2D const& swap_chain_extent, DepthResources const& depth_resources, DepthResources const& color_resources, DepthResources const& depth_resolve)
 {
     std::vector<vk::Framebuffer> swap_chain_frame_buffers;
 
     for (auto const& swap_chain_image_view : swap_chain_image_views)
     {
-        std::array<vk::ImageView, 3> attachments = {color_resources.depth_image_view, depth_resources.depth_image_view, swap_chain_image_view};
+        std::array<vk::ImageView, 4> attachments = {color_resources.depth_image_view, depth_resources.depth_image_view, swap_chain_image_view, 
+                                                        depth_resolve.depth_image_view};
 
         vk::FramebufferCreateInfo framebuffer_info{};
         framebuffer_info.sType = vk::StructureType::eFramebufferCreateInfo;
@@ -860,13 +885,13 @@ RenderingState createVulkanRenderState()
 
     auto color_resources = createColorResources(render_state);
     auto depth_image = createDepth(render_state, render_state.msaa);
-    auto depth_image_sample_1_bit = createDepth(render_state, vk::SampleCountFlagBits::e1);
-    auto swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, sc.extent, depth_image, color_resources);
+    auto depth_resolve_image = createDepth(render_state, vk::SampleCountFlagBits::e1);
+    auto swap_chain_framebuffers = createFrameBuffers(device, swap_chain_image_views, render_pass, sc.extent, depth_image, color_resources, depth_resolve_image);
 
     render_state.framebuffers = swap_chain_framebuffers;
     render_state.color_resources = color_resources;
     render_state.depth_resources = depth_image;
-    render_state.depth_1_bit_resource = depth_image_sample_1_bit;
+    render_state.depth_resolved_resources = depth_resolve_image;
 
     return render_state;
 }
@@ -1553,7 +1578,7 @@ void recreateSwapchain(RenderingState& state)
     state.color_resources = createColorResources(state);
     state.depth_resources = createDepth(state, state.msaa);
     state.framebuffers = createFrameBuffers(state.device, state.image_views, state.render_pass,
-                                           state.swap_chain.extent, state.depth_resources, state.color_resources);
+                                           state.swap_chain.extent, state.depth_resources, state.color_resources, state.depth_resolved_resources);
 
     std::cout << "Finish recreating\n";
 }

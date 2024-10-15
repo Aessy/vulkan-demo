@@ -143,6 +143,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
     command_buffer.endRenderPass();
 
+/*
     transitionImageLayout(command_buffer, state.depth_resources.depth_image, vk::Format::eD32Sfloat,
         vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
 
@@ -156,6 +157,9 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
 
     command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                                     vk::PipelineStageFlagBits::eAllCommands, vk::DependencyFlags{0}, imageMemoryBarrier, {}, {});
+
+*/
+
     result = command_buffer.end();
 }
 

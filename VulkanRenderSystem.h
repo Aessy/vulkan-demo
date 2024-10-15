@@ -127,7 +127,7 @@ struct RenderingState
     std::vector<vk::CommandBuffer> command_buffer;
     DepthResources color_resources;
     DepthResources depth_resources;
-    DepthResources depth_1_bit_resource;
+    DepthResources depth_resolved_resources;
     std::vector<vk::Framebuffer> framebuffers;
 
     vk::Queue graphics_queue;
