@@ -98,9 +98,9 @@ inline void runPipeline(vk::CommandBuffer& command_buffer, Scene const& scene, s
         }
     }
 
-    const uint32_t workGroupSizeX = 2;
-    const uint32_t workGroupSizeY = 2;
-    const uint32_t workGroupSizeZ = 2;
+    const uint32_t workGroupSizeX = 32;
+    const uint32_t workGroupSizeY = 32;
+    const uint32_t workGroupSizeZ = 32;
 
     command_buffer.dispatch(workGroupSizeX, workGroupSizeY, workGroupSizeZ);
 
