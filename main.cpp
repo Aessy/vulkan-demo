@@ -156,16 +156,20 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
     scissor.extent = state.swap_chain.extent;
     command_buffer.setScissor(0,scissor);
 
-    command_buffer.beginRenderPass(&render_pass_info, vk::SubpassContents::eInline);
+    command_buffer.beginRenderPass(&render_pass_info,
+                                   vk::SubpassContents::eInline);
     draw(command_buffer, render_system, state.current_frame);
 
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
     command_buffer.endRenderPass();
 
+    postProcessingRenderPass(state, command_buffer, render_system, image_index);
+/*
     transitionImageLayout(command_buffer, depth_texture.image, vk::Format::eD32Sfloat,
         vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
 
     runPipeline(command_buffer, render_system.scene, render_system.fog_program, state.current_frame);
+*/
 
 /*
 

@@ -196,6 +196,11 @@ inline void updateImageSampler(Device const& device,
                     return image_info;
                 });
 
+        if (image_info.size() == 0)
+        {
+            return;
+        }
+
         vk::WriteDescriptorSet desc_writes{};
         desc_writes.sType = vk::StructureType::eWriteDescriptorSet;
         desc_writes.setDstSet(set);

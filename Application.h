@@ -5,7 +5,9 @@
 #include "Program.h"
 #include "Scene.h"
 #include "Model.h"
+#include "TypeLayer.h"
 #include "VulkanRenderSystem.h"
+#include "descriptor_set.h"
 
 #include <array>
 #include <memory>
@@ -16,6 +18,8 @@ struct PostProcessing
 {
     vk::RenderPass render_pass;
     std::vector<vk::Framebuffer> framebuffer;
+
+    std::unique_ptr<Program> program;
 };
 
 struct Application
@@ -30,6 +34,98 @@ struct Application
 
     PostProcessing post_processing_pass;
 };
+
+inline std::unique_ptr<Program> createPostProcessingProgram(RenderingState const& state)
+{
+    layer_types::Program program_desc;
+    program_desc.vertex_shader= {{"./shaders/post_processing_vert.spv"}};
+    program_desc.fragment_shader = {{"./shaders/post_processing_frag.spv"}};
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"colot_attachment"}},
+        .type = layer_types::BufferType::NoBuffer,
+        .binding = layer_types::Binding {
+            .type = layer_types::BindingType::TextureSampler,
+            .size = 1,
+            .vertex = true,
+            .fragment = true
+        }
+    }});
+    
+    // Make the program like this for now. Update the descriptor set each frame
+    // with the correct color attachment.
+    return createProgram(program_desc, state, {});
+
+}
+
+inline void postProcessingUpdateDescriptorSets(RenderingState const& state,
+                                               Application const& appli,
+                                               size_t image_index)
+{
+    auto& ppp = appli.post_processing_pass;
+    auto color_res_set = ppp.program->program.descriptor_sets[0].set[state.current_frame];
+    auto color_res_binding = ppp.program->program.descriptor_sets[0].layout_bindings[0];
+
+    auto& color_attachment = state.framebuffer_resources[image_index].color_resources;
+    Texture color_texture{
+        .image=color_attachment.depth_image,
+        .memory=color_attachment.depth_image_memory,
+        .view=color_attachment.depth_image_view,
+        .sampler=appli.textures.sampler,
+        .mip_levels=1};
+    
+    updateImageSampler(state.device, {color_texture}, {color_res_set}, color_res_binding);
+}
+
+inline void postProcessingRenderPass(RenderingState const& state,
+                                     vk::CommandBuffer& command_buffer,
+                                     Application const& appli,
+                                     size_t image_index)
+{
+    auto const& ppp = appli.post_processing_pass;
+
+    vk::RenderPassBeginInfo render_pass_info{};
+    render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
+    render_pass_info.setRenderPass(ppp.render_pass);
+    render_pass_info.setFramebuffer(ppp.framebuffer[image_index]);
+    render_pass_info.renderArea.offset = vk::Offset2D(0,0);
+    render_pass_info.renderArea.extent = state.swap_chain.extent;
+
+    std::array<vk::ClearValue, 2> clear_values{};
+    clear_values[0].color = vk::ClearColorValue(std::array<float,4>{0.3984,0.695,1});
+    clear_values[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+
+    render_pass_info.clearValueCount = clear_values.size();
+    render_pass_info.setClearValues(clear_values);
+
+    vk::Viewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(state.swap_chain.extent.width);
+    viewport.height = static_cast<float>(state.swap_chain.extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    command_buffer.setViewport(0,viewport);
+    
+    vk::Rect2D scissor{};
+    scissor.offset = vk::Offset2D{0,0};
+    scissor.extent = state.swap_chain.extent;
+    command_buffer.setScissor(0,scissor);
+
+
+    postProcessingUpdateDescriptorSets(state, appli, image_index);
+
+    command_buffer.beginRenderPass(render_pass_info,
+                                   vk::SubpassContents::eInline);
+
+    transitionImageLayout(command_buffer, state.framebuffer_resources[image_index].color_resources.depth_image,
+                                 state.swap_chain.swap_chain_image_format,
+                                 vk::ImageLayout::eColorAttachmentOptimal,
+                                 vk::ImageLayout::eShaderReadOnlyOptimal,
+                                 1);
+    
+    command_buffer.endRenderPass();
+}
 
 inline std::vector<vk::Framebuffer> createPostProcessingFramebuffers(RenderingState const& state,
                                                                      vk::RenderPass const& render_pass)
@@ -102,6 +198,7 @@ inline PostProcessing createPostProcessing(RenderingState const& state)
     PostProcessing pp;
     pp.render_pass = createPostProcessingRenderPass(state.swap_chain.swap_chain_image_format, state.device);
     pp.framebuffer = createPostProcessingFramebuffers(state, pp.render_pass);
+    pp.program = createPostProcessingProgram(state);
 
     return pp;
 }
