@@ -85,22 +85,6 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
 {
     // Bind the depth buffer to the fog program texture sampler
     Application& app = render_system;
-    auto depth_descriptor_set = app.fog_program->program.descriptor_sets[1].set[state.current_frame];
-    auto depth_descriptor_binding = app.fog_program->program.descriptor_sets[1].layout_bindings[0];
-
-    DepthResources& resources = state.framebuffer_resources[image_index].depth_resolved_resources;
-    Texture depth_texture{.image=resources.depth_image, .memory=resources.depth_image_memory,
-                         .view=resources.depth_image_view,
-                         .sampler=app.textures.sampler,
-                         .name="",
-                         .mip_levels=1};
-
-    updateImageSampler(state.device, {depth_texture}, {depth_descriptor_set}, depth_descriptor_binding);
-
-    // Update the 3D texture descriptor set
-    auto desc_set = app.fog_program->program.descriptor_sets[0].set[state.current_frame];
-    auto desc_binding = app.fog_program->program.descriptor_sets[0].layout_bindings[0];
-    updateImage(state.device, app.fog_buffer[state.current_frame].second, {desc_set}, desc_binding);
 
     auto& command_buffer = state.command_buffer[state.current_frame];
 
@@ -623,7 +607,7 @@ int main()
         .scene = std::move(scene),
         .fog_program = std::move(fog_program),
         .fog_buffer = fog_buffer,
-        .post_processing_pass = createPostProcessing(core)
+        .post_processing_pass = createPostProcessing(core, fog_buffer[0].second)
     };
 
     static auto start_time = std::chrono::high_resolution_clock::now();

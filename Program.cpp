@@ -204,7 +204,7 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
                 {
                     updateImageSampler(core.device, textures.textures, program.descriptor_sets[index].set, program.descriptor_sets[index].layout_bindings[0]);
                 }
-                else if (buffer.binding.type == lt::BindingType::StorageImage)
+                else if (buffer.binding.type == lt::BindingType::StorageImage && buffer.binding.storage_image != vk::ImageView(VK_NULL_HANDLE))
                 {
                     updateImage(core.device, buffer.binding.storage_image, program.descriptor_sets[index].set, program.descriptor_sets[index].layout_bindings[0]);
                 }

@@ -8,11 +8,14 @@
 #include "TypeLayer.h"
 #include "VulkanRenderSystem.h"
 #include "descriptor_set.h"
+#include "Renderer.h"
 
 #include <array>
 #include <memory>
 #include <vector>
+#include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
 
 struct PostProcessing
 {
@@ -37,7 +40,7 @@ struct Application
     PostProcessing post_processing_pass;
 };
 
-inline std::unique_ptr<Program> createPostProcessingProgram(RenderingState const& state, vk::RenderPass const& render_pass)
+inline std::unique_ptr<Program> createPostProcessingProgram(RenderingState const& state, vk::RenderPass const& render_pass, vk::ImageView fog_buffer)
 {
     layer_types::Program program_desc;
     program_desc.vertex_shader= {{"./shaders/post_processing_vert.spv"}};
@@ -45,11 +48,25 @@ inline std::unique_ptr<Program> createPostProcessingProgram(RenderingState const
     program_desc.buffers.push_back({layer_types::Buffer{
         .name = {{"colot_attachment"}},
         .type = layer_types::BufferType::NoBuffer,
+        .size = 1,
         .binding = layer_types::Binding {
+            .binding = 0,
             .type = layer_types::BindingType::TextureSampler,
             .size = 1,
             .vertex = true,
             .fragment = true
+        }
+    }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"fog_buffer"}},
+        .type = layer_types::BufferType::NoBuffer,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .binding = 0,
+            .type = layer_types::BindingType::TextureSampler,
+            .size = 1,
+            .vertex = true,
+            .fragment = true,
         }
     }});
     
@@ -76,6 +93,28 @@ inline void postProcessingUpdateDescriptorSets(RenderingState const& state,
         .mip_levels=1};
     
     updateImageSampler(state.device, {color_texture}, {color_res_set}, color_res_binding);
+
+    // Bind the depth buffer to the fog program texture sampler
+    Application const& app = appli;
+    auto depth_descriptor_set = app.fog_program->program.descriptor_sets[1].set[state.current_frame];
+    auto depth_descriptor_binding = app.fog_program->program.descriptor_sets[1].layout_bindings[0];
+
+    DepthResources const& resources = state.framebuffer_resources[image_index].depth_resolved_resources;
+    Texture depth_texture{.image=resources.depth_image, .memory=resources.depth_image_memory,
+                         .view=resources.depth_image_view,
+                         .sampler=app.textures.sampler,
+                         .name="",
+                         .mip_levels=1};
+    updateImageSampler(state.device, {depth_texture}, {depth_descriptor_set}, depth_descriptor_binding);
+
+    // Update the 3D texture descriptor set
+    auto desc_set = app.fog_program->program.descriptor_sets[0].set[state.current_frame];
+    auto desc_binding = app.fog_program->program.descriptor_sets[0].layout_bindings[0];
+    updateImage(state.device, app.fog_buffer[state.current_frame].second, {desc_set}, desc_binding);
+
+    auto desc_set_blender = app.post_processing_pass.program->program.descriptor_sets[1].set[state.current_frame];
+    auto desc_binding_blender = app.post_processing_pass.program->program.descriptor_sets[1].layout_bindings[0];
+    updateImageSampler(state.device, {app.fog_buffer[state.current_frame].second}, app.textures.sampler, {desc_set_blender}, desc_binding_blender);
 }
 
 inline void postProcessingDraw(vk::CommandBuffer& command_buffer,
@@ -101,7 +140,7 @@ inline void postProcessingDraw(vk::CommandBuffer& command_buffer,
 
 inline void postProcessingRenderPass(RenderingState const& state,
                                      vk::CommandBuffer& command_buffer,
-                                     Application const& appli,
+                                     Application& appli,
                                      size_t image_index)
 {
     auto const& ppp = appli.post_processing_pass;
@@ -141,13 +180,21 @@ inline void postProcessingRenderPass(RenderingState const& state,
                                  vk::ImageLayout::eShaderReadOnlyOptimal,
                                  1);
 
+    transitionImageLayout(command_buffer, state.framebuffer_resources[image_index].depth_resolved_resources.depth_image, vk::Format::eD32Sfloat,
+        vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
+
     postProcessingUpdateDescriptorSets(state, appli, image_index);
+
+    runPipeline(command_buffer, appli.scene, appli.fog_program, state.current_frame);
+    transitionImageLayout(command_buffer, appli.fog_buffer[state.current_frame].first, vk::Format::eR16G16B16A16Sfloat, vk::ImageLayout::eGeneral, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
 
     command_buffer.beginRenderPass(render_pass_info,
                                    vk::SubpassContents::eInline);
 
     postProcessingDraw(command_buffer, appli, state.current_frame);
     command_buffer.endRenderPass();
+
+    transitionImageLayout(command_buffer, appli.fog_buffer[state.current_frame].first, vk::Format::eR16G16B16A16Sfloat, vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eGeneral, 1);
 }
 
 inline std::vector<vk::Framebuffer> createPostProcessingFramebuffers(RenderingState const& state,
@@ -236,12 +283,12 @@ inline vk::RenderPass createPostProcessingRenderPass(vk::Format const swap_chain
     return render_pass.value;
 }
 
-inline PostProcessing createPostProcessing(RenderingState const& state)
+inline PostProcessing createPostProcessing(RenderingState const& state, vk::ImageView fog_buffer)
 {
     PostProcessing pp;
     pp.render_pass = createPostProcessingRenderPass(state.swap_chain.swap_chain_image_format, state.device, state.msaa);
     pp.framebuffer = createPostProcessingFramebuffers(state, pp.render_pass);
-    pp.program = createPostProcessingProgram(state, pp.render_pass);
+    pp.program = createPostProcessingProgram(state, pp.render_pass, fog_buffer);
 
     return pp;
 }

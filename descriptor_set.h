@@ -182,6 +182,39 @@ inline void updateUniformBuffer(Device const& device, std::vector<UniformBuffer>
 
 template<typename Device>
 inline void updateImageSampler(Device const& device,
+        std::vector<vk::ImageView> image_views, vk::Sampler sampler,
+        std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding)
+{
+    for (auto const& set : sets)
+    {
+        std::vector<vk::DescriptorImageInfo> image_info{};
+        std::transform(image_views.begin(), image_views.end(), std::back_inserter(image_info), [&sampler](auto const& view) {
+                vk::DescriptorImageInfo image_info{};
+                    image_info.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                    image_info.imageView = view;
+                    image_info.sampler = sampler;
+                    return image_info;
+                });
+
+        if (image_info.size() == 0)
+        {
+            return;
+        }
+
+        vk::WriteDescriptorSet desc_writes{};
+        desc_writes.sType = vk::StructureType::eWriteDescriptorSet;
+        desc_writes.setDstSet(set);
+        desc_writes.dstBinding = binding.binding;
+        desc_writes.dstArrayElement = 0;
+        desc_writes.descriptorType = binding.descriptorType;
+        desc_writes.descriptorCount = image_info.size();
+        desc_writes.setImageInfo(image_info);
+
+        device.updateDescriptorSets(desc_writes, nullptr);
+    }
+}
+template<typename Device>
+inline void updateImageSampler(Device const& device,
         std::vector<Texture> const& textures,
         std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding)
 {
