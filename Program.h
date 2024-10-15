@@ -67,4 +67,4 @@ struct Program
     std::vector<buffer_types::ModelType> buffers;
 };
 
-std::unique_ptr<Program> createProgram(layer_types::Program const& program_data, RenderingState const& core, Textures const& textures);
+std::unique_ptr<Program> createProgram(layer_types::Program const& program_data, RenderingState const& core, Textures const& textures, vk::RenderPass const& render_pass);

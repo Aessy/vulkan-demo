@@ -206,10 +206,12 @@ vk::SampleCountFlagBits getMaxUsableSampleCount(vk::PhysicalDevice device)
     return vk::SampleCountFlagBits::e1;
 }
 
-static auto createColorResources(RenderingState const& state)
+DepthResources createColorResources(RenderingState const& state)
 {
     auto image = createImage(state, state.swap_chain.extent.width, state.swap_chain.extent.height, 1, 
-        state.swap_chain.swap_chain_image_format, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransientAttachment | vk::ImageUsageFlagBits::eColorAttachment,
+        state.swap_chain.swap_chain_image_format, vk::ImageTiling::eOptimal,
+                                vk::ImageUsageFlagBits::eColorAttachment
+                                | vk::ImageUsageFlagBits::eSampled,
         vk::MemoryPropertyFlagBits::eDeviceLocal, state.msaa);
 
     transitionImageLayout(state, image.first, state.swap_chain.swap_chain_image_format, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal, 1);
@@ -525,16 +527,6 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     depth_attachment.initialLayout = vk::ImageLayout::eUndefined;
     depth_attachment.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
-    vk::AttachmentDescription2 color_attachment_resolve{};
-    color_attachment_resolve.format = swap_chain_image_format;
-    color_attachment_resolve.samples = vk::SampleCountFlagBits::e1;
-    color_attachment_resolve.loadOp = vk::AttachmentLoadOp::eDontCare;
-    color_attachment_resolve.storeOp = vk::AttachmentStoreOp::eStore;
-    color_attachment_resolve.stencilLoadOp =  vk::AttachmentLoadOp::eDontCare;
-    color_attachment_resolve.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
-    color_attachment_resolve.initialLayout = vk::ImageLayout::eUndefined;
-    color_attachment_resolve.finalLayout = vk::ImageLayout::ePresentSrcKHR;
-
     vk::AttachmentDescription2 depth_attachment_resolve{};
     depth_attachment_resolve.format = getDepthFormat();
     depth_attachment_resolve.samples = vk::SampleCountFlagBits::e1;
@@ -553,12 +545,8 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     depth_attachment_ref.attachment = 1;
     depth_attachment_ref.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
-    vk::AttachmentReference2 color_attachment_resolve_ref;
-    color_attachment_resolve_ref.attachment = 2;
-    color_attachment_resolve_ref.layout = vk::ImageLayout::eColorAttachmentOptimal;
-
     vk::AttachmentReference2 depth_attachment_resolve_ref;
-    depth_attachment_resolve_ref.attachment = 3;
+    depth_attachment_resolve_ref.attachment = 2;
     depth_attachment_resolve_ref.layout = vk::ImageLayout::eDepthAttachmentOptimal;
 
     vk::SubpassDescriptionDepthStencilResolve subpass_depth_resolve;
@@ -572,9 +560,6 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     subpass.colorAttachmentCount = 1;
     subpass.setColorAttachments(color_attachment_ref);
     subpass.setPDepthStencilAttachment(&depth_attachment_ref);
-    
-    std::vector<vk::AttachmentReference2> resolve_refs{color_attachment_resolve_ref};
-    subpass.setResolveAttachments(resolve_refs);
     subpass.pNext = &subpass_depth_resolve;
 
 
@@ -588,7 +573,7 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     dependency.setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests);
     dependency.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite);
 
-    std::array<vk::AttachmentDescription2, 4> attachments {color_attachment, depth_attachment, color_attachment_resolve, depth_attachment_resolve};
+    std::array<vk::AttachmentDescription2, 3> attachments {color_attachment, depth_attachment, depth_attachment_resolve};
 
     vk::RenderPassCreateInfo2 render_pass_info{};
     render_pass_info.sType = vk::StructureType::eRenderPassCreateInfo2;
@@ -729,7 +714,7 @@ static std::vector<vk::Framebuffer> createFrameBuffers(RenderingState& state)
         auto depth_resolve_image = createDepth(state, vk::SampleCountFlagBits::e1);
         state.framebuffer_resources.push_back({color_resources, depth_image, depth_resolve_image});
 
-        std::array<vk::ImageView, 4> attachments = {color_resources.depth_image_view, depth_image.depth_image_view, swap_chain_image_view, 
+        std::array<vk::ImageView, 3> attachments = {color_resources.depth_image_view, depth_image.depth_image_view,
                                                         depth_resolve_image.depth_image_view};
 
         vk::FramebufferCreateInfo framebuffer_info{};
@@ -1061,6 +1046,14 @@ void transitionImageLayout(vk::CommandBuffer& cmd_buffer, vk::Image const& image
 
         src_stage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
         dest_stage = vk::PipelineStageFlagBits::eBottomOfPipe;
+    }
+    else if (old_layout == vk::ImageLayout::eColorAttachmentOptimal && new_layout == vk::ImageLayout::eShaderReadOnlyOptimal)
+    {
+        barrier.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+        src_stage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+        dest_stage = vk::PipelineStageFlagBits::eFragmentShader;
     }
     else if (old_layout == vk::ImageLayout::eUndefined && new_layout == vk::ImageLayout::eGeneral)
     {
@@ -1395,7 +1388,7 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     std::string path;
     std::vector<vk::PipelineShaderStageCreateInfo> stages;
 
-    vk::ShaderStageFlags shader_flags;
+    vk::ShaderStageFlags shader_flags{};
     for (auto& stage : shader_stages)
     {
         vk::PipelineShaderStageCreateInfo stage_info;
@@ -1431,7 +1424,7 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
 
     vk::PipelineInputAssemblyStateCreateInfo input_assembly{};
     input_assembly.sType = vk::StructureType::ePipelineInputAssemblyStateCreateInfo;
-    if (shader_flags | vk::ShaderStageFlagBits::eTessellationControl)
+    if (shader_flags & vk::ShaderStageFlagBits::eTessellationControl)
     {
         input_assembly.setTopology(vk::PrimitiveTopology::ePatchList);
     }

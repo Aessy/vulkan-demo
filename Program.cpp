@@ -24,7 +24,13 @@ DescriptionPoolAndSet createDescriptorSet(vk::Device const& device, vk::Descript
 }
 
 GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings, RenderingState const& rendering_state,
-                                                                            std::string const& shader_vert, std::string const& shader_frag, std::string const& tess_ctrl, std::string const& tess_evu, std::string const& compute, vk::PolygonMode polygon_mode)
+                                                                            vk::RenderPass const& render_pass,
+                                                                            std::string const& shader_vert, 
+                                                                            std::string const& shader_frag,
+                                                                            std::string const& tess_ctrl,
+                                                                            std::string const& tess_evu,
+                                                                            std::string const& compute,
+                                                                            vk::PolygonMode polygon_mode)
 {
     // Create layouts for the descriptor sets
     std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
@@ -87,7 +93,7 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
     else
     {
         // Create the default pipeline
-        graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, rendering_state.render_pass, descriptor_set_layouts, shader_stages, rendering_state.msaa, polygon_mode);
+        graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, render_pass, descriptor_set_layouts, shader_stages, rendering_state.msaa, polygon_mode);
     }
 
     // Create descriptor set for the textures, lights, and matrices
@@ -124,7 +130,7 @@ auto createModel(RenderingState const& core, layer_types::BindingType binding_ty
     return BufferTypeOut{buffers};
 }
 
-std::unique_ptr<Program> createProgram(layer_types::Program const& program_data, RenderingState const& core, Textures const& textures)
+std::unique_ptr<Program> createProgram(layer_types::Program const& program_data, RenderingState const& core, Textures const& textures, vk::RenderPass const& render_pass)
 {
     namespace lt = layer_types;
 
@@ -175,7 +181,7 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
             break;
     };
 
-    auto program = createGpuProgram(descriptor_set_layout_bindings, core, vertex_path, fragment_path, tess_ctrl_path, tess_evu_path, compute_path, polygon_mode);
+    auto program = createGpuProgram(descriptor_set_layout_bindings, core, render_pass, vertex_path, fragment_path, tess_ctrl_path, tess_evu_path, compute_path, polygon_mode);
 
     std::vector<buffer_types::ModelType> model_types;
 

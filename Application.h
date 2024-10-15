@@ -19,7 +19,9 @@ struct PostProcessing
     vk::RenderPass render_pass;
     std::vector<vk::Framebuffer> framebuffer;
 
+    DepthResources color_attachment;
     std::unique_ptr<Program> program;
+
 };
 
 struct Application
@@ -35,7 +37,7 @@ struct Application
     PostProcessing post_processing_pass;
 };
 
-inline std::unique_ptr<Program> createPostProcessingProgram(RenderingState const& state)
+inline std::unique_ptr<Program> createPostProcessingProgram(RenderingState const& state, vk::RenderPass const& render_pass)
 {
     layer_types::Program program_desc;
     program_desc.vertex_shader= {{"./shaders/post_processing_vert.spv"}};
@@ -53,7 +55,7 @@ inline std::unique_ptr<Program> createPostProcessingProgram(RenderingState const
     
     // Make the program like this for now. Update the descriptor set each frame
     // with the correct color attachment.
-    return createProgram(program_desc, state, {});
+    return createProgram(program_desc, state, {}, render_pass);
 
 }
 
@@ -74,6 +76,27 @@ inline void postProcessingUpdateDescriptorSets(RenderingState const& state,
         .mip_levels=1};
     
     updateImageSampler(state.device, {color_texture}, {color_res_set}, color_res_binding);
+}
+
+inline void postProcessingDraw(vk::CommandBuffer& command_buffer,
+                               Application const& app,
+                               size_t frame)
+{
+    auto& ppp = app.post_processing_pass;
+    auto& program = ppp.program;
+
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
+                                ppp.program->program.pipeline[0]);
+
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                            program->program.pipeline_layout,
+                            0,
+                            1,
+                            &program->program.descriptor_sets[0].set[frame],
+                            0,
+                            nullptr);
+
+    command_buffer.draw(6,1,0,0);
 }
 
 inline void postProcessingRenderPass(RenderingState const& state,
@@ -112,18 +135,18 @@ inline void postProcessingRenderPass(RenderingState const& state,
     scissor.extent = state.swap_chain.extent;
     command_buffer.setScissor(0,scissor);
 
+    transitionImageLayout(command_buffer, state.framebuffer_resources[image_index].color_resources.depth_image,
+                                 state.swap_chain.swap_chain_image_format,
+                                 vk::ImageLayout::eColorAttachmentOptimal,
+                                 vk::ImageLayout::eShaderReadOnlyOptimal,
+                                 1);
 
     postProcessingUpdateDescriptorSets(state, appli, image_index);
 
     command_buffer.beginRenderPass(render_pass_info,
                                    vk::SubpassContents::eInline);
 
-    transitionImageLayout(command_buffer, state.framebuffer_resources[image_index].color_resources.depth_image,
-                                 state.swap_chain.swap_chain_image_format,
-                                 vk::ImageLayout::eColorAttachmentOptimal,
-                                 vk::ImageLayout::eShaderReadOnlyOptimal,
-                                 1);
-    
+    postProcessingDraw(command_buffer, appli, state.current_frame);
     command_buffer.endRenderPass();
 }
 
@@ -133,7 +156,8 @@ inline std::vector<vk::Framebuffer> createPostProcessingFramebuffers(RenderingSt
     std::vector<vk::Framebuffer> framebuffers;
     for (auto const& swap_chain_image_view : state.image_views)
     {
-        std::array<vk::ImageView, 1> attachments {{swap_chain_image_view}};
+        auto color_resources = createColorResources(state);
+        std::array<vk::ImageView, 2> attachments {{color_resources.depth_image_view, swap_chain_image_view}};
 
         vk::FramebufferCreateInfo framebuffer_info{};
         framebuffer_info.sType = vk::StructureType::eFramebufferCreateInfo;
@@ -152,11 +176,12 @@ inline std::vector<vk::Framebuffer> createPostProcessingFramebuffers(RenderingSt
 }
 
 inline vk::RenderPass createPostProcessingRenderPass(vk::Format const swap_chain_image_format,
-                                                     vk::Device const& device)
+                                                     vk::Device const& device,
+                                                     vk::SampleCountFlagBits msaa)
 {
     vk::AttachmentDescription color_attachment{};
     color_attachment.format = swap_chain_image_format;
-    color_attachment.samples = vk::SampleCountFlagBits::e1;
+    color_attachment.samples = msaa;
     color_attachment.loadOp = vk::AttachmentLoadOp::eClear;
     color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
     color_attachment.stencilLoadOp =  vk::AttachmentLoadOp::eDontCare;
@@ -164,14 +189,31 @@ inline vk::RenderPass createPostProcessingRenderPass(vk::Format const swap_chain
     color_attachment.initialLayout = vk::ImageLayout::eUndefined;
     color_attachment.finalLayout = vk::ImageLayout::eColorAttachmentOptimal;
 
+    vk::AttachmentDescription color_attachment_resolve{};
+    color_attachment_resolve.format = swap_chain_image_format;
+    color_attachment_resolve.samples = vk::SampleCountFlagBits::e1;
+    color_attachment_resolve.loadOp = vk::AttachmentLoadOp::eDontCare;
+    color_attachment_resolve.storeOp = vk::AttachmentStoreOp::eStore;
+    color_attachment_resolve.stencilLoadOp =  vk::AttachmentLoadOp::eDontCare;
+    color_attachment_resolve.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+    color_attachment_resolve.initialLayout = vk::ImageLayout::eUndefined;
+    color_attachment_resolve.finalLayout = vk::ImageLayout::ePresentSrcKHR;
+
     vk::AttachmentReference color_attachment_ref;
     color_attachment_ref.attachment = 0;
     color_attachment_ref.layout = vk::ImageLayout::eColorAttachmentOptimal;
 
+    vk::AttachmentReference color_attachment_resolve_ref;
+    color_attachment_resolve_ref.attachment = 1;
+    color_attachment_resolve_ref.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+    std::vector<vk::AttachmentReference> resolve_refs{color_attachment_resolve_ref};
+
     vk::SubpassDescription subpass {};
     subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
-    subpass.colorAttachmentCount = 1;
+    subpass.colorAttachmentCount = 2;
     subpass.setColorAttachments(color_attachment_ref);
+    subpass.setResolveAttachments(resolve_refs);
 
     vk::SubpassDependency dependency{};
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;  // Previous render pass
@@ -181,8 +223,9 @@ inline vk::RenderPass createPostProcessingRenderPass(vk::Format const swap_chain
     dependency.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
     dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentRead;
 
+    std::array<vk::AttachmentDescription, 2> attachments {color_attachment, color_attachment_resolve};
     vk::RenderPassCreateInfo renderPassInfo{};
-    renderPassInfo.setAttachments(color_attachment);
+    renderPassInfo.setAttachments(attachments);
     renderPassInfo.setSubpasses(subpass);
     renderPassInfo.setDependencies(dependency);
 
@@ -196,9 +239,9 @@ inline vk::RenderPass createPostProcessingRenderPass(vk::Format const swap_chain
 inline PostProcessing createPostProcessing(RenderingState const& state)
 {
     PostProcessing pp;
-    pp.render_pass = createPostProcessingRenderPass(state.swap_chain.swap_chain_image_format, state.device);
+    pp.render_pass = createPostProcessingRenderPass(state.swap_chain.swap_chain_image_format, state.device, state.msaa);
     pp.framebuffer = createPostProcessingFramebuffers(state, pp.render_pass);
-    pp.program = createPostProcessingProgram(state);
+    pp.program = createPostProcessingProgram(state, pp.render_pass);
 
     return pp;
 }

@@ -164,6 +164,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
     command_buffer.endRenderPass();
 
     postProcessingRenderPass(state, command_buffer, render_system, image_index);
+
 /*
     transitionImageLayout(command_buffer, depth_texture.image, vk::Format::eD32Sfloat,
         vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
@@ -571,14 +572,14 @@ int main()
 
     auto fog_buffer = createFogBuffer(core, vk::MemoryPropertyFlagBits::eDeviceLocal);
     auto fog_desc = createComputeFogProgram(fog_buffer[0].second);
-    auto fog_program = createProgram(fog_desc, core, {.sampler=textures.sampler, .textures={}});
+    auto fog_program = createProgram(fog_desc, core, {.sampler=textures.sampler, .textures={}}, core.render_pass);
 
     std::cout << "Created fog program\n";
 
     std::vector<std::unique_ptr<Program>> programs;
-    programs.push_back(createProgram(program_desc, core, textures));
-    programs.push_back(createProgram(terrain_program_fill, core, textures));
-    programs.push_back(createProgram(terrain_program_wireframe, core, textures));
+    programs.push_back(createProgram(program_desc, core, textures, core.render_pass));
+    programs.push_back(createProgram(terrain_program_fill, core, textures, core.render_pass));
+    programs.push_back(createProgram(terrain_program_wireframe, core, textures, core.render_pass));
 
     Camera camera;
     camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 500.0f);
