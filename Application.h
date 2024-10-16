@@ -69,6 +69,30 @@ inline std::unique_ptr<Program> createPostProcessingProgram(RenderingState const
             .fragment = true,
         }
     }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"depth_attachment"}},
+        .type = layer_types::BufferType::NoBuffer,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .binding = 0,
+            .type = layer_types::BindingType::TextureSampler,
+            .size = 1,
+            .vertex = true,
+            .fragment = true,
+        }
+    }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"world_buffer"}},
+        .type = layer_types::BufferType::WorldBufferObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding world"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .fragment = true,
+        }
+    }});
     
     // Make the program like this for now. Update the descriptor set each frame
     // with the correct color attachment.
@@ -85,14 +109,17 @@ inline void postProcessingUpdateDescriptorSets(RenderingState const& state,
     auto color_res_binding = ppp.program->program.descriptor_sets[0].layout_bindings[0];
 
     auto& color_attachment = state.framebuffer_resources[image_index].color_resources;
-    Texture color_texture{
-        .image=color_attachment.depth_image,
-        .memory=color_attachment.depth_image_memory,
-        .view=color_attachment.depth_image_view,
-        .sampler=appli.textures.sampler,
-        .mip_levels=1};
-    
-    updateImageSampler(state.device, {color_texture}, {color_res_set}, color_res_binding);
+    updateImageSampler(state.device, {color_attachment.depth_image_view},
+                       appli.textures.sampler, {color_res_set}, color_res_binding);
+
+    auto desc_set_blender = ppp.program->program.descriptor_sets[1].set[state.current_frame];
+    auto desc_binding_blender = ppp.program->program.descriptor_sets[1].layout_bindings[0];
+    updateImageSampler(state.device, {appli.fog_buffer[state.current_frame].second}, appli.textures.sampler, {desc_set_blender}, desc_binding_blender);
+
+    auto ppp_depth_descriptor_set = ppp.program->program.descriptor_sets[2].set[state.current_frame];
+    auto ppp_depth_descriptor_binding= ppp.program->program.descriptor_sets[2].layout_bindings[0];
+    updateImageSampler(state.device, {state.framebuffer_resources[image_index].depth_resolved_resources.depth_image_view}, appli.textures.sampler,
+                       {ppp_depth_descriptor_set}, ppp_depth_descriptor_binding);
 
     // Bind the depth buffer to the fog program texture sampler
     Application const& app = appli;
@@ -112,9 +139,6 @@ inline void postProcessingUpdateDescriptorSets(RenderingState const& state,
     auto desc_binding = app.fog_program->program.descriptor_sets[0].layout_bindings[0];
     updateImage(state.device, app.fog_buffer[state.current_frame].second, {desc_set}, desc_binding);
 
-    auto desc_set_blender = app.post_processing_pass.program->program.descriptor_sets[1].set[state.current_frame];
-    auto desc_binding_blender = app.post_processing_pass.program->program.descriptor_sets[1].layout_bindings[0];
-    updateImageSampler(state.device, {app.fog_buffer[state.current_frame].second}, app.textures.sampler, {desc_set_blender}, desc_binding_blender);
 }
 
 inline void postProcessingDraw(vk::CommandBuffer& command_buffer,
@@ -134,6 +158,41 @@ inline void postProcessingDraw(vk::CommandBuffer& command_buffer,
                             &program->program.descriptor_sets[0].set[frame],
                             0,
                             nullptr);
+
+
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                            program->program.pipeline_layout,
+                            1,
+                            1,
+                            &program->program.descriptor_sets[1].set[frame],
+                            0,
+                            nullptr);
+
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                            program->program.pipeline_layout,
+                            2,
+                            1,
+                            &program->program.descriptor_sets[2].set[frame],
+                            0,
+                            nullptr);
+
+    uint32_t offset{};
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                            program->program.pipeline_layout,
+                            3,
+                            1,
+                            &program->program.descriptor_sets[3].set[frame],
+                            1,
+                            &offset);
+
+    for (auto& buffer : program->buffers)
+    {
+        if (auto* world = std::get_if<buffer_types::World>(&buffer))
+        {
+            auto ubo = createWorldBufferObject(app.scene);
+            writeBuffer(world->buffers[frame], ubo);
+        }
+    }
 
     command_buffer.draw(6,1,0,0);
 }
