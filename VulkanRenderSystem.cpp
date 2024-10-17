@@ -737,7 +737,7 @@ std::vector<std::pair<vk::Image, vk::ImageView>> createFogBuffer(RenderingState 
     vk::ImageCreateInfo create_info;
     create_info.sType = vk::StructureType::eImageCreateInfo;
     create_info.imageType = vk::ImageType::e3D;
-    create_info.format = vk::Format::eR16G16B16A16Sfloat;
+    create_info.format = vk::Format::eR16Sfloat;
     create_info.extent.width = 128;
     create_info.extent.height = 128;
     create_info.extent.depth = 128;
@@ -767,9 +767,9 @@ std::vector<std::pair<vk::Image, vk::ImageView>> createFogBuffer(RenderingState 
         auto result = state.device.bindImageMemory(fog_3d_texture.value, buffer_memory, 0);
         checkResult(result);
 
-        auto image_view = createImageView(state.device, fog_3d_texture.value, vk::Format::eR16G16B16A16Sfloat, vk::ImageAspectFlagBits::eColor, 1, vk::ImageViewType::e3D);
+        auto image_view = createImageView(state.device, fog_3d_texture.value, vk::Format::eR16Sfloat, vk::ImageAspectFlagBits::eColor, 1, vk::ImageViewType::e3D);
 
-        transitionImageLayout(state, fog_3d_texture.value, vk::Format::eR16G16B16A16Sfloat,
+        transitionImageLayout(state, fog_3d_texture.value, vk::Format::eR16Sfloat,
             vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, 1);
 
         fog.push_back({fog_3d_texture.value, image_view});

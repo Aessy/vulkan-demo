@@ -245,7 +245,7 @@ inline void postProcessingRenderPass(RenderingState const& state,
     postProcessingUpdateDescriptorSets(state, appli, image_index);
 
     runPipeline(command_buffer, appli.scene, appli.fog_program, state.current_frame);
-    transitionImageLayout(command_buffer, appli.fog_buffer[state.current_frame].first, vk::Format::eR16G16B16A16Sfloat, vk::ImageLayout::eGeneral, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
+    transitionImageLayout(command_buffer, appli.fog_buffer[state.current_frame].first, vk::Format::eR16Sfloat, vk::ImageLayout::eGeneral, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
 
     command_buffer.beginRenderPass(render_pass_info,
                                    vk::SubpassContents::eInline);
@@ -253,7 +253,7 @@ inline void postProcessingRenderPass(RenderingState const& state,
     postProcessingDraw(command_buffer, appli, state.current_frame);
     command_buffer.endRenderPass();
 
-    transitionImageLayout(command_buffer, appli.fog_buffer[state.current_frame].first, vk::Format::eR16G16B16A16Sfloat, vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eGeneral, 1);
+    transitionImageLayout(command_buffer, appli.fog_buffer[state.current_frame].first, vk::Format::eR16Sfloat, vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eGeneral, 1);
 }
 
 inline std::vector<vk::Framebuffer> createPostProcessingFramebuffers(RenderingState const& state,
