@@ -738,9 +738,9 @@ std::vector<std::pair<vk::Image, vk::ImageView>> createFogBuffer(RenderingState 
     create_info.sType = vk::StructureType::eImageCreateInfo;
     create_info.imageType = vk::ImageType::e3D;
     create_info.format = vk::Format::eR16G16B16A16Sfloat;
-    create_info.extent.width = 256;
-    create_info.extent.height = 256;
-    create_info.extent.depth = 256;
+    create_info.extent.width = 128;
+    create_info.extent.height = 128;
+    create_info.extent.depth = 128;
     create_info.mipLevels = 1;
     create_info.arrayLayers = 1;
     create_info.samples = vk::SampleCountFlagBits::e1;

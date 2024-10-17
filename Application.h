@@ -345,8 +345,11 @@ inline vk::RenderPass createPostProcessingRenderPass(vk::Format const swap_chain
 inline PostProcessing createPostProcessing(RenderingState const& state, vk::ImageView fog_buffer)
 {
     PostProcessing pp;
+    std::cout << "Creating post processing render pass\n";
     pp.render_pass = createPostProcessingRenderPass(state.swap_chain.swap_chain_image_format, state.device, state.msaa);
+    std::cout << "Creating post processing framebuffer\n";
     pp.framebuffer = createPostProcessingFramebuffers(state, pp.render_pass);
+    std::cout << "Creating post processing program\n";
     pp.program = createPostProcessingProgram(state, pp.render_pass, fog_buffer);
 
     return pp;

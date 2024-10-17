@@ -539,16 +539,8 @@ int main()
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
     auto height_map_1_model = createFlatGround(256, 500, 4);
-    auto height_map_512_model = createFlatGround(512, 512, 8);
-    auto height_map_1024_model = createFlatGround(1024, 512, 16);
-    auto height_map_with_height_512_model = createModelFromHeightMap("./textures/terrain.png", 128, 50);
-    auto box = createBox();
 
     models.models.insert({height_map_1_model.id, height_map_1_model});
-    models.models.insert({height_map_512_model.id, height_map_512_model});
-    models.models.insert({height_map_1024_model.id, height_map_1024_model});
-    models.models.insert({height_map_with_height_512_model.id, height_map_with_height_512_model});
-    models.models.insert({box.id, box});
 
     auto terrain_program_fill = createTerrainProgram();
     auto terrain_program_wireframe = terrain_program_fill;
@@ -575,10 +567,6 @@ int main()
 
     Meshes meshes;
     auto mesh_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
-    meshes.loadMesh(core, models.models.at(height_map_512_model.id), "height_map_512");
-    meshes.loadMesh(core, models.models.at(height_map_1024_model.id), "height_map_1024");
-    meshes.loadMesh(core, models.models.at(height_map_with_height_512_model.id), "height_map_with_height_512");
-    meshes.loadMesh(core, models.models.at(box.id), "box");
 
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 

@@ -39,8 +39,6 @@ void main()
 
     float depth = texture(depthTexture, vec2(x,y)).r;
 
-    debugPrintfEXT("Depth: %f", depth);
-
 
     float fog_density = 0.1;
     vec3 fog_color = vec3(0.5, 0.5, 0.7);
