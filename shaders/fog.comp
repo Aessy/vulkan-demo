@@ -23,41 +23,8 @@ layout(set = 2, binding = 0) uniform UniformWorld{
 
 void main()
 {
- // Get the coordinates of the current work item
+    float fog_density = 0.05f;
     ivec3 voxelCoord = ivec3(gl_GlobalInvocationID.xyz);
 
-    float x = float(voxelCoord.x)/256.0f;
-    float y = float(voxelCoord.y)/256.0f;
-
-    // Get the size of the multisampled texture
-    ivec2 texSize = imageSize(depthOutput).xy;
-
-    // Ensure we're within the bounds of the texture
-    if (voxelCoord.x >= texSize.x || voxelCoord.y >= texSize.y) {
-        return;
-    }
-
-    float depth = texture(depthTexture, vec2(x,y)).r;
-
-
-    float fog_density = 0.1;
-    vec3 fog_color = vec3(0.5, 0.5, 0.7);
-
-    float distance_to_light = length(world.light.position - vec3(x, y, depth));
-    float fog_intensity = exp(-distance_to_light * fog_density);
-
-    vec4 final_fog_color = vec4(fog_color, 1.0) * fog_intensity;
-    imageStore(depthOutput, voxelCoord, final_fog_color);
-
-
-    // Store the resolved depth value in the 3D image
-    //imageStore(depthOutput, voxelCoord, vec4(resolvedDepth, resolvedDepth, resolvedDepth, 1.0)); // Write to the 3D image
-
-
-
-    //vec2 v;
-    //v.x = 600/800;
-    //v.y = 600/800;
-    //float depth = texture(texSampler, v).r;
-    //debugPrintfEXT("Depth: %f", depth);
+    imageStore(depthOutput, voxelCoord, vec4(fog_density, 0.0, 0.0, 0.0));
 }

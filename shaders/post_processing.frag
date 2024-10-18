@@ -60,5 +60,51 @@ void main()
     mat4 view = world.view;
     vec3 world_position = calculateWorldPositionFromDepth(depth, uv_in, proj, view);
 
-    fragColor = sampled_color/8;
+    float distance = length(world_position-world.pos);
+
+    vec3 ray_dir = normalize(world_position - world.pos);
+    vec3 ray_pos = world.pos;
+
+    int max_steps = 64;
+
+    float step_size = 1.0f;
+    float accumulated_fog = 0.0;
+
+    float distance_traveled = 0.0f;
+
+    int i = 0;
+
+    // Sample the fog 64 times
+    for (i = 0; i < max_steps; ++i)
+    {
+        ray_pos += (ray_dir*step_size);
+
+        if (   (ray_pos.x > -64 && ray_pos.x < 64)
+            && (ray_pos.y > -64 && ray_pos.y < 64)
+            && (ray_pos.z > -64 && ray_pos.z < 64))
+        {
+            float density = texture(fog_sampler, ray_pos).r;
+            if (distance_traveled > distance)
+            {
+                float remaining_distance = distance_traveled - distance;
+                remaining_distance /= step_size;    // remaining distance is now 0-1, hopefully
+                density *= 1-remaining_distance;
+                accumulated_fog += density;
+                break;
+            }
+
+            accumulated_fog += density;
+        }
+
+        distance_traveled += step_size;
+
+    }
+
+    float fog_alpha = clamp(0, 0.9, accumulated_fog);
+
+    vec4 scene_color = sampled_color/8;
+    vec4 fog_color = vec4(1.0, 1.0, 1.0, 1.0);
+
+    vec4 final_color = mix(scene_color, fog_color, fog_alpha);
+    fragColor = final_color;
 }
