@@ -55,6 +55,7 @@
 #include "TypeLayer.h"
 #include "Renderer.h"
 #include "Application.h"
+#include "PostProcessing.h"
 
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
@@ -147,7 +148,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
     command_buffer.endRenderPass();
 
-    postProcessingRenderPass(state, command_buffer, render_system, image_index);
+    postProcessingRenderPass(state, app.ppp, command_buffer, render_system.scene, image_index);
 
 /*
     transitionImageLayout(command_buffer, depth_texture.image, vk::Format::eD32Sfloat,
@@ -546,12 +547,6 @@ int main()
     auto terrain_program_wireframe = terrain_program_fill;
     terrain_program_wireframe.polygon_mode = layer_types::PolygonMode::Line;
 
-    auto fog_buffer = createFogBuffer(core, vk::MemoryPropertyFlagBits::eDeviceLocal);
-    auto fog_desc = createComputeFogProgram(fog_buffer[0].second);
-    auto fog_program = createProgram(fog_desc, core, {.sampler=textures.sampler, .textures={}}, core.render_pass);
-
-    std::cout << "Created fog program\n";
-
     std::vector<std::unique_ptr<Program>> programs;
     programs.push_back(createProgram(program_desc, core, textures, core.render_pass));
     programs.push_back(createProgram(terrain_program_fill, core, textures, core.render_pass));
@@ -593,9 +588,7 @@ int main()
         .meshes = std::move(meshes),
         .programs = std::move(programs),
         .scene = std::move(scene),
-        .fog_program = std::move(fog_program),
-        .fog_buffer = fog_buffer,
-        .post_processing_pass = createPostProcessing(core, fog_buffer[0].second)
+        .ppp = createPostProcessing(core)
     };
 
     static auto start_time = std::chrono::high_resolution_clock::now();

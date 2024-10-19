@@ -1,5 +1,6 @@
 #pragma once
 
+#include "VulkanRenderSystem.h"
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_ASSERT_ON_RESULT
 #include <vulkan/vulkan_core.h>

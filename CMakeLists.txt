@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.21)
 
 set(SRC VulkanRenderSystem.cpp
         main.cpp
+        PostProcessing.cpp
         height_map.cpp
         Gui.cpp
         Model.cpp
