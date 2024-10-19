@@ -80,6 +80,10 @@ inline void runPipeline(vk::CommandBuffer& command_buffer, Scene const& scene, s
             auto ubo = createWorldBufferObject(scene);
             writeBuffer(world->buffers[frame], ubo);
         }
+        else if (auto* fog_volume = std::get_if<buffer_types::FogVolume>(&buffer))
+        {
+            writeBuffer(fog_volume->buffers[frame], scene.fog);
+        }
     }
 
     command_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, program->program.pipeline[0]);

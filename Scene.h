@@ -3,6 +3,7 @@
 #include "Model.h"
 #include "Object.h"
 #include "Program.h"
+#include "VulkanRenderSystem.h"
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
@@ -32,6 +33,8 @@ struct Scene
     LightBufferObject light;
 
     TerrainBufferObject terrain;
+
+    FogVolumeBufferObject fog;
 };
 
 inline void addObject(Scene& scene, Object o)

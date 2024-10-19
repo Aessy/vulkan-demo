@@ -1,5 +1,6 @@
 #include "Program.h"
 
+#include "Model.h"
 #include "VulkanRenderSystem.h"
 #include "descriptor_set.h"
 #include "utilities.h"
@@ -198,6 +199,9 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
                 break;
             case lt::BufferType::TerrainBufferObject:
                 model_types.push_back(createModel<TerrainBufferObject, buffer_types::Terrain>(core, buffer.binding.type, program, index, buffer.size));
+                break;
+            case lt::BufferType::FogVolumeObject:
+                model_types.push_back(createModel<FogVolumeBufferObject, buffer_types::FogVolume>(core, buffer.binding.type, program, index, buffer.size));
                 break;
             case lt::BufferType::NoBuffer:
                 if (buffer.binding.type == lt::BindingType::TextureSampler)

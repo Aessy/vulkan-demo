@@ -104,6 +104,18 @@ static std::unique_ptr<Program> createComputeFogProgram(RenderingState const& st
             .compute = true
         }
     }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"Fog Volume"}},
+        .type = layer_types::BufferType::FogVolumeObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"Fog Volume"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .compute = true
+        }
+    }});
 
     return createProgram(program_desc, state, {}, render_pass);
 }

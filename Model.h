@@ -32,6 +32,11 @@ struct WorldBufferObject
     alignas(16) LightBufferObject light_position;
 };
 
+struct FogVolumeBufferObject
+{
+    float base_density = 0.05;
+};
+
 struct TerrainBufferObject
 {
     float max_height{30};

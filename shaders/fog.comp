@@ -21,10 +21,13 @@ layout(set = 2, binding = 0) uniform UniformWorld{
     LightBufferData light;
 } world;
 
+layout(set = 3, binding = 0) uniform UniformFog{
+    float density;
+} fog;
+
 void main()
 {
-    float fog_density = 0.05f;
     ivec3 voxelCoord = ivec3(gl_GlobalInvocationID.xyz);
 
-    imageStore(depthOutput, voxelCoord, vec4(fog_density, 0.0, 0.0, 0.0));
+    imageStore(depthOutput, voxelCoord, vec4(fog.density, 0.0, 0.0, 0.0));
 }

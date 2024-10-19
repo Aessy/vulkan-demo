@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Model.h"
 #include <array>
 #include <vector>
 
@@ -22,6 +23,7 @@ enum class BufferType : int
     ModelBufferObject,
     WorldBufferObject,
     TerrainBufferObject,
+    FogVolumeObject,
     NoBuffer,
 };
 
