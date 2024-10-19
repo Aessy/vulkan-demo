@@ -35,10 +35,10 @@ struct WorldBufferObject
 struct TerrainBufferObject
 {
     float max_height{30};
-    int displacement_map{10};
-    int normal_map{11};
-    int texture_id{12};
-    int texture_normal_map{11};
+    int displacement_map{0};
+    int normal_map{2};
+    int texture_id{9};
+    int texture_normal_map{6};
     
     float blend_sharpness{20};
 

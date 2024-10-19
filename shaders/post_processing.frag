@@ -41,6 +41,29 @@ vec3 calculateWorldPositionFromDepth(float depth, vec2 fragUV, mat4 proj, mat4 v
     return worldPos.xyz;  // Return the 3D world position
 }
 
+float raymarch(float distance, vec3 ray_dir, vec3 ray_pos)
+{
+    int max_steps = 64;
+
+    float step_length = distance/max_steps;
+
+    float accumulated_fog = 0.0f;
+
+    for (int i = 0; i < max_steps; ++i)
+    {
+        if (   (ray_pos.x > -64 && ray_pos.x < 64)
+            && (ray_pos.y > -64 && ray_pos.y < 64)
+            && (ray_pos.z > -64 && ray_pos.z < 64))
+        {
+            float density = texture(fog_sampler, ray_pos).r;
+            accumulated_fog += density*step_length;
+        }
+
+        ray_pos += (ray_dir*step_length);
+    }
+
+    return accumulated_fog;
+}
 
 void main()
 {
@@ -65,40 +88,7 @@ void main()
     vec3 ray_dir = normalize(world_position - world.pos);
     vec3 ray_pos = world.pos;
 
-    int max_steps = 64;
-
-    float step_size = 1.0f;
-    float accumulated_fog = 0.0;
-
-    float distance_traveled = 0.0f;
-
-    int i = 0;
-
-    // Sample the fog 64 times
-    for (i = 0; i < max_steps; ++i)
-    {
-        ray_pos += (ray_dir*step_size);
-
-        if (   (ray_pos.x > -64 && ray_pos.x < 64)
-            && (ray_pos.y > -64 && ray_pos.y < 64)
-            && (ray_pos.z > -64 && ray_pos.z < 64))
-        {
-            float density = texture(fog_sampler, ray_pos).r;
-            if (distance_traveled > distance)
-            {
-                float remaining_distance = distance_traveled - distance;
-                remaining_distance /= step_size;    // remaining distance is now 0-1, hopefully
-                density *= 1-remaining_distance;
-                accumulated_fog += density;
-                break;
-            }
-
-            accumulated_fog += density;
-        }
-
-        distance_traveled += step_size;
-
-    }
+    float accumulated_fog = raymarch(distance, ray_dir, ray_pos);
 
     float fog_alpha = clamp(0, 0.9, accumulated_fog);
 
