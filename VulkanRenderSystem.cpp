@@ -880,7 +880,6 @@ RenderingState createVulkanRenderState()
     };
 
 
-    initImgui(device, physical_device, instance, graphics_queue, render_pass, render_state, window, msaa_samples);
 
     auto color_resources = createColorResources(render_state);
     auto depth_image = createDepth(render_state, render_state.msaa);

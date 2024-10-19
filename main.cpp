@@ -143,32 +143,12 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
 
     command_buffer.beginRenderPass(&render_pass_info,
                                    vk::SubpassContents::eInline);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
     draw(command_buffer, render_system, state.current_frame);
 
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
     command_buffer.endRenderPass();
 
     postProcessingRenderPass(state, app.ppp, command_buffer, render_system.scene, image_index);
-
-/*
-    transitionImageLayout(command_buffer, depth_texture.image, vk::Format::eD32Sfloat,
-        vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
-
-    runPipeline(command_buffer, render_system.scene, render_system.fog_program, state.current_frame);
-*/
-
-/*
-
-    vk::MemoryBarrier imageMemoryBarrier = {};
-    imageMemoryBarrier.sType = vk::StructureType::eMemoryBarrier;
-    imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eShaderWrite;
-    imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eMemoryRead;
-
-    command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                                    vk::PipelineStageFlagBits::eAllCommands, vk::DependencyFlags{0}, imageMemoryBarrier, {}, {});
-
-*/
-
     result = command_buffer.end();
 }
 
@@ -587,6 +567,8 @@ int main()
         .scene = std::move(scene),
         .ppp = createPostProcessing(core)
     };
+
+    initImgui(core.device, core.physical_device, core.instance, core.graphics_queue, application.ppp.render_pass, core, core.window, core.msaa);
 
     static auto start_time = std::chrono::high_resolution_clock::now();
 

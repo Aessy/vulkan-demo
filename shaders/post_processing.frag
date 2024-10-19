@@ -93,7 +93,7 @@ void main()
     float fog_alpha = clamp(0, 0.9, accumulated_fog);
 
     vec4 scene_color = sampled_color/8;
-    vec4 fog_color = vec4(1.0, 1.0, 1.0, 1.0);
+    vec4 fog_color = vec4(0.7, 0.7, 0.7, 1.0);
 
     vec4 final_color = mix(scene_color, fog_color, fog_alpha);
     fragColor = final_color;

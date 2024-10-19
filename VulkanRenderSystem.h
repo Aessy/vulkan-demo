@@ -147,6 +147,9 @@ struct RenderingState
 };
 
 RenderingState createVulkanRenderState();
+void initImgui(vk::Device const& device, vk::PhysicalDevice const& physical, vk::Instance const& instance,
+               vk::Queue const& queue, vk::RenderPass const& render_pass,
+               RenderingState& state, GLFWwindow* window, vk::SampleCountFlagBits msaa);
 std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::SampleCountFlagBits num_samples = vk::SampleCountFlagBits::e1);
 vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels, vk::ImageViewType view_type = vk::ImageViewType::e2D);
 

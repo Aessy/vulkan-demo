@@ -3,6 +3,8 @@
 #include "Renderer.h"
 #include "VulkanRenderSystem.h"
 #include <vulkan/vulkan_enums.hpp>
+#include <imgui.h>
+#include "imgui_impl_vulkan.h"
 
 static std::unique_ptr<Program> createPostProcessingProgram(RenderingState const& state, vk::RenderPass const& render_pass)
 {
@@ -270,6 +272,8 @@ void postProcessingRenderPass(RenderingState const& state,
                                    vk::SubpassContents::eInline);
 
     postProcessingDraw(command_buffer, scene, ppp, state.current_frame);
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
     command_buffer.endRenderPass();
 
     transitionImageLayout(command_buffer, ppp.fog_buffer[state.current_frame].first, vk::Format::eR16Sfloat, vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eGeneral, 1);
