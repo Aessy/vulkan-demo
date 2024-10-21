@@ -143,7 +143,6 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
 
     command_buffer.beginRenderPass(&render_pass_info,
                                    vk::SubpassContents::eInline);
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
     draw(command_buffer, render_system, state.current_frame);
 
     command_buffer.endRenderPass();
@@ -458,7 +457,9 @@ int main()
     RenderingState core = createVulkanRenderState();
 
     Textures textures = createTextures(core,
-        { {"./textures/terrain.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+        { {"./textures/canyon_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/canyon_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/terrain.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/terrain_norm_high.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/terrain_norm_low.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/terrain_norm_flat.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
@@ -468,6 +469,7 @@ int main()
           {"./textures/forest_normal.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb},
           {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/cylinder.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
         });
 
     layer_types::Program program_desc;
@@ -537,8 +539,11 @@ int main()
 
     updateCameraFront(camera);
 
+    auto box = createBox();
+
     Meshes meshes;
     auto mesh_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
+    auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
 
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
@@ -547,7 +552,7 @@ int main()
     scene.light.position = glm::vec3(12.8,56,-10);
     scene.light.light_color = glm::vec3(1,1,1);
     scene.light.strength = 50.0f;
-    //scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
+    scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
 
     for (int i = 0; i < programs.size(); ++i)
     {
@@ -556,6 +561,9 @@ int main()
 
     auto object = createObject(meshes.meshes.at(mesh_id));
     object.material = 1;
+
+    auto cylinder = createObject(meshes.meshes.at(cylinder_mesh_id));
+    cylinder.material = 0;
     addObject(scene, object);
 
 

@@ -74,7 +74,7 @@ GLFWwindow* setupGlfw(App& app)
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 
-    auto window = glfwCreateWindow(800, 600, "Vulkan", nullptr, nullptr);
+    auto window = glfwCreateWindow(2560, 1440, "Vulkan", nullptr, nullptr);
     glfwSetWindowUserPointer(window, &app);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     glfwSetKeyCallback(window, keyPressedCallback);
@@ -1479,7 +1479,7 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     rasterizer.rasterizerDiscardEnable = false;
     rasterizer.polygonMode = polygon_mode;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = vk::CullModeFlagBits::eFront;
+    rasterizer.cullMode = vk::CullModeFlagBits::eNone;
     rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
     rasterizer.depthBiasEnable = false;
     rasterizer.depthBiasConstantFactor = 0.0f;

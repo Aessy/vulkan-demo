@@ -387,7 +387,7 @@ void showScene(Application& app, Scene& scene, Models& models)
     ImGui::DragFloat("Lod weight", &app.scene.terrain.weight, 1.0f, 0, 2000);
 
     ImGui::Text("Fog");
-    ImGui::DragFloat("Fog Density", &app.scene.fog.base_density, 0.01f, 0.01f, 100.0f);
+    ImGui::DragFloat("Fog Density", &app.scene.fog.base_density, 0.01f, 0.00f, 100.0f);
 
 
     createObject(app);

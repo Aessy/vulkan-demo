@@ -12,6 +12,7 @@ struct LightBufferData
 layout(set = 1, binding = 0) uniform UniformWorld{
     mat4 view;
     mat4 proj;
+    vec3 pos;
     LightBufferData light;
 } world;
 
@@ -27,19 +28,31 @@ void main()
     vec3 light_color = world.light.light_color;
     float light_power = world.light.strength;
     vec3 light_pos = world.light.position;
+    vec3 light_dir = normalize(light_pos - position_worldspace);
+    //vec3 material_diffuse_color = texture(texSampler[texture_id], uv).rgb;
+    vec3 material_diffuse_color = vec3(1,0,0);
+    vec3 n = normalize(normal);
 
-    vec3 material_diffuse_color = texture(texSampler[texture_id], uv).rgb;
+    vec3 ambient = 0.1f * light_color;
+
+    float diffuse_factor = max(dot(n, light_dir), 0.0);
+    vec3 diffuse = diffuse_factor * light_color;
+
+    vec3 result = (ambient + diffuse) * material_diffuse_color;
+    out_color = vec4(result, 1);
+    return;
+
+
+
     vec3 material_ambient_color = vec3(0.3, 0.3, 0.3) * material_diffuse_color;
     vec3 material_speccular_color = vec3(1.0, 1.0, 1.0);
 
     float distance = length(light_pos - position_worldspace);
-    vec3 light_dir = normalize(light_pos - position_worldspace);
-    vec3 n = normalize(normal);
 
     float cos_theta = clamp(dot(n,light_dir), 0,1);
 
     vec3 color = material_ambient_color +
                  material_diffuse_color * light_color * cos_theta * light_power / (distance*distance);
     
-    out_color = vec4(color, 1);
+    out_color = vec4(1,0,0,1);
 }

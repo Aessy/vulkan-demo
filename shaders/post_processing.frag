@@ -23,26 +23,26 @@ layout(set = 3, binding = 0) uniform UniformWorld{
 layout(location = 0) in vec2 uv_in;
 layout(location = 0) out vec4 fragColor;
 
-vec3 calculateWorldPositionFromDepth(float depth, vec2 fragUV, mat4 proj, mat4 view) {
-    // Reconstruct the clip space position
-    float ndcX = fragUV.x * 2.0 - 1.0;  // Map UV [0,1] to NDC [-1,1] for x
-    float ndcY = fragUV.y * 2.0 - 1.0;  // Map UV [0,1] to NDC [-1,1] for y
-    float ndcZ = depth * 2.0 - 1.0;     // Map depth [0,1] to clip space [-1,1]
+vec3 calculateWorldPositionFromDepth(float depth, vec2 frag_uv, mat4 proj, mat4 view) {
+    float ndc_x = frag_uv.x * 2.0 - 1.0;  // Map UV [0,1] to NDC [-1,1] for x
+    float ndc_y = frag_uv.y * 2.0 - 1.0;  // Map UV [0,1] to NDC [-1,1] for y
+    float ndc_z = depth * 2.0 - 1.0;     // Map depth [0,1] to clip space [-1,1]
 
-    // Clip space position (homogeneous coordinates)
-    vec4 clipPos = vec4(ndcX, ndcY, ndcZ, 1.0);
+    // Clip space position.
+    vec4 clip_pos= vec4(ndc_x, ndc_y, ndc_z, 1.0);
 
     // Inverse projection matrix to get view space position
-    vec4 viewPos = inverse(proj) * clipPos;
+    vec4 view_pos = inverse(proj) * clip_pos;
     // Perform perspective divide to get view space position in 3D
-    viewPos /= viewPos.w;
+    view_pos /= view_pos.w;
     // Transform view space position to world space using inverse view matrix
-    vec4 worldPos = inverse(view) * viewPos;
-    return worldPos.xyz;  // Return the 3D world position
+    vec4 world_pos = inverse(view) * view_pos;
+    return world_pos.xyz;  // Return the 3D world position
 }
 
 float raymarch(float distance, vec3 ray_dir, vec3 ray_pos)
 {
+    float scale_factor = 8.0f;
     int max_steps = 64;
 
     float step_length = distance/max_steps;
@@ -51,11 +51,11 @@ float raymarch(float distance, vec3 ray_dir, vec3 ray_pos)
 
     for (int i = 0; i < max_steps; ++i)
     {
-        if (   (ray_pos.x > -64 && ray_pos.x < 64)
-            && (ray_pos.y > -64 && ray_pos.y < 64)
-            && (ray_pos.z > -64 && ray_pos.z < 64))
+        if (   (ray_pos.x > -64*scale_factor && ray_pos.x < 64*scale_factor)
+            && (ray_pos.y > -64*scale_factor && ray_pos.y < 64*scale_factor)
+            && (ray_pos.z > -64*scale_factor && ray_pos.z < 64*scale_factor))
         {
-            float density = texture(fog_sampler, ray_pos).r;
+            float density = texture(fog_sampler, ray_pos/scale_factor).r;
             accumulated_fog += density*step_length;
         }
 

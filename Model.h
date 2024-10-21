@@ -34,16 +34,16 @@ struct WorldBufferObject
 
 struct FogVolumeBufferObject
 {
-    float base_density = 0.05;
+    float base_density = 0.00f;
 };
 
 struct TerrainBufferObject
 {
     float max_height{30};
     int displacement_map{0};
-    int normal_map{2};
-    int texture_id{9};
-    int texture_normal_map{6};
+    int normal_map{1};
+    int texture_id{10};
+    int texture_normal_map{9};
     
     float blend_sharpness{20};
 
