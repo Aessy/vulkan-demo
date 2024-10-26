@@ -520,8 +520,8 @@ int main()
     RenderingState core = createVulkanRenderState();
 
     Textures textures = createTextures(core,
-        { {"./textures/canyon_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/canyon_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+        { {"./textures/canyon2_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/canyon2_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/terrain.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/terrain_norm_high.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/terrain_norm_low.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
@@ -584,8 +584,8 @@ int main()
     Models models;
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
-    auto height_map_1_model = createFlatGround(511, 256, 4);
 
+    auto height_map_1_model = createFlatGround(511, 256, 4);
     models.models.insert({height_map_1_model.id, height_map_1_model});
 
     auto terrain_program_fill = createTerrainProgram();
