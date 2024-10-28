@@ -47,7 +47,6 @@ struct TerrainBufferObject
     int normal_map{13};
     int texture_id{14};
     int texture_normal_map{5};
-    
     float blend_sharpness{20};
 
     float texture_scale{0.090};
@@ -91,6 +90,7 @@ struct Models
 {
     std::map<int, Model> models;
     int loadModel(std::string const& model_path);
+    int loadModelAssimp(std::string const& path);
 };
 
 Model createBox();

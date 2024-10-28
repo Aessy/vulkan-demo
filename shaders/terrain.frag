@@ -71,8 +71,35 @@ vec3 getBlending(vec3 world_normal)
     return blending;
 }
 
+void test()
+{
+    float scale = terrain.texture_scale;
+    float y = position_worldspace.y;
+    float x = position_worldspace.x;
+
+    vec3 diffuse_color = texture(texSampler[terrain.texture_id], position_worldspace.xz*scale).rgb;
+    vec3 normal_map = normalize(2*texture(texSampler[terrain.texture_normal_id], position_worldspace.xz*scale).rgb-1.0f);
+
+    vec3 light_dir_world = normalize(world.light.position - position_worldspace);
+
+    // Transform into tangent space
+    vec3 final_normal = normalize(TBN * normal_map);
+
+    vec3 ambient = 0.1f * world.light.light_color;
+    float diffuse_intensity = max(dot(final_normal, light_dir_world), 0.0);
+
+    vec3 diffuse = diffuse_intensity * world.light.light_color;
+    
+    vec3 final = (ambient + diffuse) * diffuse_color;
+
+    out_color = vec4(final.rgb, 1);
+}
+
 void main()
 {
+    test();
+    return;
+
     vec3 light_color = vec3(1,1,1);
 
     float scale = terrain.texture_scale;
@@ -104,11 +131,11 @@ void main()
     vec3 material_diffuse_color = tex.rgb;
     vec3 material_ambient_color = vec3(0.3, 0.3, 0.3) * material_diffuse_color;
 
-    vec3 light_dir = normalize(TBN * normalize(world.light.position));
+//    vec3 light_dir = normalize(TBN * normalize(world.light.position));
 
-    float cos_theta = clamp(dot(n,light_dir), 0.1,1);
+//    float cos_theta = clamp(dot(n,light_dir), 0.1,1);
 
-    vec3 color = material_diffuse_color * light_color * cos_theta;
+//    vec3 color = material_diffuse_color * light_color * cos_theta;
 
-    out_color = vec4(color, 1);
+    //out_color = vec4(color, 1);
 }

@@ -1,11 +1,85 @@
 #include "Model.h"
+#include <stdexcept>
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
+#include <assimp/Importer.hpp>
+
+#include <assimp/Importer.hpp>      // C++ importer interface
+#include <assimp/scene.h>           // Output data structure
+#include <assimp/postprocess.h>     // Post processing flags
 
 #include <vector>
 #include <string>
 #include <iostream>
+
+int Models::loadModelAssimp(std::string const& path)
+{
+    Assimp::Importer importer;
+    auto *scene = importer.ReadFile(path,  aiProcess_Triangulate
+                                                                        | aiProcess_CalcTangentSpace);
+
+    if (!scene)
+    {
+        return -1;
+    }
+
+    Model model;
+    model.path = path;
+    if (scene->mNumMeshes > 0)
+    {
+        auto* mesh = scene->mMeshes[0];
+
+        for (int i = 0; i < mesh->mNumVertices; ++i)
+        {
+            auto const vertex = mesh->mVertices[i];
+
+            Vertex vert;
+            vert.pos = glm::vec3(vertex.x, vertex.y, vertex.z);
+
+            if (mesh->HasNormals())
+            {
+                auto const normal = mesh->mNormals[i];
+                vert.normal = glm::vec3(normal.x, normal.y, normal.z);
+            }
+
+            if (mesh->HasTextureCoords(i))
+            {
+                auto const* tex_coord = mesh->mTextureCoords[0];
+                vert.tex_coord = glm::vec2(tex_coord->x, tex_coord->y);
+            }
+
+            if (mesh->HasTangentsAndBitangents())
+            {
+                auto const tangent = mesh->mTangents[i];
+                auto const bitangent = mesh->mBitangents[i];
+
+                vert.tangent = glm::vec3(tangent.x, tangent.y, tangent.z);
+                vert.bitangent = glm::vec3(bitangent.x, bitangent.y, bitangent.z);
+
+                if (vert.tangent.length() == 0 ||
+                    vert.bitangent.length() == 0)
+                {
+                    throw std::runtime_error("Invalid tangent/bitangent");
+                }
+            }
+            else
+            {
+                throw std::runtime_error("No tangent or bitangent");
+            }
+
+            model.vertices.push_back(vert);
+            model.indices.push_back(model.indices.size());
+        }
+    }
+    else
+    {
+        return -1;
+    }
+
+    models.insert({model.id, model});
+    return model.id;
+}
 
 int Models::loadModel(std::string const& model_path)
 {

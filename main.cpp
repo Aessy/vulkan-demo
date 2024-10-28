@@ -452,8 +452,8 @@ layer_types::Program createTerrainProgram()
     layer_types::Program program_desc;
     program_desc.fragment_shader = {{"./shaders/terrain_frag.spv"}};
     program_desc.vertex_shader= {{"./shaders/terrain_vert.spv"}};
-    program_desc.tesselation_ctrl_shader = {{"./shaders/terrain_tess_ctrl.spv"}};
-    program_desc.tesselation_evaluation_shader= {{"./shaders/terrain_tess_evu.spv"}};
+    //program_desc.tesselation_ctrl_shader = {{"./shaders/terrain_tess_ctrl.spv"}};
+    //program_desc.tesselation_evaluation_shader= {{"./shaders/terrain_tess_evu.spv"}};
     program_desc.buffers.push_back({layer_types::Buffer{
         .name = {{"texture_buffer"}},
         .type = layer_types::BufferType::NoBuffer,
@@ -465,7 +465,7 @@ layer_types::Program createTerrainProgram()
             .size = 32,
             .vertex = true,
             .fragment = true,
-            .tess_evu = true
+            .tess_evu = false,
         }
     }});
     program_desc.buffers.push_back({layer_types::Buffer{
@@ -479,8 +479,8 @@ layer_types::Program createTerrainProgram()
             .size = 1,
             .vertex = true,
             .fragment = true,
-            .tess_ctrl = true,
-            .tess_evu = true
+            .tess_ctrl = false,
+            .tess_evu = false
         }
     }});
     program_desc.buffers.push_back({layer_types::Buffer{
@@ -507,7 +507,7 @@ layer_types::Program createTerrainProgram()
             .size = 1,
             .vertex = true,
             .fragment = true,
-            .tess_evu = true
+            .tess_evu = false
         }
     }});
 
@@ -534,6 +534,7 @@ int main()
           {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/dune_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/dune_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/cylinder.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_COL_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_NRM_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
         });
@@ -582,11 +583,18 @@ int main()
     }});
 
     Models models;
+    int landscape_fbx = models.loadModelAssimp("./models/landscape.fbx");
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
+<<<<<<< HEAD
 
     auto height_map_1_model = createFlatGround(511, 256, 4);
     models.models.insert({height_map_1_model.id, height_map_1_model});
+=======
+    //auto height_map_1_model = createFlatGround(2047, 500, 4);
+
+    //models.models.insert({height_map_1_model.id, height_map_1_model});
+>>>>>>> 6526e17 (Normal mapping that seems to work using trangent space)
 
     auto terrain_program_fill = createTerrainProgram();
     auto terrain_program_wireframe = terrain_program_fill;
@@ -611,8 +619,9 @@ int main()
     auto box = createBox();
 
     Meshes meshes;
-    auto mesh_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
+    //auto mesh_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
     auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
+    auto landscape_mesh_id = meshes.loadMesh(core, models.models.at(landscape_fbx), "landscape fbx");
 
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
@@ -621,20 +630,19 @@ int main()
     scene.light.position = glm::vec3(12.8,56,-10);
     scene.light.light_color = glm::vec3(1,1,1);
     scene.light.strength = 50.0f;
-    scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
+    //scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
 
     for (int i = 0; i < programs.size(); ++i)
     {
         scene.materials[i] = {};
     }
 
-    auto object = createObject(meshes.meshes.at(mesh_id));
-    object.material = 1;
+    //auto object = createObject(meshes.meshes.at(mesh_id));
+    //object.material = 1;
 
-    auto cylinder = createObject(meshes.meshes.at(cylinder_mesh_id));
-    cylinder.material = 0;
-    addObject(scene, object);
-
+    auto fbx = createObject(meshes.meshes.at(landscape_mesh_id));
+    fbx.material = 1;
+    addObject(scene, fbx);
 
     Application application{
         .textures = std::move(textures),

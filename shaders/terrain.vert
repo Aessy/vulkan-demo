@@ -51,54 +51,35 @@ layout(location = 1) out vec3 normal;
 layout(location = 2) out vec2 uv;
 layout(location = 3) out vec2 normal_coord;
 layout(location = 4) out mat3 TBN;
+
 layout(location = 10) out mat4 model;
 
-
-vec3 calc_initvec(vec3 n)
+void test()
 {
-    vec3 v2 = vec3(0,0,1);
-    if (n.x > n.y && n.x < n.z)
-    {
-        v2 = vec3(1,0,0);
-    }
-    else if (n.y < n.z)
-    {
-        v2 = vec3(0,1,0);
-    }
+    ObjectData ubo = ubo2.objects[gl_BaseInstance];
+    gl_Position = world.proj * world.view * ubo.model * vec4(inPosition, 1.0);
 
-    vec3 init_vec = cross(n, v2);
-
-    return init_vec;
+    position_worldspace = (ubo.model * vec4(inPosition, 1)).xyz;
+    normal = (ubo.model * vec4(in_normal.xyz, 1)).xyz;
+    uv = in_tex_coord;
 }
-
 void main()
 {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
     
     vec3 pos = inPosition;
-    normal_coord = in_normal_coord;
     
-    uv = in_tex_coord;
-
-    vec4 displace = texture(texSampler[terrain.displacement_map], normal_coord);
-    pos.y = displace.r * terrain.max_height;
-
-    vec3 normal_color = normalize(2*texture(texSampler[terrain.normal_map], normal_coord).rbg-1.0);
-
-    vec3 init_vec = calc_initvec(normal_color);
-    vec3 tangent = normalize(init_vec - dot(normal_color, init_vec) * normal_color);
-    vec3 bitangent = normalize(cross(normal_color, tangent));
-
-    gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);
-
     mat3 inv_trans = inverse(transpose(mat3(ubo.model)));
 
-    vec3 T = normalize(vec3(inv_trans * tangent));
-    vec3 B = normalize(vec3(inv_trans * bitangent));
-    vec3 N = normalize(vec3(inv_trans * normal_color));
-    TBN = transpose(mat3(T, B, N));
+    vec3 T = normalize(vec3(ubo.model * vec4(in_tangent, 0)));
+    vec3 B = normalize(vec3(ubo.model * vec4(in_bitangent, 0)));
+    vec3 N = normalize(inv_trans * in_normal);
+    TBN = mat3(T, B, N);
 
     position_worldspace = (ubo.model * vec4(pos,          1)).xyz;
-    normal              = (inv_trans * normal_color).xyz;
+    gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);
+    normal              = (in_normal);
     model = ubo.model;
+    normal_coord = in_normal_coord;
+    uv = in_tex_coord;
 }

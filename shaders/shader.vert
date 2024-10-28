@@ -38,7 +38,6 @@ void main() {
 
     position_worldspace = (ubo.model * vec4(inPosition, 1)).xyz;
     normal = (ubo.model * vec4(in_normal.xyz, 1)).xyz;
-    //normal = in_normal.xyz;
     texture_id = ubo.texture_index;
     uv = in_tex_coord;
 }
