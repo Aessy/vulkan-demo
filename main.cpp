@@ -467,9 +467,11 @@ int main()
           {"./textures/checkerboard.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/forest_normal.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/forest_normal.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb},
           {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/cylinder.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/dune_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/dune_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/GroundSand005_COL_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
         });
 
     layer_types::Program program_desc;
@@ -518,7 +520,7 @@ int main()
     Models models;
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
-    auto height_map_1_model = createFlatGround(256, 500, 4);
+    auto height_map_1_model = createFlatGround(511, 256, 4);
 
     models.models.insert({height_map_1_model.id, height_map_1_model});
 

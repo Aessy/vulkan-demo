@@ -74,7 +74,7 @@ GLFWwindow* setupGlfw(App& app)
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 
-    auto window = glfwCreateWindow(2560, 1440, "Vulkan", nullptr, nullptr);
+    auto window = glfwCreateWindow(800, 600, "Vulkan", nullptr, nullptr);
     glfwSetWindowUserPointer(window, &app);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     glfwSetKeyCallback(window, keyPressedCallback);

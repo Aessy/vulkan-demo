@@ -1,4 +1,5 @@
 #include "PostProcessing.h"
+#include "Program.h"
 #include "Scene.h"
 #include "Renderer.h"
 #include "VulkanRenderSystem.h"
@@ -59,11 +60,22 @@ static std::unique_ptr<Program> createPostProcessingProgram(RenderingState const
             .fragment = true,
         }
     }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"fog param buffer"}},
+        .type = layer_types::BufferType::FogVolumeObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding fog param"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .fragment = true,
+        }
+    }});
     
     // Make the program like this for now. Update the descriptor set each frame
     // with the correct color attachment.
     return createProgram(program_desc, state, {}, render_pass);
-
 }
 
 static std::unique_ptr<Program> createComputeFogProgram(RenderingState const& state, vk::RenderPass const& render_pass)
@@ -207,12 +219,25 @@ static void postProcessingDraw(vk::CommandBuffer& command_buffer,
                             1,
                             &offset);
 
+    offset = 0;
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                            program->program.pipeline_layout,
+                            4,
+                            1,
+                            &program->program.descriptor_sets[4].set[frame],
+                            1,
+                            &offset);
+
     for (auto& buffer : program->buffers)
     {
         if (auto* world = std::get_if<buffer_types::World>(&buffer))
         {
             auto ubo = createWorldBufferObject(scene);
             writeBuffer(world->buffers[frame], ubo);
+        }
+        else if (auto* fog = std::get_if<buffer_types::FogVolume>(&buffer))
+        {
+            writeBuffer(fog->buffers[frame], scene.fog);
         }
     }
 
@@ -265,7 +290,10 @@ void postProcessingRenderPass(RenderingState const& state,
 
     postProcessingUpdateDescriptorSets(state, ppp, image_index);
 
-    runPipeline(command_buffer, scene, ppp.fog_compute_program, state.current_frame);
+    if (scene.fog.volumetric_fog_enabled)
+    {
+        runPipeline(command_buffer, scene, ppp.fog_compute_program, state.current_frame);
+    }
     transitionImageLayout(command_buffer, ppp.fog_buffer[state.current_frame].first, vk::Format::eR16Sfloat, vk::ImageLayout::eGeneral, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
 
     command_buffer.beginRenderPass(render_pass_info,

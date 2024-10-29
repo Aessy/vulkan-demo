@@ -22,7 +22,10 @@ layout(set = 2, binding = 0) uniform UniformWorld{
 } world;
 
 layout(set = 3, binding = 0) uniform UniformFog{
+    uint enabled;
     float density;
+    float max_density;
+    vec3 color;
 } fog;
 
 void main()

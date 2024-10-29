@@ -34,16 +34,19 @@ struct WorldBufferObject
 
 struct FogVolumeBufferObject
 {
+    unsigned int volumetric_fog_enabled {true};
     float base_density = 0.00f;
+    float max_density = 0.9f;
+    alignas(16) glm::vec3 color = glm::vec3(1,1,1);
 };
 
 struct TerrainBufferObject
 {
     float max_height{30};
-    int displacement_map{0};
-    int normal_map{1};
-    int texture_id{10};
-    int texture_normal_map{9};
+    int displacement_map{12};
+    int normal_map{13};
+    int texture_id{14};
+    int texture_normal_map{5};
     
     float blend_sharpness{20};
 

@@ -387,7 +387,21 @@ void showScene(Application& app, Scene& scene, Models& models)
     ImGui::DragFloat("Lod weight", &app.scene.terrain.weight, 1.0f, 0, 2000);
 
     ImGui::Text("Fog");
+    static bool fog_enabled = false;
+    ImGui::Checkbox("Volumetric Fog Enabled", &fog_enabled);
+    scene.fog.volumetric_fog_enabled = fog_enabled ? 1 : 0;
+
     ImGui::DragFloat("Fog Density", &app.scene.fog.base_density, 0.01f, 0.00f, 100.0f);
+
+    static float fog_color[3] {scene.fog.color.r, scene.fog.color.g, scene.fog.color.b};
+    if (ImGui::ColorEdit3("Color", fog_color))
+    {
+        scene.fog.color.r = fog_color[0];
+        scene.fog.color.g = fog_color[1];
+        scene.fog.color.b = fog_color[2];
+    }
+
+    ImGui::DragFloat("Max Density", &app.scene.fog.max_density, 0.01f, 0.00f, 1.0f);
 
 
     createObject(app);

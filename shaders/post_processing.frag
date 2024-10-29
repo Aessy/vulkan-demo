@@ -20,6 +20,13 @@ layout(set = 3, binding = 0) uniform UniformWorld{
     LightBufferData light;
 } world;
 
+layout(set = 4, binding = 0) uniform Fog{
+    uint enabled;
+    float base_density;
+    float max_density;
+    vec3 color;
+} fog;
+
 layout(location = 0) in vec2 uv_in;
 layout(location = 0) out vec4 fragColor;
 
@@ -65,6 +72,26 @@ float raymarch(float distance, vec3 ray_dir, vec3 ray_pos)
     return accumulated_fog;
 }
 
+vec4 calculateVolumetricFog(vec4 scene_color)
+{
+    float depth = texture(depth_sampler, uv_in).r;
+
+    mat4 proj = world.proj;
+    mat4 view = world.view;
+    vec3 world_position = calculateWorldPositionFromDepth(depth, uv_in, proj, view);
+
+    float distance = length(world_position-world.pos);
+    
+    vec3 ray_dir = normalize(world_position - world.pos);
+    vec3 ray_pos = world.pos;
+    
+    float accumulated_fog = raymarch(distance, ray_dir, ray_pos);
+
+    float fog_alpha = clamp(0, fog.max_density, accumulated_fog);
+    
+    return mix(scene_color, vec4(fog.color.xyz, 1), fog_alpha);
+}
+
 void main()
 {
     ivec2 texture_size = textureSize(color_sampler);
@@ -77,24 +104,14 @@ void main()
         sampled_color += texelFetch(color_sampler, pixel_coord, i);
     }
 
-    float depth = texture(depth_sampler, uv_in).r;
-
-    mat4 proj = world.proj;
-    mat4 view = world.view;
-    vec3 world_position = calculateWorldPositionFromDepth(depth, uv_in, proj, view);
-
-    float distance = length(world_position-world.pos);
-
-    vec3 ray_dir = normalize(world_position - world.pos);
-    vec3 ray_pos = world.pos;
-
-    float accumulated_fog = raymarch(distance, ray_dir, ray_pos);
-
-    float fog_alpha = clamp(0, 0.9, accumulated_fog);
-
     vec4 scene_color = sampled_color/8;
-    vec4 fog_color = vec4(0.7, 0.7, 0.7, 1.0);
 
-    vec4 final_color = mix(scene_color, fog_color, fog_alpha);
-    fragColor = final_color;
+    if (fog.enabled == 1)
+    {
+        fragColor = calculateVolumetricFog(scene_color);
+    }
+    else
+    {
+        fragColor = scene_color;
+    }
 }
