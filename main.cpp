@@ -384,6 +384,69 @@ layer_types::Program createComputeFogProgram(vk::ImageView fog_view)
     return program_desc;
 }
 
+static layer_types::Program createTriplanarLandscapeProgram()
+{
+    layer_types::Program program_desc;
+    program_desc.fragment_shader = {{"./shaders/triplanar_frag.spv"}};
+    program_desc.vertex_shader= {{"./shaders/triplanar_vert.spv"}};
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"texture_buffer"}},
+        .type = layer_types::BufferType::NoBuffer,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding textures"}},
+            .binding = 0,
+            .type = layer_types::BindingType::TextureSampler,
+            .size = 32,
+            .vertex = true,
+            .fragment = true,
+        }
+    }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"world_buffer"}},
+        .type = layer_types::BufferType::WorldBufferObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding world"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .vertex = true,
+            .fragment = true,
+            .tess_ctrl = true,
+        }
+    }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"model_buffer"}},
+        .type = layer_types::BufferType::ModelBufferObject,
+        .size = 10,
+        .binding = layer_types::Binding {
+            .name = {{"binding model"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Storage,
+            .size = 1,
+            .vertex = true,
+            .fragment = true
+        }
+    }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"terrain_buffer"}},
+        .type = layer_types::BufferType::TerrainBufferObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding model"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .vertex = true,
+            .fragment = true,
+            .tess_evu = true
+        }
+    }});
+
+    return program_desc;
+}
+
 layer_types::Program createTerrainProgram()
 {
     layer_types::Program program_desc;
@@ -472,6 +535,7 @@ int main()
           {"./textures/dune_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/dune_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_COL_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/GroundSand005_NRM_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
         });
 
     layer_types::Program program_desc;
@@ -528,10 +592,13 @@ int main()
     auto terrain_program_wireframe = terrain_program_fill;
     terrain_program_wireframe.polygon_mode = layer_types::PolygonMode::Line;
 
+    auto terrain_program_triplanar = createTriplanarLandscapeProgram();
+
     std::vector<std::unique_ptr<Program>> programs;
     programs.push_back(createProgram(program_desc, core, textures, core.render_pass));
     programs.push_back(createProgram(terrain_program_fill, core, textures, core.render_pass));
     programs.push_back(createProgram(terrain_program_wireframe, core, textures, core.render_pass));
+    programs.push_back(createProgram(terrain_program_triplanar, core, textures, core.render_pass));
 
     Camera camera;
     camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 500.0f);

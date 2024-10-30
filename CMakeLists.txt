@@ -32,6 +32,8 @@ add_custom_target(shaders
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/fog.comp --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/fog.spv
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/post_processing.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/post_processing_frag.spv
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/post_processing.vert --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/post_processing_vert.spv
+                  COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/triplanar.vert --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/triplanar_vert.spv
+                  COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/triplanar.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/triplanar_frag.spv
                   DEPENDS vulkan-test)
 
 add_custom_target(copy-models ALL
