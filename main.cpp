@@ -537,6 +537,8 @@ int main()
           {"./textures/cylinder.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_COL_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_NRM_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/brown_mud_03_diff_1k.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/brown_mud_03_nor_gl_1k.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
         });
 
     layer_types::Program program_desc;
@@ -583,7 +585,7 @@ int main()
     }});
 
     Models models;
-    int landscape_fbx = models.loadModelAssimp("./models/landscape.fbx");
+    int landscape_fbx = models.loadModelAssimp("./models/mountain.fbx");
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
 <<<<<<< HEAD

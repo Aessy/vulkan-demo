@@ -73,12 +73,13 @@ vec3 getBlending(vec3 world_normal)
 
 void test()
 {
+    float lod = findLod();
     float scale = terrain.texture_scale;
     float y = position_worldspace.y;
     float x = position_worldspace.x;
 
-    vec3 diffuse_color = texture(texSampler[terrain.texture_id], position_worldspace.xz*scale).rgb;
-    vec3 normal_map = normalize(2*texture(texSampler[terrain.texture_normal_id], position_worldspace.xz*scale).rgb-1.0f);
+    vec3 diffuse_color = textureLod(texSampler[terrain.texture_id], position_worldspace.xz*scale, lod).rgb;
+    vec3 normal_map = normalize(2*textureLod(texSampler[terrain.texture_normal_id], position_worldspace.xz*scale, lod).rgb-1.0f);
 
     vec3 light_dir_world = normalize(world.light.position - position_worldspace);
 
