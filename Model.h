@@ -42,14 +42,14 @@ struct FogVolumeBufferObject
 
 struct TerrainBufferObject
 {
-    float max_height{30};
-    int displacement_map{12};
-    int normal_map{13};
-    int texture_id{14};
-    int texture_normal_map{5};
+    float max_height{153.6};
+    int displacement_map{19};
+    int normal_map{20};
+    int texture_id{21};
+    int texture_normal_map{22};
     float blend_sharpness{20};
 
-    float texture_scale{0.090};
+    float texture_scale{0.020};
 
 
     float lod_min{0};

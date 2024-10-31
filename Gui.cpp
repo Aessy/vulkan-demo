@@ -252,10 +252,10 @@ void showLight(LightBufferObject& light)
         ImGui::DragFloat("Pos z", &light.position.z, 0.1f, -100.0f, 100);
 
         static float drag = 2.4f;
-        if (ImGui::DragFloat("sin/cos", &drag, 0.01,0,100))
+        if (ImGui::DragFloat("sin/cos", &drag, 0.01,0,4000))
         {
-            light.position.x = std::cos(drag)*300;
-            light.position.y = std::sin(drag)*300;
+            light.position.x = std::cos(drag)*3000;
+            light.position.y = std::sin(drag)*3000;
         }
 
         ImGui::Text("Strength");

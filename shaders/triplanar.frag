@@ -88,9 +88,9 @@ void main()
     vec3 blending = getBlending(n);
     vec4 tex = xaxis * blending.x + yaxis * blending.y + zaxis * blending.z;
 
-    vec3 xaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(y,z)*scale).rgb-1;
-    vec3 yaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(x,z)*scale).rgb-1;
-    vec3 zaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(x,y)*scale).rgb-1;
+    vec3 xaxis_normal = 2*textureLod(texSampler[terrain.texture_normal_id], vec2(y,z)*scale, lod).rgb-1;
+    vec3 yaxis_normal = 2*textureLod(texSampler[terrain.texture_normal_id], vec2(x,z)*scale, lod).rgb-1;
+    vec3 zaxis_normal = 2*textureLod(texSampler[terrain.texture_normal_id], vec2(x,y)*scale, lod).rgb-1;
     
     vec3 normal_tex =  normalize(xaxis_normal * blending.x + yaxis_normal * blending.y + zaxis_normal * blending.z).xyz;
 

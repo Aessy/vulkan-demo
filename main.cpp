@@ -532,13 +532,22 @@ int main()
           {"./textures/forest_normal.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/dune_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/dune_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/dune2_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/dune2_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/cylinder.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_COL_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_NRM_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/brown_mud_03_diff_1k.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/brown_mud_03_nor_gl_1k.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+
+          {"./textures/terrain/canyon/canyon_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/terrain/canyon/canyon_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+
+          {"./textures/canyon/Canyon_Mud_Wall_wdtbbji_4K_BaseColor.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/canyon/Canyon_Mud_Wall_wdtbbji_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+
+          {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_BaseColor.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
         });
 
     layer_types::Program program_desc;
@@ -588,15 +597,12 @@ int main()
     int landscape_fbx = models.loadModelAssimp("./models/mountain.fbx");
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
-<<<<<<< HEAD
 
-    auto height_map_1_model = createFlatGround(511, 256, 4);
+    auto height_map_1_model = createFlatGround(2047, 512, 4);
     models.models.insert({height_map_1_model.id, height_map_1_model});
-=======
     //auto height_map_1_model = createFlatGround(2047, 500, 4);
 
     //models.models.insert({height_map_1_model.id, height_map_1_model});
->>>>>>> 6526e17 (Normal mapping that seems to work using trangent space)
 
     auto terrain_program_fill = createTerrainProgram();
     auto terrain_program_wireframe = terrain_program_fill;
@@ -611,17 +617,17 @@ int main()
     programs.push_back(createProgram(terrain_program_triplanar, core, textures, core.render_pass));
 
     Camera camera;
-    camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 500.0f);
+    camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 2048.0f);
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
-    camera.pos = glm::vec3(0,0,-5);
+    camera.pos = glm::vec3(0,300,-5);
 
     updateCameraFront(camera);
 
     auto box = createBox();
 
     Meshes meshes;
-    //auto mesh_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
+    auto landscape_flat_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
     auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
     auto landscape_mesh_id = meshes.loadMesh(core, models.models.at(landscape_fbx), "landscape fbx");
 
@@ -643,8 +649,11 @@ int main()
     //object.material = 1;
 
     auto fbx = createObject(meshes.meshes.at(landscape_mesh_id));
+    auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
+    landscape_flat.material = 3;
+
     fbx.material = 1;
-    addObject(scene, fbx);
+    addObject(scene, landscape_flat);
 
     Application application{
         .textures = std::move(textures),
