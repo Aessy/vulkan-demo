@@ -594,7 +594,7 @@ int main()
     }});
 
     Models models;
-    int landscape_fbx = models.loadModelAssimp("./models/mountain.fbx");
+    int landscape_fbx = models.loadModelAssimp("./models/canyon_low_res.fbx");
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
 
@@ -649,10 +649,11 @@ int main()
     //object.material = 1;
 
     auto fbx = createObject(meshes.meshes.at(landscape_mesh_id));
+    fbx.material = 1;
+
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
     landscape_flat.material = 3;
 
-    fbx.material = 1;
     addObject(scene, landscape_flat);
 
     Application application{

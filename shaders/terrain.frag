@@ -25,6 +25,9 @@ layout(set = 3, binding = 0) uniform UniformTerrain{
     uint texture_id;
     uint texture_normal_id;
     float blend_sharpness;
+    
+    float shininess;
+    float specular_strength;
 
     float texture_scale;
     

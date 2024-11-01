@@ -49,6 +49,13 @@ struct TerrainBufferObject
     int texture_normal_map{22};
     float blend_sharpness{20};
 
+    float shininess{0.5f};
+    float specular_strength{0.5f};
+
+    float metalness{0.0f};
+    float roughness{0.5f};
+    float ao{0.5f};
+
     float texture_scale{0.020};
 
 

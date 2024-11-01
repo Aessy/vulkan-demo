@@ -380,6 +380,11 @@ void showScene(Application& app, Scene& scene, Models& models)
     ImGui::InputInt("Texture id", &app.scene.terrain.texture_id);
     ImGui::InputInt("Texture normal", &app.scene.terrain.texture_normal_map);
     ImGui::DragFloat("Blend sharpness", &app.scene.terrain.blend_sharpness, 1.0f, 0.01f, 100.0f);
+    ImGui::DragFloat("Shininess", &app.scene.terrain.shininess, 0.1f, 0.00f, 100.0f);
+    ImGui::DragFloat("Specular strength", &app.scene.terrain.specular_strength, 0.1f, 0.0f, 100.0f);
+    ImGui::DragFloat("Metalness", &app.scene.terrain.metalness, 0.01f, 0.0f, 1.0f);
+    ImGui::DragFloat("Roughness", &app.scene.terrain.roughness, 0.01f, 0.0f, 1.0f);
+    ImGui::DragFloat("ao", &app.scene.terrain.ao, 0.01f, 0.0f, 1.0f);
     ImGui::DragFloat("Texture scale", &app.scene.terrain.texture_scale, 0.01f, 0.001, 100);
     ImGui::DragFloat("Height", &app.scene.terrain.max_height, 1.0f, 0.0f, 200.0f);
     ImGui::DragFloat("Lod min", &app.scene.terrain.lod_min, 1.0, 0, app.scene.terrain.lod_max);
