@@ -88,6 +88,18 @@ inline ModelBufferObject createModelBufferObject(Object const& object)
     auto scale = glm::scale(glm::mat4(1.0f), glm::vec3(object.scale, object.scale, object.scale));
     model_buffer.model = translation * rotation * scale;
     model_buffer.texture_index = object.texture_index;
+    model_buffer.shading_style = object.shading_style;
+    if (object.shading_style == 0)
+    {
+        model_buffer.shininess = object.shininess;
+        model_buffer.specular_strength = object.specular_strength;
+    }
+    else if (object.shading_style == 1)
+    {
+        model_buffer.metallness = object.metallness;
+        model_buffer.roughness = object.roughness;
+        model_buffer.ao = object.ao;
+    }
 
     return model_buffer;
 }

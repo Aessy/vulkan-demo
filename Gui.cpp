@@ -310,6 +310,12 @@ void showObject(Object& obj, Application& app)
             ImGui::Text("Texture: %s", app.textures.textures[obj.texture_index].name.c_str());
         }
 
+        ImGui::InputInt("Shading style", &obj.shading_style, 1);
+        ImGui::DragFloat("Shininess", &obj.shininess, 0.1f, 0, 100.0f);
+        ImGui::DragFloat("Specular strength", &obj.specular_strength, 0.1f, 0, 100.0f);
+        ImGui::DragFloat("Roughness", &obj.roughness, 0.1f, 0, 1.0f);
+        ImGui::DragFloat("Metallic", &obj.metallness, 0.1f, 0, 1.0f);
+        ImGui::DragFloat("AO", &obj.ao, 0.1f, 0, 1.0f);
 
         ImGui::EndPopup();
     }

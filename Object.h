@@ -25,6 +25,13 @@ struct Object
     int texture_index{0};
     int material{};
 
+    int shading_style{0};
+    float shininess{0};
+    float specular_strength{0};
+    float roughness{0};
+    float metallness{0};
+    float ao{0};
+
     int id = Id();
 };
 

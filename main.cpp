@@ -595,6 +595,7 @@ int main()
 
     Models models;
     int landscape_fbx = models.loadModelAssimp("./models/canyon_low_res.fbx");
+    int sphere_fbx = models.loadModelAssimp("./models/sphere.fbx");
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
 
@@ -620,7 +621,8 @@ int main()
     camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 2048.0f);
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
-    camera.pos = glm::vec3(0,300,-5);
+    //camera.pos = glm::vec3(0,300,-5);
+    camera.pos = glm::vec3(0,0,0);
 
     updateCameraFront(camera);
 
@@ -630,6 +632,7 @@ int main()
     auto landscape_flat_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
     auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
     auto landscape_mesh_id = meshes.loadMesh(core, models.models.at(landscape_fbx), "landscape fbx");
+    auto sphere_id = meshes.loadMesh(core, models.models.at(sphere_fbx), "sphere fbx");
 
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
@@ -648,13 +651,13 @@ int main()
     //auto object = createObject(meshes.meshes.at(mesh_id));
     //object.material = 1;
 
-    auto fbx = createObject(meshes.meshes.at(landscape_mesh_id));
-    fbx.material = 1;
+    auto fbx = createObject(meshes.meshes.at(sphere_id));
+    fbx.material = 0;
 
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
     landscape_flat.material = 3;
 
-    addObject(scene, landscape_flat);
+    addObject(scene, fbx);
 
     Application application{
         .textures = std::move(textures),
