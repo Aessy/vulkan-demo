@@ -548,6 +548,8 @@ int main()
 
           {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_BaseColor.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_Roughness.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_AO.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
         });
 
     layer_types::Program program_desc;
@@ -594,7 +596,7 @@ int main()
     }});
 
     Models models;
-    int landscape_fbx = models.loadModelAssimp("./models/canyon_low_res.fbx");
+    // int landscape_fbx = models.loadModelAssimp("./models/canyon_low_res.fbx");
     int sphere_fbx = models.loadModelAssimp("./models/sphere.fbx");
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
@@ -631,7 +633,7 @@ int main()
     Meshes meshes;
     auto landscape_flat_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
     auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
-    auto landscape_mesh_id = meshes.loadMesh(core, models.models.at(landscape_fbx), "landscape fbx");
+    //auto landscape_mesh_id = meshes.loadMesh(core, models.models.at(landscape_fbx), "landscape fbx");
     auto sphere_id = meshes.loadMesh(core, models.models.at(sphere_fbx), "sphere fbx");
 
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");

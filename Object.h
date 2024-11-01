@@ -22,7 +22,11 @@ struct Object
     glm::vec3 rotation;
     float scale{1};
     float angel{0};
+
     int texture_index{0};
+    int texture_normal{0};
+    int texture_roughness{0};
+    int texture_ao{0};
     int material{};
 
     int shading_style{0};

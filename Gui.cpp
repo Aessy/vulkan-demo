@@ -309,6 +309,21 @@ void showObject(Object& obj, Application& app)
         {
             ImGui::Text("Texture: %s", app.textures.textures[obj.texture_index].name.c_str());
         }
+        ImGui::DragInt("Normal Map", &obj.texture_normal, 1, 0, app.textures.textures.size());
+        if (obj.texture_index < app.textures.textures.size())
+        {
+            ImGui::Text("Normal Map: %s", app.textures.textures[obj.texture_normal].name.c_str());
+        }
+        ImGui::DragInt("Roughness Map", &obj.texture_roughness, 1, 0, app.textures.textures.size());
+        if (obj.texture_index < app.textures.textures.size())
+        {
+            ImGui::Text("Roughness: %s", app.textures.textures[obj.texture_roughness].name.c_str());
+        }
+        ImGui::DragInt("AO Map", &obj.texture_ao, 1, 0, app.textures.textures.size());
+        if (obj.texture_index < app.textures.textures.size())
+        {
+            ImGui::Text("AO Map: %s", app.textures.textures[obj.texture_ao].name.c_str());
+        }
 
         ImGui::InputInt("Shading style", &obj.shading_style, 1);
         ImGui::DragFloat("Shininess", &obj.shininess, 0.1f, 0, 100.0f);

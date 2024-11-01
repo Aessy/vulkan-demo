@@ -22,6 +22,9 @@ struct ObjectData
 {
     mat4 model;
     uint texture_index;
+    uint texture_normal;
+    uint texture_roughness;
+    uint texture_ao;
 
     int shading_style;
     float shininess;
@@ -32,10 +35,10 @@ struct ObjectData
 };
 
 layout(location = 0) in vec3 position_worldspace;
-layout(location = 1) in vec3 normal;
-layout(location = 2) in flat uint texture_id;
-layout(location = 3) in vec2 uv;
-layout(location = 4) in flat ObjectData object_data;
+layout(location = 1) in vec3 normal_in;
+layout(location = 2) in vec2 uv;
+layout(location = 3) in mat3 TBN;
+layout(location = 6) in flat ObjectData object_data;
 
 layout(location = 0) out vec4 out_color;
 
@@ -140,15 +143,18 @@ vec3 pbr(vec3 normal, vec3 albedo, float metalness, float roughness, float ao)
 }
 void main()
 {
-    vec3 material_diffuse_color = vec3(1,0,0);
-    vec3 n = normalize(normal);
+    vec3 material_diffuse_color = texture(texSampler[object_data.texture_index], uv).rgb;
+    vec3 material_normal = normalize(2*texture(texSampler[object_data.texture_normal], uv).rgb -1.0f);
+    float material_roughness = texture(texSampler[object_data.texture_roughness], uv).r;
+    float material_ao = texture(texSampler[object_data.texture_ao], uv).r;
 
+    vec3 final_normal = normalize(TBN * material_normal);
     if (object_data.shading_style == 0)
     {
-        out_color = vec4(phong(n, material_diffuse_color, object_data.shininess, object_data.specular_strength), 1.0f);
+        out_color = vec4(phong(final_normal, material_diffuse_color, object_data.shininess, object_data.specular_strength), 1.0f);
     }
     else if (object_data.shading_style == 1)
     {
-        out_color = vec4(pbr(n, material_diffuse_color, object_data.metallness, object_data.roughness, object_data.ao), 1.0f);
+        out_color = vec4(pbr(final_normal, material_diffuse_color, object_data.metallness, material_roughness , material_ao), 1.0f);
     }
 }

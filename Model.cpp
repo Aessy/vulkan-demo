@@ -43,10 +43,11 @@ int Models::loadModelAssimp(std::string const& path)
                 vert.normal = glm::vec3(normal.x, normal.y, normal.z);
             }
 
-            if (mesh->HasTextureCoords(i))
+            if (mesh->HasTextureCoords(0))
             {
-                auto const* tex_coord = mesh->mTextureCoords[0];
-                vert.tex_coord = glm::vec2(tex_coord->x, tex_coord->y);
+                auto const tex_coord = mesh->mTextureCoords[0][i];
+                std::cout << "X: " << tex_coord.x << "Y: " << tex_coord.y << '\n';
+                vert.tex_coord = glm::vec2(tex_coord.x, tex_coord.y);
             }
 
             if (mesh->HasTangentsAndBitangents())

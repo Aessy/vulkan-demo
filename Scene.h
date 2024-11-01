@@ -99,6 +99,9 @@ inline ModelBufferObject createModelBufferObject(Object const& object)
         model_buffer.metallness = object.metallness;
         model_buffer.roughness = object.roughness;
         model_buffer.ao = object.ao;
+        model_buffer.texture_normal = object.texture_normal;
+        model_buffer.texture_roughness = object.texture_roughness;
+        model_buffer.texture_ao = object.texture_ao;
     }
 
     return model_buffer;

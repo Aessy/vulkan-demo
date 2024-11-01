@@ -14,7 +14,10 @@
 struct ModelBufferObject
 {
     alignas(16) glm::mat4 model;
-    alignas(16) uint32_t texture_index;
+    alignas(16) uint32_t texture_index{0};
+    uint32_t texture_normal{0};
+    uint32_t texture_roughness{0};
+    uint32_t texture_ao{0};
 
     int shading_style{0};
     float shininess{0};
