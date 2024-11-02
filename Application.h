@@ -6,6 +6,7 @@
 #include "Scene.h"
 #include "Model.h"
 #include "PostProcessing.h"
+#include "Material.h"
 
 #include <memory>
 #include <vector>
@@ -19,6 +20,7 @@ struct Application
     Models models;
     Meshes meshes;
     std::vector<std::unique_ptr<Program>> programs;
+    std::vector<Material> materials;
     Scene scene;
 
     PostProcessing ppp;

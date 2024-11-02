@@ -1,9 +1,11 @@
 #pragma once
 
+#include "Material.h"
 #include "Model.h"
 #include "Object.h"
 #include "Program.h"
 #include "VulkanRenderSystem.h"
+#include <variant>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
@@ -26,7 +28,7 @@ struct Scene
 
     std::vector<Object> objs;
     std::vector<std::pair<int, int>> obj_inx;
-    std::map<int, std::vector<int>> materials;
+    std::map<int, std::vector<int>> programs;
 
     std::map<int, std::vector<Object>> objects;
 
@@ -42,11 +44,11 @@ inline void addObject(Scene& scene, Object o)
     scene.objs.push_back(o);
     int const inx = scene.objs.size()-1;
 
-    auto& material = scene.materials[o.material];
+    auto& material = scene.programs[o.material.program];
     material.push_back(inx);
     int const material_inx = material.size()-1;
 
-    scene.obj_inx.push_back({o.material, material_inx});
+    scene.obj_inx.push_back({o.material.program, material_inx});
 }
 
 inline void changeMaterial(Scene& scene, int obj_ix, int new_material)
@@ -54,12 +56,12 @@ inline void changeMaterial(Scene& scene, int obj_ix, int new_material)
     auto& obj = scene.objs[obj_ix];
     auto& obj_inx_mapper = scene.obj_inx[obj_ix];
 
-    auto& old_material = scene.materials[obj_inx_mapper.first][obj_inx_mapper.second];
-    std::swap(old_material, scene.materials[obj_inx_mapper.first].back());
-    scene.materials[obj_inx_mapper.first].pop_back();
+    auto& old_material = scene.programs[obj_inx_mapper.first][obj_inx_mapper.second];
+    std::swap(old_material, scene.programs[obj_inx_mapper.first].back());
+    scene.programs[obj_inx_mapper.first].pop_back();
 
-    obj.material = new_material;
-    auto& material = scene.materials[obj.material];
+    obj.material.program = new_material;
+    auto& material = scene.programs[obj.material.program];
     material.push_back(obj_ix);
 
     obj_inx_mapper.first = new_material;
@@ -87,28 +89,43 @@ inline ModelBufferObject createModelBufferObject(Object const& object)
     auto translation = glm::translate(glm::mat4(1.0f), object.position);
     auto scale = glm::scale(glm::mat4(1.0f), glm::vec3(object.scale, object.scale, object.scale));
     model_buffer.model = translation * rotation * scale;
-    model_buffer.texture_index = object.texture_index;
-    model_buffer.shading_style = object.shading_style;
-    if (object.shading_style == 0)
+
+    auto& material = object.material;
+
+    model_buffer.texture_index = material.base_color_texture;
+    model_buffer.shading_style = material.mode;
+    if (material.mode == ReflectionShadeMode::Phong)
     {
-        model_buffer.shininess = object.shininess;
-        model_buffer.specular_strength = object.specular_strength;
+        model_buffer.shininess = material.shininess;
+        model_buffer.specular_strength = material.specular_strength;
     }
-    else if (object.shading_style == 1)
+    else if (material.mode == ReflectionShadeMode::PBR)
     {
-        model_buffer.metallness = object.metallness;
-        model_buffer.roughness = object.roughness;
-        model_buffer.ao = object.ao;
-        model_buffer.texture_normal = object.texture_normal;
-        model_buffer.texture_roughness = object.texture_roughness;
-        model_buffer.texture_ao = object.texture_ao;
+        model_buffer.metallness = material.metallic;
+        model_buffer.roughness = material.roughness;
+        model_buffer.ao = material.ao;
+        model_buffer.texture_normal = material.base_color_normal_texture;
+        model_buffer.texture_roughness = material.roughness_texture;
+        model_buffer.texture_ao = material.ao_texture;
     }
 
     return model_buffer;
 }
 
-inline TerrainBufferObject createTerrainBufferObject(Scene const& scene)
+inline TerrainBufferObject createTerrainBufferObject(Object const& object)
 {
-    // Should probably be per object, so that eatch object can have unique terrain data.
-    return scene.terrain;
+    auto& material = object.material;
+    TerrainBufferObject tbo{};
+
+    tbo.displacement_map = material.displacement_map_texture,
+    tbo.normal_map = material.normal_map_texture;
+    tbo.max_height = material.displacement_y;
+
+    tbo.texture_id = material.base_color_texture;
+    tbo.texture_normal_map = material.base_color_texture;
+    tbo.metalness = material.metallic;
+    tbo.roughness = material.roughness;
+    tbo.ao = material.ao;
+
+    return tbo;
 }

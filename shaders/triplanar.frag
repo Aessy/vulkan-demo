@@ -211,7 +211,7 @@ void main()
     
     //vec3 result = phong(final_normal, tex.rgb);
     //vec3 result = pbr(final_normal, tex.rgb);
-    vec3 result = pbr(final_normal, vec3(1,0,0));
+    vec3 result = pbr(final_normal, tex.rgb);
 
     out_color = vec4(result, 1);
 }

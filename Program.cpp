@@ -131,7 +131,11 @@ auto createModel(RenderingState const& core, layer_types::BindingType binding_ty
     return BufferTypeOut{buffers};
 }
 
-std::unique_ptr<Program> createProgram(layer_types::Program const& program_data, RenderingState const& core, Textures const& textures, vk::RenderPass const& render_pass)
+std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
+                                       RenderingState const& core,
+                                       Textures const& textures,
+                                       vk::RenderPass const& render_pass,
+                                       std::string const& name)
 {
     namespace lt = layer_types;
 
@@ -218,5 +222,5 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
         ++index;
     }
 
-    return std::make_unique<Program>(0,std::move(program),std::move(model_types));
+    return std::make_unique<Program>(name, std::move(program),std::move(model_types));
 }

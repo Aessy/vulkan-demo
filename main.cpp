@@ -1,3 +1,4 @@
+#include "Material.h"
 #include "X11/Xlib.h"
 #undef True
 #undef False
@@ -614,10 +615,48 @@ int main()
     auto terrain_program_triplanar = createTriplanarLandscapeProgram();
 
     std::vector<std::unique_ptr<Program>> programs;
-    programs.push_back(createProgram(program_desc, core, textures, core.render_pass));
-    programs.push_back(createProgram(terrain_program_fill, core, textures, core.render_pass));
-    programs.push_back(createProgram(terrain_program_wireframe, core, textures, core.render_pass));
-    programs.push_back(createProgram(terrain_program_triplanar, core, textures, core.render_pass));
+    programs.push_back(createProgram(program_desc, core, textures, core.render_pass, "Standard Shader"));
+    programs.push_back(createProgram(terrain_program_fill, core, textures, core.render_pass, "Landscape model"));
+    programs.push_back(createProgram(terrain_program_wireframe, core, textures, core.render_pass, "Landscape wireframe"));
+    programs.push_back(createProgram(terrain_program_triplanar, core, textures, core.render_pass, "Landscape triplanar"));
+
+    Material base_material {
+        .name = {"Ground"},
+        .program = 0,
+        .mode = ReflectionShadeMode::PBR,
+        .shininess = 0.5f,
+        .specular_strength = 0.5f,
+        .base_color_texture = 23,
+        .base_color_normal_texture = 24,
+        .roughness_texture = 25,
+        .ao_texture = 26,
+        .roughness = 0,
+        .metallic = 0,
+        .ao = 0,
+        .has_rougness_tex = true,
+        .has_metallic_tex = false,
+        .has_ao_tex = true,
+        .has_displacement = false
+    };
+
+    Material landscape_material{
+        .name = {"Landscape"},
+        .program = 3,
+        .mode = ReflectionShadeMode::PBR,
+        .displacement_map_texture = 19,
+        .normal_map_texture = 20,
+        .base_color_texture = 23,
+        .base_color_normal_texture = 24,
+        .roughness_texture = 25,
+        .ao_texture = 26,
+        .roughness = 0,
+        .metallic = 0,
+        .ao = 0,
+        .has_rougness_tex = true,
+        .has_metallic_tex = false,
+        .has_ao_tex = true,
+        .has_displacement = true
+    };
 
     Camera camera;
     camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 2048.0f);
@@ -647,19 +686,20 @@ int main()
 
     for (int i = 0; i < programs.size(); ++i)
     {
-        scene.materials[i] = {};
+        scene.programs[i] = {};
     }
 
     //auto object = createObject(meshes.meshes.at(mesh_id));
     //object.material = 1;
 
     auto fbx = createObject(meshes.meshes.at(sphere_id));
-    fbx.material = 0;
+    fbx.material = base_material;
 
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
-    landscape_flat.material = 3;
+    landscape_flat.material = landscape_material;
 
     addObject(scene, fbx);
+    addObject(scene, landscape_flat);
 
     Application application{
         .textures = std::move(textures),

@@ -1,4 +1,5 @@
 #include "PostProcessing.h"
+#include "Material.h"
 #include "Program.h"
 #include "Scene.h"
 #include "Renderer.h"
@@ -75,7 +76,7 @@ static std::unique_ptr<Program> createPostProcessingProgram(RenderingState const
     
     // Make the program like this for now. Update the descriptor set each frame
     // with the correct color attachment.
-    return createProgram(program_desc, state, {}, render_pass);
+    return createProgram(program_desc, state, {}, render_pass, "Post Processing");
 }
 
 static std::unique_ptr<Program> createComputeFogProgram(RenderingState const& state, vk::RenderPass const& render_pass)
@@ -131,7 +132,7 @@ static std::unique_ptr<Program> createComputeFogProgram(RenderingState const& st
         }
     }});
 
-    return createProgram(program_desc, state, {}, render_pass);
+    return createProgram(program_desc, state, {}, render_pass, "Compute Fog");
 }
 
 inline void postProcessingUpdateDescriptorSets(RenderingState const& state,

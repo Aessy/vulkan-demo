@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Material.h"
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_ASSERT_ON_RESULT
 #include <vulkan/vulkan_core.h>
@@ -65,9 +66,13 @@ struct GpuProgram
 
 struct Program
 {
-    int id{};
+    std::string name{};
     GpuProgram program;
     std::vector<buffer_types::ModelType> buffers;
 };
 
-std::unique_ptr<Program> createProgram(layer_types::Program const& program_data, RenderingState const& core, Textures const& textures, vk::RenderPass const& render_pass);
+std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
+                                       RenderingState const& core,
+                                       Textures const& textures,
+                                       vk::RenderPass const& render_pass,
+                                       std::string const& name);

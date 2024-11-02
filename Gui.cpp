@@ -7,6 +7,7 @@
 #include <string>
 #include <iostream>
 
+#include "Material.h"
 #include "Scene.h"
 #include "height_map.h"
 
@@ -108,6 +109,103 @@ void comboMeshes(Application& app, int& current_id)
 {
 }
 
+template<typename T, typename GetLabel, typename Inx>
+void ComboBoxName(std::vector<T> const& programs, char const label[], Inx& current_inx, GetLabel c)
+{
+    if (ImGui::BeginCombo(label, c(programs[current_inx])))
+    {
+        for (size_t i = 0; i < programs.size(); ++i)
+        {
+            bool selected = i == current_inx;
+            if (ImGui::Selectable(c(programs[i]), &selected))
+            {
+                current_inx = static_cast<Inx>(i);
+            }
+            if (selected)
+            {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+}
+
+void createMaterial(Application& app)
+{
+    if (ImGui::BeginPopup("create_material"))
+    {
+        static const std::vector<std::string> modes{"Phong", "PBR"};
+
+        static Material i{};
+
+        ImGui::InputText("Name", i.name.data(), i.name.size()-1);
+
+        ComboBoxName(app.programs, "Program", i.program, [](auto& program){return program->name.c_str();});
+
+        ImGui::Checkbox("Has Displacement", &i.has_displacement);
+        if (i.has_displacement)
+        {
+            ComboBoxName(app.textures.textures, "Displacement texture", i.displacement_map_texture, [](auto& text){return text.name.c_str();});
+            ComboBoxName(app.textures.textures, "Normal map texture", i.displacement_map_texture, [](auto& text){return text.name.c_str();});
+            ImGui::InputFloat("Displacement Y", &i.displacement_y, 0.5f, 2.0f);
+        }
+
+        ComboBoxName(modes, "Shading Mode", i.mode, [](auto& text){return text.c_str();});
+
+        if (i.mode == 0)
+        {
+            ImGui::SliderFloat("Shininess", &i.shininess, 0.0f, 1.0f);
+            ImGui::SliderFloat("Specular Strength", &i.specular_strength, 0.0f, 1.0f);
+        }
+        if (i.mode == 1)
+        {
+            ImGui::Checkbox("Roughness texture", &i.has_rougness_tex);
+            if (i.has_rougness_tex)
+            {
+                ComboBoxName(app.textures.textures, "Roughness textures", i.roughness_texture, [](auto& text){return text.name.c_str();});
+            }
+            else
+            {
+            
+                ImGui::SliderFloat("Roughness", &i.roughness, 0.0f, 1.0f);
+            }
+
+            ImGui::Checkbox("Metallic texture", &i.has_metallic_tex);
+            if (i.has_metallic_tex)
+            {
+                ComboBoxName(app.textures.textures, "Metallic textures", i.metallic_texture, [](auto& text){return text.name.c_str();});
+            }
+            else
+            {
+            
+                ImGui::SliderFloat("Metallic", &i.metallic, 0.0f, 1.0f);
+            }
+
+            ImGui::Checkbox("AO Texture", &i.has_ao_tex);
+            if (i.has_ao_tex)
+            {
+                ComboBoxName(app.textures.textures, "AO textures",i.ao_texture, [](auto& text){return text.name.c_str();});
+            }
+            else
+            {
+
+                ImGui::SliderFloat("AO", &i.ao, 0.0f, 1.0f);
+            }
+        }
+
+        ComboBoxName(app.textures.textures, "Color texture", i.base_color_texture, [](auto& text){return text.name.c_str();});
+        ComboBoxName(app.textures.textures, "Normal texture", i.base_color_normal_texture, [](auto& text){return text.name.c_str();});
+
+        if (ImGui::Button("Create Material"))
+        {
+            app.materials.push_back(i);
+            i = Material{};
+        }
+
+        ImGui::EndPopup();
+    }
+}
+
 void createObject(Application& app)
 {
     if (ImGui::BeginPopup("create_object"))
@@ -151,17 +249,6 @@ void createObject(Application& app)
 
         if (ImGui::Button("Create object"))
         {
-            auto obj = createObject(app.meshes.meshes.at(current_id), glm::vec3(pos[0], pos[1], pos[2]));
-            obj.texture_index = texture_id;
-            obj.material = material;
-
-            addObject(app.scene, obj);
-            name = {{}};
-            pos[0] = 0;
-            pos[1] = 0;
-            pos[2] = 0;
-            texture_id = 0;
-            material = 0;
             ImGui::CloseCurrentPopup();
         }
 
@@ -272,6 +359,7 @@ void showLight(LightBufferObject& light)
         ImGui::EndPopup();
     }
 }
+
 void showObject(Object& obj, Application& app)
 {
     if (ImGui::BeginPopup("object"))
@@ -303,35 +391,63 @@ void showObject(Object& obj, Application& app)
         ImGui::Text("Angle");
         ImGui::DragFloat("Angle", &obj.angel, 1, 0, 360);
 
-        ImGui::Text("Texture");
-        ImGui::DragInt("Texture", &obj.texture_index, 1, 0, app.textures.textures.size());
-        if (obj.texture_index < app.textures.textures.size())
+        auto& i = obj.material;
+        static const std::vector<std::string> modes{"Phong", "PBR"};
+
+        ComboBoxName(app.programs, "Program", i.program, [](auto& program){return program->name.c_str();});
+        ImGui::Checkbox("Has Displacement", &i.has_displacement);
+        if (i.has_displacement)
         {
-            ImGui::Text("Texture: %s", app.textures.textures[obj.texture_index].name.c_str());
-        }
-        ImGui::DragInt("Normal Map", &obj.texture_normal, 1, 0, app.textures.textures.size());
-        if (obj.texture_index < app.textures.textures.size())
-        {
-            ImGui::Text("Normal Map: %s", app.textures.textures[obj.texture_normal].name.c_str());
-        }
-        ImGui::DragInt("Roughness Map", &obj.texture_roughness, 1, 0, app.textures.textures.size());
-        if (obj.texture_index < app.textures.textures.size())
-        {
-            ImGui::Text("Roughness: %s", app.textures.textures[obj.texture_roughness].name.c_str());
-        }
-        ImGui::DragInt("AO Map", &obj.texture_ao, 1, 0, app.textures.textures.size());
-        if (obj.texture_index < app.textures.textures.size())
-        {
-            ImGui::Text("AO Map: %s", app.textures.textures[obj.texture_ao].name.c_str());
+            ComboBoxName(app.textures.textures, "Displacement texture", i.displacement_map_texture, [](auto& text){return text.name.c_str();});
+            ComboBoxName(app.textures.textures, "Normal map texture", i.normal_map_texture, [](auto& text){return text.name.c_str();});
+            ImGui::InputFloat("Displacement Y", &i.displacement_y, 0.5f, 2.0f);
         }
 
-        ImGui::InputInt("Shading style", &obj.shading_style, 1);
-        ImGui::DragFloat("Shininess", &obj.shininess, 0.1f, 0, 100.0f);
-        ImGui::DragFloat("Specular strength", &obj.specular_strength, 0.1f, 0, 100.0f);
-        ImGui::DragFloat("Roughness", &obj.roughness, 0.1f, 0, 1.0f);
-        ImGui::DragFloat("Metallic", &obj.metallness, 0.1f, 0, 1.0f);
-        ImGui::DragFloat("AO", &obj.ao, 0.1f, 0, 1.0f);
+        ComboBoxName(modes, "Shading Mode", i.mode, [](auto& text){return text.c_str();});
 
+        if (i.mode == 0)
+        {
+            ImGui::SliderFloat("Shininess", &i.shininess, 0.0f, 1.0f);
+            ImGui::SliderFloat("Specular Strength", &i.specular_strength, 0.0f, 1.0f);
+        }
+        if (i.mode == 1)
+        {
+            ImGui::Checkbox("Roughness texture", &i.has_rougness_tex);
+            if (i.has_rougness_tex)
+            {
+                ComboBoxName(app.textures.textures, "Roughness textures", i.roughness_texture, [](auto& text){return text.name.c_str();});
+            }
+            else
+            {
+            
+                ImGui::SliderFloat("Roughness", &i.roughness, 0.0f, 1.0f);
+            }
+
+            ImGui::Checkbox("Metallic texture", &i.has_metallic_tex);
+            if (i.has_metallic_tex)
+            {
+                ComboBoxName(app.textures.textures, "Metallic textures", i.metallic_texture, [](auto& text){return text.name.c_str();});
+            }
+            else
+            {
+            
+                ImGui::SliderFloat("Metallic", &i.metallic, 0.0f, 1.0f);
+            }
+
+            ImGui::Checkbox("AO Texture", &i.has_ao_tex);
+            if (i.has_ao_tex)
+            {
+                ComboBoxName(app.textures.textures, "AO textures",i.ao_texture, [](auto& text){return text.name.c_str();});
+            }
+            else
+            {
+
+                ImGui::SliderFloat("AO", &i.ao, 0.0f, 1.0f);
+            }
+        }
+
+        ComboBoxName(app.textures.textures, "Color texture", i.base_color_texture, [](auto& text){return text.name.c_str();});
+        ComboBoxName(app.textures.textures, "Normal texture", i.base_color_normal_texture, [](auto& text){return text.name.c_str();});
         ImGui::EndPopup();
     }
 }
@@ -370,20 +486,21 @@ void showScene(Application& app, Scene& scene, Models& models)
             ImGui::Text("Angle: %f", obj.angel);
             ImGui::Text("Scale: %f", obj.scale);
             ImGui::Text("Indices: %d", obj.mesh.indices_size);
-            ImGui::Text("Material: %d", obj.material);
-            ImGui::Text("Texture: %s", app.textures.textures[obj.texture_index].name.c_str());
+            ImGui::Text("Material: %s", obj.material.name.data());
             showMeshTree(obj.mesh, models, std::string("Mesh: ") + obj.mesh.name + " " + std::to_string(obj.mesh.id));
             if (ImGui::Button("Edit"))
             {
                 ImGui::OpenPopup("object");
             }
 
+            /*
             int material = obj.material;
             ImGui::InputInt("Change Material", &material);
             if (material != obj.material && material < scene.materials.size())
             {
                 changeMaterial(scene, index-1, material);
             }
+            */
             ImGui::TreePop();
         }
     }
@@ -393,6 +510,10 @@ void showScene(Application& app, Scene& scene, Models& models)
     if (ImGui::Button("Create object"))
     {
         ImGui::OpenPopup("create_object");
+    }
+    if (ImGui::Button("Create material"))
+    {
+        ImGui::OpenPopup("create_material");
     }
 
     ImGui::Text("Terrain");
@@ -431,15 +552,16 @@ void showScene(Application& app, Scene& scene, Models& models)
 
 
     createObject(app);
+    createMaterial(app);
 }
 
 void showMaterial(Application& application)
 {
     ImGui::BeginChild("Materials", ImVec2(-1, 300), true, ImGuiWindowFlags_HorizontalScrollbar);
 
-    for (auto& material : application.programs)
+    for (auto& material : application.materials)
     {
-        ImGui::Text(std::to_string(material->id).c_str());
+        ImGui::Text("Name: %s", material.name.data());
     }
 
     ImGui::EndChild();

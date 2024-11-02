@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Material.h"
 #include "glm/glm.hpp"
 
 #include "Program.h"
@@ -15,26 +16,24 @@ struct Terrain
 };
 */
 
+struct Lod
+{
+    int min{0};
+    int max{4};
+    float weight{441.0f};
+};
+
 struct Object
 {
     DrawableMesh mesh;
     glm::vec3 position;
     glm::vec3 rotation;
+
     float scale{1};
     float angel{0};
+    Material material;
 
-    int texture_index{0};
-    int texture_normal{0};
-    int texture_roughness{0};
-    int texture_ao{0};
-    int material{};
-
-    int shading_style{0};
-    float shininess{0};
-    float specular_strength{0};
-    float roughness{0};
-    float metallness{0};
-    float ao{0};
+    std::optional<Lod> lod;
 
     int id = Id();
 };

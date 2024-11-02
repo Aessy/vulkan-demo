@@ -14,7 +14,7 @@ inline void writeBuffer(UniformBuffer& dst, BufferObject const& src, size_t inde
 
 inline void renderScene(vk::CommandBuffer& cmd_buffer, Scene const& scene, std::vector<std::unique_ptr<Program>>& programs, int frame)
 {
-    for (auto const& o : scene.materials)
+    for (auto const& o : scene.programs)
     {
         auto& program = *programs[o.first].get();
 
@@ -38,8 +38,12 @@ inline void renderScene(vk::CommandBuffer& cmd_buffer, Scene const& scene, std::
             }
             else if (auto* model = std::get_if<buffer_types::Terrain>(&buffer))
             {
-                auto ubo = createTerrainBufferObject(scene);
-                writeBuffer(model->buffers[frame],ubo);
+                for (size_t i = 0; i < o.second.size(); ++i)
+                {
+                    auto &obj = scene.objs[o.second[i]];
+                    auto ubo = createTerrainBufferObject(obj);
+                    writeBuffer(model->buffers[frame],ubo);
+                }
             }
         }
 
