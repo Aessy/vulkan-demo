@@ -645,6 +645,7 @@ int main()
         .mode = ReflectionShadeMode::PBR,
         .displacement_map_texture = 19,
         .normal_map_texture = 20,
+        .displacement_y = 150.0f,
         .base_color_texture = 23,
         .base_color_normal_texture = 24,
         .roughness_texture = 25,
@@ -663,7 +664,7 @@ int main()
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
     //camera.pos = glm::vec3(0,300,-5);
-    camera.pos = glm::vec3(0,0,0);
+    camera.pos = glm::vec3(0,150,0);
 
     updateCameraFront(camera);
 

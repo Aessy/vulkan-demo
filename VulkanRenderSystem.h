@@ -163,7 +163,7 @@ void transitionImageLayout(RenderingState const& state, vk::Image const& image, 
 void transitionImageLayout(vk::CommandBuffer& cmd_buffer, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels);
 void copyBufferToImage(RenderingState const& state, vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height);
 vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels);
-vk::Sampler createTextureSampler(RenderingState const& state);
+vk::Sampler createTextureSampler(RenderingState const& state, bool mip_maps);
 vk::Buffer createBuffer(RenderingState const& state,
                         vk::DeviceSize size, vk::BufferUsageFlags usage,
                         vk::MemoryPropertyFlags properties, vk::DeviceMemory& buffer_memory);

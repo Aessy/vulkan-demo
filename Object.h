@@ -16,13 +16,6 @@ struct Terrain
 };
 */
 
-struct Lod
-{
-    int min{0};
-    int max{4};
-    float weight{441.0f};
-};
-
 struct Object
 {
     DrawableMesh mesh;

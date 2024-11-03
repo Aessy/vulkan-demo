@@ -127,5 +127,7 @@ inline TerrainBufferObject createTerrainBufferObject(Object const& object)
     tbo.roughness = material.roughness;
     tbo.ao = material.ao;
 
+    tbo.texture_scale = material.scaling_factor;
+
     return tbo;
 }

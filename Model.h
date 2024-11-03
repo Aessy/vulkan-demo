@@ -70,8 +70,8 @@ struct TerrainBufferObject
 
 
     float lod_min{0};
-    float lod_max{4};
-    float weight{441};
+    float lod_max{8};
+    float weight{300};
 };
 
 struct Vertex

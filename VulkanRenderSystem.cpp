@@ -1216,7 +1216,7 @@ vk::ImageView createTextureImageView(RenderingState const& state, vk::Image cons
     return texture_image_view;
 }
 
-vk::Sampler createTextureSampler(RenderingState const& state)
+vk::Sampler createTextureSampler(RenderingState const& state, bool mip_maps)
 {
     vk::SamplerCreateInfo sampler_info;
     sampler_info.sType = vk::StructureType::eSamplerCreateInfo;
@@ -1225,26 +1225,36 @@ vk::Sampler createTextureSampler(RenderingState const& state)
     sampler_info.addressModeU = vk::SamplerAddressMode::eRepeat;
     sampler_info.addressModeV = vk::SamplerAddressMode::eRepeat;
     sampler_info.addressModeW = vk::SamplerAddressMode::eRepeat;
-    
-    sampler_info.anisotropyEnable = true;
-
-    auto properties = state.physical_device.getProperties();
-
-    sampler_info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
-    sampler_info.borderColor = vk::BorderColor::eIntOpaqueBlack;
     sampler_info.unnormalizedCoordinates = false;
     sampler_info.compareEnable = false;
     sampler_info.compareOp = vk::CompareOp::eAlways;
-    sampler_info.mipmapMode = vk::SamplerMipmapMode::eLinear;
-    sampler_info.mipLodBias = 0.0f;
-    sampler_info.minLod = 0.0f;
-    sampler_info.maxLod = 11.0f;
+    
+    if (!mip_maps)
+    {
+        sampler_info.mipLodBias = 0.0f;                           // No bias for LOD selection
+        sampler_info.anisotropyEnable = VK_FALSE;                 // Disable anisotropic filtering for this sampler
+        sampler_info.minLod = 0.0f;                               // Only sample the base level (level 0)
+        sampler_info.maxLod = 0.0f;                               // Only sample the base level (level 0)
+        sampler_info.borderColor = vk::BorderColor::eIntOpaqueBlack; // Border color if sampler address mode is Border
+        sampler_info.mipmapMode = vk::SamplerMipmapMode::eNearest;
+    }
+    else
+    {
+        sampler_info.anisotropyEnable = true;
+        auto properties = state.physical_device.getProperties();
+
+        sampler_info.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+        sampler_info.borderColor = vk::BorderColor::eIntOpaqueBlack;
+        sampler_info.mipmapMode = vk::SamplerMipmapMode::eLinear;
+        sampler_info.mipLodBias = 0.0f;
+        sampler_info.minLod = 0.0f;
+        sampler_info.maxLod = 11.0f;
+    }
 
     auto sampler = state.device.createSampler(sampler_info);
     checkResult(sampler.result);
 
     return sampler.value;
-
 }
 
 

@@ -184,12 +184,14 @@ Texture createTexture(RenderingState const& state, std::string const& path, Text
 
 Textures createTextures(RenderingState const& core, std::vector<TextureInput> const& paths)
 {
-    auto sampler = createTextureSampler(core);
+    auto mip_map_sampler = createTextureSampler(core, true);
+    auto default_sampler = createTextureSampler(core, false);
 
-    Textures textures {sampler, {}};
+    Textures textures {{}};
     for (auto const& path : paths)
     {
-        textures.textures.push_back(createTexture(core, path.path, path.texture_type, path.format, sampler));
+        textures.textures.push_back(createTexture(core, path.path, path.texture_type,
+                                            path.format, path.texture_type == TextureType::MipMap ? mip_map_sampler : default_sampler));
     }
 
     return textures;

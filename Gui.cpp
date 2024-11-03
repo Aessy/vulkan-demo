@@ -195,6 +195,7 @@ void createMaterial(Application& app)
 
         ComboBoxName(app.textures.textures, "Color texture", i.base_color_texture, [](auto& text){return text.name.c_str();});
         ComboBoxName(app.textures.textures, "Normal texture", i.base_color_normal_texture, [](auto& text){return text.name.c_str();});
+        ImGui::DragFloat("Textures scale", &i.scaling_factor, 0.1, 0.1, 10.0f);
 
         if (ImGui::Button("Create Material"))
         {
@@ -448,6 +449,7 @@ void showObject(Object& obj, Application& app)
 
         ComboBoxName(app.textures.textures, "Color texture", i.base_color_texture, [](auto& text){return text.name.c_str();});
         ComboBoxName(app.textures.textures, "Normal texture", i.base_color_normal_texture, [](auto& text){return text.name.c_str();});
+        ImGui::DragFloat("Textures scale", &i.scaling_factor, 0.1, 0.1, 10.0f);
         ImGui::EndPopup();
     }
 }

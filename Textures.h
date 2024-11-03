@@ -22,7 +22,6 @@ struct Texture
 
 struct Textures
 {
-    vk::Sampler sampler;
     std::vector<Texture> textures;
 };
 

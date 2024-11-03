@@ -397,7 +397,7 @@ static vk::RenderPass createPostProcessingRenderPass(vk::Format const swap_chain
 PostProcessing createPostProcessing(RenderingState const& state)
 {
     PostProcessing pp;
-    pp.sampler = createTextureSampler(state);
+    pp.sampler = createTextureSampler(state, false);
 
     pp.fog_buffer = createFogBuffer(state, vk::MemoryPropertyFlagBits::eDeviceLocal);
 

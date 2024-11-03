@@ -175,7 +175,7 @@ vec3 pbr(vec3 normal, vec3 albedo)
     vec3 diffuse = albedo / PI;
 
     // Final color calculation with ambient occlusion (AO)
-    vec3 ambient = ao * albedo * 0.03; // Ambient color
+    vec3 ambient = ao * albedo * 0.1; // Ambient color
 
     vec3 color = (ambient + (kD * diffuse + specular) * max(dot(normal, light_dir), 0.0) * light_color * light_intensity);
     return color;
@@ -194,19 +194,18 @@ void main()
     float x = position_worldspace.x;
     float z = position_worldspace.z;
     
-    vec4 xaxis = textureLod(texSampler[terrain.texture_id], vec2(y,z)*scale, lod);
-    vec4 yaxis = textureLod(texSampler[terrain.texture_id], vec2(x,z)*scale, lod);
-    vec4 zaxis = textureLod(texSampler[terrain.texture_id], vec2(x,y)*scale, lod);
+    vec4 xaxis = texture(texSampler[terrain.texture_id], vec2(y,z)*scale);
+    vec4 yaxis = texture(texSampler[terrain.texture_id], vec2(x,z)*scale);
+    vec4 zaxis = texture(texSampler[terrain.texture_id], vec2(x,y)*scale);
 
     vec3 blending = getBlending(n);
     vec4 tex = xaxis * blending.x + yaxis * blending.y + zaxis * blending.z;
 
-    vec3 xaxis_normal = 2*textureLod(texSampler[terrain.texture_normal_id], vec2(y,z)*scale, lod).rgb-1;
-    vec3 yaxis_normal = 2*textureLod(texSampler[terrain.texture_normal_id], vec2(x,z)*scale, lod).rgb-1;
-    vec3 zaxis_normal = 2*textureLod(texSampler[terrain.texture_normal_id], vec2(x,y)*scale, lod).rgb-1;
+    vec3 xaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(y,z)*scale).rgb-1;
+    vec3 yaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(x,z)*scale).rgb-1;
+    vec3 zaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(x,y)*scale).rgb-1;
     
     vec3 normal_tex =  normalize(xaxis_normal * blending.x + yaxis_normal * blending.y + zaxis_normal * blending.z).xyz;
-    
     vec3 final_normal = normalize(normal + normal_tex);
     
     //vec3 result = phong(final_normal, tex.rgb);
