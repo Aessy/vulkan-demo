@@ -18,6 +18,8 @@ struct PostProcessing
     
     std::vector<std::pair<vk::Image, vk::ImageView>> fog_buffer;
     std::unique_ptr<Program> fog_compute_program;
+
+    PostProcessingBufferObject buffer_object{};
 };
 
 PostProcessing createPostProcessing(RenderingState const& state);

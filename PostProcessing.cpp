@@ -73,6 +73,18 @@ static std::unique_ptr<Program> createPostProcessingProgram(RenderingState const
             .fragment = true,
         }
     }});
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"Post Processing Data"}},
+        .type = layer_types::BufferType::PostProcessingDataBufferObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding fog param"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .fragment = true,
+        }
+    }});
     
     // Make the program like this for now. Update the descriptor set each frame
     // with the correct color attachment.
@@ -228,6 +240,14 @@ static void postProcessingDraw(vk::CommandBuffer& command_buffer,
                             &program->program.descriptor_sets[4].set[frame],
                             1,
                             &offset);
+    offset = 0;
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                            program->program.pipeline_layout,
+                            5,
+                            1,
+                            &program->program.descriptor_sets[5].set[frame],
+                            1,
+                            &offset);
 
     for (auto& buffer : program->buffers)
     {
@@ -239,6 +259,10 @@ static void postProcessingDraw(vk::CommandBuffer& command_buffer,
         else if (auto* fog = std::get_if<buffer_types::FogVolume>(&buffer))
         {
             writeBuffer(fog->buffers[frame], scene.fog);
+        }
+        else if (auto* post_processing_data = std::get_if<buffer_types::PostProcessingData>(&buffer))
+        {
+            writeBuffer(post_processing_data->buffers[frame], ppp.buffer_object);
         }
     }
 
@@ -281,7 +305,7 @@ void postProcessingRenderPass(RenderingState const& state,
     command_buffer.setScissor(0,scissor);
 
     transitionImageLayout(command_buffer, state.framebuffer_resources[image_index].color_resources.depth_image,
-                                 state.swap_chain.swap_chain_image_format,
+                                 vk::Format::eR16G16B16A16Sfloat,
                                  vk::ImageLayout::eColorAttachmentOptimal,
                                  vk::ImageLayout::eShaderReadOnlyOptimal,
                                  1);
@@ -314,7 +338,7 @@ static std::vector<vk::Framebuffer> createPostProcessingFramebuffers(RenderingSt
     std::vector<vk::Framebuffer> framebuffers;
     for (auto const& swap_chain_image_view : state.image_views)
     {
-        auto color_resources = createColorResources(state);
+        auto color_resources = createColorResources(state, state.swap_chain.swap_chain_image_format);
         std::array<vk::ImageView, 2> attachments {{color_resources.depth_image_view, swap_chain_image_view}};
 
         vk::FramebufferCreateInfo framebuffer_info{};

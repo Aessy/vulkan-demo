@@ -24,7 +24,7 @@
 
 struct SwapChainSupportDetails {
     vk::SurfaceCapabilitiesKHR capabilities;
-    std::vector<vk::SurfaceFormatKHR> formats;
+    std::vector<vk::SurfaceFormat2KHR> formats;
     std::vector<vk::PresentModeKHR> present_modes;
 };
 
@@ -74,7 +74,7 @@ GLFWwindow* setupGlfw(App& app)
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 
-    auto window = glfwCreateWindow(2560, 1440, "Vulkan", nullptr, nullptr);
+    auto window = glfwCreateWindow(2564, 1440, "Vulkan", nullptr, nullptr);
     glfwSetWindowUserPointer(window, &app);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     glfwSetKeyCallback(window, keyPressedCallback);
@@ -140,8 +140,17 @@ static auto createInstance(bool validation_layers_on)
     uint32_t glfw_extensions_count = 0;
     auto glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extensions_count);
 
-    info.enabledExtensionCount = glfw_extensions_count;
-    info.ppEnabledExtensionNames = glfw_extensions;
+    static const std::vector<char const*> extensions
+    {
+        VK_KHR_SURFACE_EXTENSION_NAME,
+        "VK_KHR_xcb_surface",
+        VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME,
+        VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
+    };
+
+    info.enabledExtensionCount = extensions.size();
+    info.ppEnabledExtensionNames = extensions.data();
+
     if (use_validation_layer)
     {
         info.setEnabledLayerCount(validation_layers.size());
@@ -153,6 +162,7 @@ static auto createInstance(bool validation_layers_on)
     }
 
     std::cout << "Extension count: " << glfw_extensions_count << '\n';
+
     std::cout << "Extensaions " << *glfw_extensions << '\n';
 
     return vk::createInstance(info, nullptr).value;
@@ -206,17 +216,17 @@ vk::SampleCountFlagBits getMaxUsableSampleCount(vk::PhysicalDevice device)
     return vk::SampleCountFlagBits::e1;
 }
 
-DepthResources createColorResources(RenderingState const& state)
+DepthResources createColorResources(RenderingState const& state, vk::Format format)
 {
     auto image = createImage(state, state.swap_chain.extent.width, state.swap_chain.extent.height, 1, 
-        state.swap_chain.swap_chain_image_format, vk::ImageTiling::eOptimal,
+        format, vk::ImageTiling::eOptimal,
                                 vk::ImageUsageFlagBits::eColorAttachment
                                 | vk::ImageUsageFlagBits::eSampled,
         vk::MemoryPropertyFlagBits::eDeviceLocal, state.msaa);
 
-    transitionImageLayout(state, image.first, state.swap_chain.swap_chain_image_format, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal, 1);
+    transitionImageLayout(state, image.first, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal, 1);
 
-    auto view = createImageView(state.device, image.first, state.swap_chain.swap_chain_image_format, vk::ImageAspectFlagBits::eColor, 1);
+    auto view = createImageView(state.device, image.first, format, vk::ImageAspectFlagBits::eColor, 1);
 
     return DepthResources{image.first, image.second, view};
 }
@@ -331,8 +341,7 @@ static vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device,
     static const std::vector<const char*> device_extensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
-        VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME
-        
+        VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,
     };
 
     vk::DeviceCreateInfo device_info;
@@ -356,23 +365,24 @@ static SwapChainSupportDetails querySwapChainSupport(vk::PhysicalDevice const& d
     SwapChainSupportDetails details;
 
     details.capabilities = device.getSurfaceCapabilitiesKHR(surface).value;
-    details.formats = device.getSurfaceFormatsKHR(surface).value;
+    details.formats = device.getSurfaceFormats2KHR(surface).value;
     details.present_modes = device.getSurfacePresentModesKHR(surface).value;
 
     return details;
 }
 
-vk::SurfaceFormatKHR chooseSwapSurfaceFoprmat(std::vector<vk::SurfaceFormatKHR> const& available_formats)
+vk::SurfaceFormatKHR chooseSwapSurfaceFoprmat(std::vector<vk::SurfaceFormat2KHR> const& available_formats)
 {
     for (auto const& available_format : available_formats)
     {
-        if (available_format.format == vk::Format::eB8G8R8A8Srgb && available_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
+        // TODO: Look more into HDR Surface format
+        if (available_format.surfaceFormat.format == vk::Format::eB8G8R8A8Srgb && available_format.surfaceFormat.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
         {
-            return available_format;
+            return available_format.surfaceFormat;
         }
     }
 
-    return available_formats[0];
+    return available_formats[0].surfaceFormat;
 }
 
 vk::PresentModeKHR chooseSwapPresentMode(std::vector<vk::PresentModeKHR>const& present_modes)
@@ -508,7 +518,7 @@ static vk::Format getDepthFormat()
 static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format const& swap_chain_image_format, vk::SampleCountFlagBits msaa)
 {
     vk::AttachmentDescription2 color_attachment{};
-    color_attachment.format = swap_chain_image_format;
+    color_attachment.format = vk::Format::eR16G16B16A16Sfloat;
     color_attachment.samples = msaa;
     color_attachment.loadOp = vk::AttachmentLoadOp::eClear;
     color_attachment.storeOp = vk::AttachmentStoreOp::eStore;
@@ -709,7 +719,7 @@ static std::vector<vk::Framebuffer> createFrameBuffers(RenderingState& state)
 
     for (auto const& swap_chain_image_view : state.image_views)
     {
-        auto color_resources = createColorResources(state);
+        auto color_resources = createColorResources(state, vk::Format::eR16G16B16A16Sfloat);
         auto depth_image = createDepth(state, state.msaa);
         auto depth_resolve_image = createDepth(state, vk::SampleCountFlagBits::e1);
         state.framebuffer_resources.push_back({color_resources, depth_image, depth_resolve_image});
@@ -879,11 +889,6 @@ RenderingState createVulkanRenderState()
         .msaa = msaa_samples
     };
 
-
-
-    auto color_resources = createColorResources(render_state);
-    auto depth_image = createDepth(render_state, render_state.msaa);
-    auto depth_resolve_image = createDepth(render_state, vk::SampleCountFlagBits::e1);
     auto swap_chain_framebuffers = createFrameBuffers(render_state);
 
     render_state.framebuffers = swap_chain_framebuffers;

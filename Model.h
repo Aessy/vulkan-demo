@@ -44,7 +44,7 @@ struct WorldBufferObject
 
 struct FogVolumeBufferObject
 {
-    unsigned int volumetric_fog_enabled {true};
+    unsigned int volumetric_fog_enabled {0};
     float base_density = 0.00f;
     float max_density = 0.9f;
     alignas(16) glm::vec3 color = glm::vec3(1,1,1);
@@ -75,6 +75,11 @@ struct TerrainBufferObject
     float lod_min{0};
     float lod_max{8};
     float weight{300};
+};
+
+struct PostProcessingBufferObject
+{
+    int hdr_resolve{0};
 };
 
 struct Vertex

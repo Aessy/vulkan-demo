@@ -24,6 +24,7 @@ enum class BufferType : int
     WorldBufferObject,
     TerrainBufferObject,
     FogVolumeObject,
+    PostProcessingDataBufferObject,
     NoBuffer,
 };
 

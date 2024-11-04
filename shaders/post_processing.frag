@@ -27,6 +27,10 @@ layout(set = 4, binding = 0) uniform Fog{
     vec3 color;
 } fog;
 
+layout(set = 5, binding = 0) uniform PostProcessingData{
+    int hdr;
+} data;
+
 layout(location = 0) in vec2 uv_in;
 layout(location = 0) out vec4 fragColor;
 
@@ -92,6 +96,20 @@ vec4 calculateVolumetricFog(vec4 scene_color)
     return mix(scene_color, vec4(fog.color.xyz, 1), fog_alpha);
 }
 
+vec3 toneMapReinhard(vec3 hdr_color)
+{
+    return hdr_color / (hdr_color + vec3(1.0)); // Simple Reinhard tone mapping
+}
+
+vec3 tone_map_ACES(vec3 hdr_color) {
+    const float a = 2.51;
+    const float b = 0.03;
+    const float c = 2.43;
+    const float d = 0.59;
+    const float e = 0.14;
+    return clamp((hdr_color * (a * hdr_color+ b)) / (hdr_color* (c * hdr_color+ d) + e), 0.0, 1.0);
+}
+
 void main()
 {
     ivec2 texture_size = textureSize(color_sampler);
@@ -106,12 +124,21 @@ void main()
 
     vec4 scene_color = sampled_color/8;
 
+    vec4 final_color;
+
     if (fog.enabled == 1)
     {
-        fragColor = calculateVolumetricFog(scene_color);
+        final_color = calculateVolumetricFog(scene_color);
     }
     else
     {
-        fragColor = scene_color;
+        final_color = scene_color;
     }
+
+    if (data.hdr == 1)
+    {
+        final_color = vec4(tone_map_ACES(final_color.rgb), final_color.a);
+    }
+
+    fragColor = final_color;
 }

@@ -517,6 +517,11 @@ void showScene(Application& app, Scene& scene, Models& models)
     {
         ImGui::OpenPopup("create_material");
     }
+    bool hdr_resolve = app.ppp.buffer_object.hdr_resolve == 1;
+    if (ImGui::Checkbox("Rersolve HDR", &hdr_resolve))
+    {
+        app.ppp.buffer_object.hdr_resolve = hdr_resolve ? 1 : 0;
+    }
 
     ImGui::Text("Terrain");
     ImGui::InputInt("Displacement map", &app.scene.terrain.displacement_map);
@@ -536,9 +541,11 @@ void showScene(Application& app, Scene& scene, Models& models)
     ImGui::DragFloat("Lod weight", &app.scene.terrain.weight, 1.0f, 0, 2000);
 
     ImGui::Text("Fog");
-    static bool fog_enabled = false;
-    ImGui::Checkbox("Volumetric Fog Enabled", &fog_enabled);
-    scene.fog.volumetric_fog_enabled = fog_enabled ? 1 : 0;
+    bool fog_enabled = scene.fog.volumetric_fog_enabled == 1;
+    if (ImGui::Checkbox("Volumetric Fog Enabled", &fog_enabled))
+    {
+        scene.fog.volumetric_fog_enabled = fog_enabled ? 1 : 0;
+    }
 
     ImGui::DragFloat("Fog Density", &app.scene.fog.base_density, 0.01f, 0.00f, 100.0f);
 

@@ -208,7 +208,7 @@ auto createUniformBuffers(RenderingState const& state)
     return ubos;
 }
 
-DepthResources createColorResources(RenderingState const& state);
+DepthResources createColorResources(RenderingState const& state, vk::Format format);
 
 template<typename BufferObject>
 auto createStorageBuffers(RenderingState const& state, uint32_t size)

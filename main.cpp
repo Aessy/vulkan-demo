@@ -552,10 +552,11 @@ int main()
           {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_Roughness.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_AO.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_BaseColor.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+
+          {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_BaseColor.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb},
           {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_Roughness.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_AO.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_Roughness.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
+          {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_AO.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
         });
 
     layer_types::Program program_desc;
