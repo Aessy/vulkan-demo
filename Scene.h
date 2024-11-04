@@ -127,6 +127,16 @@ inline TerrainBufferObject createTerrainBufferObject(Object const& object)
     tbo.roughness = material.roughness;
     tbo.ao = material.ao;
 
+    if (material.has_rougness_tex) {
+        tbo.roughness_texture_id = material.roughness_texture;
+    }
+    if (material.has_metallic_tex) {
+        tbo.metallic_texture_id = material.metallic_texture;
+    }
+    if (material.has_ao_tex) {
+        tbo.ao_texture_id = material.ao_texture;
+    }
+
     tbo.texture_scale = material.scaling_factor;
 
     return tbo;

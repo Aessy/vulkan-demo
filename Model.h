@@ -56,6 +56,9 @@ struct TerrainBufferObject
     int displacement_map{19};
     int normal_map{20};
     int texture_id{21};
+    int roughness_texture_id{-1};
+    int metallic_texture_id{-1};
+    int ao_texture_id{-1};
     int texture_normal_map{22};
     float blend_sharpness{20};
 

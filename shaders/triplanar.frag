@@ -25,6 +25,10 @@ layout(set = 3, binding = 0) uniform UniformTerrain{
     uint displacement_map;
     uint normal_map;
     uint texture_id;
+    int roughness_texture_id;
+    int metallic_texture_id;
+    int ao_texture_id;
+
     uint texture_normal_id;
     float blend_sharpness;
 
@@ -142,7 +146,7 @@ float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
     return ggx1 * ggx2;
 }
 
-vec3 pbr(vec3 normal, vec3 albedo)
+vec3 pbr(vec3 normal, vec3 albedo, float roughness, float metalness, float ao)
 {
     vec3 view_dir = normalize(world.pos - position_worldspace);
     vec3 light_dir = normalize(world.light.position - position_worldspace);
@@ -150,10 +154,6 @@ vec3 pbr(vec3 normal, vec3 albedo)
     float light_intensity = world.light.strength;
 
     vec3 H = normalize(view_dir + light_dir);
-
-    float metalness = terrain.metalness;
-    float roughness = terrain.roughness;
-    float ao = terrain.ao;
 
     // Calculate reflectance at normal incidence (F0)
     vec3 F0 = mix(vec3(0.04), albedo, metalness);    // Dielectric base reflectance is 0.04
@@ -177,8 +177,43 @@ vec3 pbr(vec3 normal, vec3 albedo)
     // Final color calculation with ambient occlusion (AO)
     vec3 ambient = ao * albedo * 0.1; // Ambient color
 
-    vec3 color = (ambient + (kD * diffuse + specular) * max(dot(normal, light_dir), 0.0) * light_color * light_intensity);
+    vec3 reflection = F * albedo * ao * 0.05;
+
+    vec3 color = (ambient + reflection + (kD * diffuse + specular) * max(dot(normal, light_dir), 0.0) * light_color * light_intensity);
     return color;
+}
+
+vec4 sampleTexture(uint texture_id, float x, float y, float z, vec3 blending, float scale)
+{
+    vec4 xaxis = texture(texSampler[texture_id], vec2(y,z)*scale);
+    vec4 yaxis = texture(texSampler[texture_id], vec2(x,z)*scale);
+    vec4 zaxis = texture(texSampler[texture_id], vec2(x,y)*scale);
+
+    return xaxis * blending.x + yaxis * blending.y + zaxis * blending.z;
+}
+
+float getRoughness(float x, float y, float z, vec3 blending, float scale)
+{
+    if (terrain.roughness_texture_id != -1){
+        return sampleTexture(terrain.roughness_texture_id, x, y, z, blending, scale).r;
+    }
+    return terrain.roughness;
+}
+
+float getMetallic(float x, float y, float z, vec3 blending, float scale)
+{
+    if (terrain.metallic_texture_id != -1){
+        return sampleTexture(terrain.metallic_texture_id, x, y, z, blending, scale).r;
+    }
+    return terrain.metalness;
+}
+
+float getAo(float x, float y, float z, vec3 blending, float scale)
+{
+    if (terrain.ao_texture_id!= -1){
+        return sampleTexture(terrain.ao_texture_id, x, y, z, blending, scale).r;
+    }
+    return terrain.ao;
 }
 
 void main()
@@ -193,13 +228,13 @@ void main()
     float y = position_worldspace.y;
     float x = position_worldspace.x;
     float z = position_worldspace.z;
-    
-    vec4 xaxis = texture(texSampler[terrain.texture_id], vec2(y,z)*scale);
-    vec4 yaxis = texture(texSampler[terrain.texture_id], vec2(x,z)*scale);
-    vec4 zaxis = texture(texSampler[terrain.texture_id], vec2(x,y)*scale);
-
     vec3 blending = getBlending(n);
-    vec4 tex = xaxis * blending.x + yaxis * blending.y + zaxis * blending.z;
+    
+    vec4 tex = sampleTexture(terrain.texture_id, x,y,z, blending, scale);
+
+    float roughness = getRoughness(x,y,z,blending,scale);
+    float metallic = getMetallic(x,y,z,blending,scale);
+    float ao = getAo(x,y,z,blending,scale);
 
     vec3 xaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(y,z)*scale).rgb-1;
     vec3 yaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(x,z)*scale).rgb-1;
@@ -210,7 +245,7 @@ void main()
     
     //vec3 result = phong(final_normal, tex.rgb);
     //vec3 result = pbr(final_normal, tex.rgb);
-    vec3 result = pbr(final_normal, tex.rgb);
+    vec3 result = pbr(final_normal, tex.rgb, roughness, metallic, ao);
 
     out_color = vec4(result, 1);
 }
