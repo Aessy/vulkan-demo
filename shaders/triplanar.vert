@@ -69,7 +69,7 @@ layout(location = 4) in vec3 in_tangent;
 layout(location = 5) in vec3 in_bitangent;
 
 layout(location = 0) out vec3 position_worldspace;
-layout(location = 1) out vec3 normal;
+layout(location = 1) out vec3 out_normal;
 layout(location = 2) out mat3 TBN;
 layout(location = 8) out vec2 uv_tex;
 layout(location = 9) out vec2 uv_normal;
@@ -91,7 +91,7 @@ void main()
     vec3 normal = in_normal;
 
     // Sample vertex normal from normal map if included
-    if ((material.material_features & NormalMap) != 0)
+    if ((material.material_features & DisplacementNormalMap) != 0)
     {
         normal = normalize(2*texture(texSampler[material.displacement_normal_map], in_normal_coord).rbg-1.0);
     }
@@ -115,7 +115,7 @@ void main()
     gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);
 
     position_worldspace = (ubo.model * vec4(pos,1)).xyz;
-    normal = (inv_trans * normal);
-    uv_tex = in_tex_coord;
+    out_normal = (inv_trans * normal);
+    uv_tex = in_normal_coord;
     uv_normal = in_normal_coord;
 }
