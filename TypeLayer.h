@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Material.h"
 #include "Model.h"
 #include <array>
 #include <vector>
@@ -25,6 +26,7 @@ enum class BufferType : int
     TerrainBufferObject,
     FogVolumeObject,
     PostProcessingDataBufferObject,
+    MaterialShaderData,
     NoBuffer,
 };
 

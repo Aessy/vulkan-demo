@@ -210,6 +210,9 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
             case lt::BufferType::PostProcessingDataBufferObject:
                 model_types.push_back(createModel<PostProcessingBufferObject, buffer_types::PostProcessingData>(core, buffer.binding.type, program, index, buffer.size));
                 break;
+            case lt::BufferType::MaterialShaderData:
+                model_types.push_back(createModel<MaterialShaderData, buffer_types::MaterialShaderData>(core, buffer.binding.type, program, index, buffer.size));
+                break;
             case lt::BufferType::NoBuffer:
                 if (buffer.binding.type == lt::BindingType::TextureSampler)
                 {

@@ -16,6 +16,7 @@
 #include "TypeLayer.h"
 #include "Model.h"
 #include "Textures.h"
+#include "Material.h"
 
 #include <vector>
 #include <variant>
@@ -45,7 +46,10 @@ struct FogVolume : BufferBase
 struct PostProcessingData : BufferBase
 {};
 
-using ModelType = std::variant<Model, World, Terrain, FogVolume, PostProcessingData>;
+struct MaterialShaderData : BufferBase
+{};
+
+using ModelType = std::variant<Model, World, Terrain, FogVolume, PostProcessingData, MaterialShaderData>;
 
 };
 

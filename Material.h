@@ -3,11 +3,6 @@
 #include <string>
 #include <array>
 
-enum ReflectionShadeMode : int
-{
-    Phong = 0,
-    PBR   = 1
-};
 
 struct PhongParameters
 {
@@ -34,16 +29,36 @@ struct Lod
     float lod_scale_factor = 0.5f;
 };
 
-
-struct Material
+// Specifies what maps are available and should be used.
+enum MaterialFeatureFlag : int
 {
-    std::array<char, 30> name{{}};
+    DisplacementMap = 1 << 0,
+    DisplacementNormalMap = 1 << 1,
+    RoughnessMap = 1 << 2,
+    MetalnessMap = 1 << 3,
+    AoMap = 1 << 4,
+    AlbedoMap = 1 << 5,
+    NormalMap = 1 << 6,
+};
 
-    // Should be set to the shader for landscape
-    int program{};
+enum SamplingMode : int
+{
+    TriplanarSampling = 0,
+    UvSampling = 1
+};
 
+enum ReflectionShadeMode : int
+{
+    Phong = 0,
+    Pbr = 1
+};
+
+struct MaterialShaderData
+{
     // Landscape rendering supports phong and PBR
-    ReflectionShadeMode mode;
+    int material_features;
+    int sampling_mode;
+    int shade_mode;
 
     // Displacement map and normal for the terrain
     int displacement_map_texture;
@@ -68,11 +83,16 @@ struct Material
     float roughness;
     float metallic;
     float ao;
+};
 
-    bool has_rougness_tex = false;
-    bool has_metallic_tex = false;
-    bool has_ao_tex = false;
-    bool has_displacement = false;
+struct Material
+{
+    std::array<char, 30> name{{}};
+
+    // Should be set to the shader for landscape
+    int program{};
+
+    MaterialShaderData shader_data;
 };
 
 struct StandardMaterial

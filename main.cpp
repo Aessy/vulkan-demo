@@ -340,51 +340,6 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
     }
 }
 
-layer_types::Program createComputeFogProgram(vk::ImageView fog_view)
-{
-    layer_types::Program program_desc;
-    program_desc.compute_shader = {("./shaders/fog.spv")};
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"binding image"}},
-        .type = layer_types::BufferType::NoBuffer,
-        .size = 1,
-        .binding = layer_types::Binding {
-            .name = {{"binding image"}},
-            .binding = 0,
-            .type = layer_types::BindingType::StorageImage,
-            .size = 1,
-            .compute = true,
-            .storage_image = fog_view
-        }
-    }});
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"texture_buffer"}},
-        .type = layer_types::BufferType::NoBuffer,
-        .size = 1,
-        .binding = layer_types::Binding {
-            .name = {{"binding textures"}},
-            .binding = 0,
-            .type = layer_types::BindingType::TextureSampler,
-            .size = 1,
-            .compute = true
-        }
-    }});
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"test_program"}},
-        .type = layer_types::BufferType::WorldBufferObject,
-        .size = 1,
-        .binding = layer_types::Binding {
-            .name = {{"binding world"}},
-            .binding = 0,
-            .type = layer_types::BindingType::Uniform,
-            .size = 1,
-            .compute = true
-        }
-    }});
-
-    return program_desc;
-}
-
 static layer_types::Program createTriplanarLandscapeProgram()
 {
     layer_types::Program program_desc;
@@ -432,7 +387,7 @@ static layer_types::Program createTriplanarLandscapeProgram()
     }});
     program_desc.buffers.push_back({layer_types::Buffer{
         .name = {{"terrain_buffer"}},
-        .type = layer_types::BufferType::TerrainBufferObject,
+        .type = layer_types::BufferType::MaterialShaderData,
         .size = 1,
         .binding = layer_types::Binding {
             .name = {{"binding model"}},
@@ -448,81 +403,15 @@ static layer_types::Program createTriplanarLandscapeProgram()
     return program_desc;
 }
 
-layer_types::Program createTerrainProgram()
-{
-    layer_types::Program program_desc;
-    program_desc.fragment_shader = {{"./shaders/terrain_frag.spv"}};
-    program_desc.vertex_shader= {{"./shaders/terrain_vert.spv"}};
-    //program_desc.tesselation_ctrl_shader = {{"./shaders/terrain_tess_ctrl.spv"}};
-    //program_desc.tesselation_evaluation_shader= {{"./shaders/terrain_tess_evu.spv"}};
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"texture_buffer"}},
-        .type = layer_types::BufferType::NoBuffer,
-        .size = 1,
-        .binding = layer_types::Binding {
-            .name = {{"binding textures"}},
-            .binding = 0,
-            .type = layer_types::BindingType::TextureSampler,
-            .size = 32,
-            .vertex = true,
-            .fragment = true,
-            .tess_evu = false,
-        }
-    }});
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"world_buffer"}},
-        .type = layer_types::BufferType::WorldBufferObject,
-        .size = 1,
-        .binding = layer_types::Binding {
-            .name = {{"binding world"}},
-            .binding = 0,
-            .type = layer_types::BindingType::Uniform,
-            .size = 1,
-            .vertex = true,
-            .fragment = true,
-            .tess_ctrl = false,
-            .tess_evu = false
-        }
-    }});
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"model_buffer"}},
-        .type = layer_types::BufferType::ModelBufferObject,
-        .size = 10,
-        .binding = layer_types::Binding {
-            .name = {{"binding model"}},
-            .binding = 0,
-            .type = layer_types::BindingType::Storage,
-            .size = 1,
-            .vertex = true,
-            .fragment = true
-        }
-    }});
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"terrain_buffer"}},
-        .type = layer_types::BufferType::TerrainBufferObject,
-        .size = 1,
-        .binding = layer_types::Binding {
-            .name = {{"binding model"}},
-            .binding = 0,
-            .type = layer_types::BindingType::Uniform,
-            .size = 1,
-            .vertex = true,
-            .fragment = true,
-            .tess_evu = false
-        }
-    }});
-
-    return program_desc;
-}
-
 int main()
 {
     srand (time(NULL));
     RenderingState core = createVulkanRenderState();
 
     Textures textures = createTextures(core,
-        { {"./textures/canyon2_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/canyon2_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+        { 
+          //{"./textures/canyon2_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          //{"./textures/canyon2_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/terrain.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/terrain_norm_high.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/terrain_norm_low.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
@@ -535,23 +424,23 @@ int main()
           {"./textures/forest_diff.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/dune3_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/dune3_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/cylinder.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          //{"./textures/cylinder.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_COL_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_NRM_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/GroundSand005_AO_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/brown_mud_03_diff_1k.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/brown_mud_03_nor_gl_1k.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
 
-          {"./textures/terrain/canyon/canyon_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/terrain/canyon/canyon_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          //{"./textures/terrain/canyon/canyon_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
+          //{"./textures/terrain/canyon/canyon_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
 
-          {"./textures/canyon/Canyon_Mud_Wall_wdtbbji_4K_BaseColor.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/canyon/Canyon_Mud_Wall_wdtbbji_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          //{"./textures/canyon/Canyon_Mud_Wall_wdtbbji_4K_BaseColor.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          //{"./textures/canyon/Canyon_Mud_Wall_wdtbbji_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
 
-          {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_BaseColor.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_Roughness.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_AO.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          //{"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_BaseColor.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          //{"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          //{"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_Roughness.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          //{"./textures/canyon/Canyon_Sandstone_Rock_vimldgeg_4K_AO.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
 
           {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_BaseColor.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb},
           {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
@@ -559,110 +448,50 @@ int main()
           {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_AO.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
         });
 
-    layer_types::Program program_desc;
-    program_desc.fragment_shader = {{"./shaders/frag.spv"}};
-    program_desc.vertex_shader= {{"./shaders/vert.spv"}};
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"texture_buffer"}},
-        .type = layer_types::BufferType::NoBuffer,
-        .size = 1,
-        .binding = layer_types::Binding {
-            .name = {{"binding textures"}},
-            .binding = 0,
-            .type = layer_types::BindingType::TextureSampler,
-            .size = 32,
-            .vertex = true,
-            .fragment = true
-        }
-    }});
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"test_program"}},
-        .type = layer_types::BufferType::WorldBufferObject,
-        .size = 1,
-        .binding = layer_types::Binding {
-            .name = {{"binding world"}},
-            .binding = 0,
-            .type = layer_types::BindingType::Uniform,
-            .size = 1,
-            .vertex = true,
-            .fragment = true
-        }
-    }});
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"test_program"}},
-        .type = layer_types::BufferType::ModelBufferObject,
-        .size = 500,
-        .binding = layer_types::Binding {
-            .name = {{"binding model"}},
-            .binding = 0,
-            .type = layer_types::BindingType::Storage,
-            .size = 1,
-            .vertex = true,
-            .fragment = true
-        }
-    }});
-
     Models models;
     // int landscape_fbx = models.loadModelAssimp("./models/canyon_low_res.fbx");
-    int sphere_fbx = models.loadModelAssimp("./models/sphere.fbx");
+    //int sphere_fbx = models.loadModelAssimp("./models/sphere.fbx");
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
 
-    auto height_map_1_model = createFlatGround(2047, 512, 4);
+    auto height_map_1_model = createFlatGround(1023, 512, 4);
     models.models.insert({height_map_1_model.id, height_map_1_model});
     //auto height_map_1_model = createFlatGround(2047, 500, 4);
 
     //models.models.insert({height_map_1_model.id, height_map_1_model});
 
-    auto terrain_program_fill = createTerrainProgram();
-    auto terrain_program_wireframe = terrain_program_fill;
-    terrain_program_wireframe.polygon_mode = layer_types::PolygonMode::Line;
+    //auto terrain_program_wireframe = terrain_program_fill;
+    //terrain_program_wireframe.polygon_mode = layer_types::PolygonMode::Line;
 
     auto terrain_program_triplanar = createTriplanarLandscapeProgram();
 
     std::vector<std::unique_ptr<Program>> programs;
-    programs.push_back(createProgram(program_desc, core, textures, core.render_pass, "Standard Shader"));
-    programs.push_back(createProgram(terrain_program_fill, core, textures, core.render_pass, "Landscape model"));
-    programs.push_back(createProgram(terrain_program_wireframe, core, textures, core.render_pass, "Landscape wireframe"));
     programs.push_back(createProgram(terrain_program_triplanar, core, textures, core.render_pass, "Landscape triplanar"));
-
-    Material base_material {
-        .name = {"Ground"},
-        .program = 0,
-        .mode = ReflectionShadeMode::PBR,
-        .shininess = 0.5f,
-        .specular_strength = 0.5f,
-        .base_color_texture = 23,
-        .base_color_normal_texture = 24,
-        .roughness_texture = 25,
-        .ao_texture = 26,
-        .roughness = 0,
-        .metallic = 0,
-        .ao = 0,
-        .has_rougness_tex = true,
-        .has_metallic_tex = false,
-        .has_ao_tex = true,
-        .has_displacement = false
-    };
 
     Material landscape_material{
         .name = {"Landscape"},
-        .program = 3,
-        .mode = ReflectionShadeMode::PBR,
-        .displacement_map_texture = 12,
-        .normal_map_texture = 13,
-        .displacement_y = 28.16f,
-        .base_color_texture = 28,
-        .base_color_normal_texture = 29,
-        .roughness_texture = 30,
-        .ao_texture = 31,
-        .roughness = 0,
-        .metallic = 0,
-        .ao = 0,
-        .has_rougness_tex = true,
-        .has_metallic_tex = false,
-        .has_ao_tex = true,
-        .has_displacement = true
+        .program = 0,
+        .shader_data = {
+            .material_features =  MaterialFeatureFlag::DisplacementMap
+                                | MaterialFeatureFlag::DisplacementNormalMap
+                                | MaterialFeatureFlag::RoughnessMap
+                                | MaterialFeatureFlag::AoMap
+                                | MaterialFeatureFlag::AlbedoMap
+                                | MaterialFeatureFlag::NormalMap,
+            .sampling_mode = SamplingMode::TriplanarSampling,
+            .shade_mode = ReflectionShadeMode::Pbr,
+            .displacement_map_texture = 10,
+            .normal_map_texture = 11,
+            .displacement_y = 28.16f,
+            .base_color_texture = 17,
+            .base_color_normal_texture = 18,
+            .roughness_texture = 19,
+            .ao_texture = 20,
+            .scaling_factor = 0.1f,
+            .roughness = 0,
+            .metallic = 0,
+            .ao = 0,
+        }
     };
 
     Camera camera;
@@ -680,7 +509,7 @@ int main()
     auto landscape_flat_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
     auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
     //auto landscape_mesh_id = meshes.loadMesh(core, models.models.at(landscape_fbx), "landscape fbx");
-    auto sphere_id = meshes.loadMesh(core, models.models.at(sphere_fbx), "sphere fbx");
+    //auto sphere_id = meshes.loadMesh(core, models.models.at(sphere_fbx), "sphere fbx");
 
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
@@ -699,13 +528,13 @@ int main()
     //auto object = createObject(meshes.meshes.at(mesh_id));
     //object.material = 1;
 
-    auto fbx = createObject(meshes.meshes.at(sphere_id));
-    fbx.material = base_material;
+    //auto fbx = createObject(meshes.meshes.at(sphere_id));
+    //fbx.material = base_material;
 
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
     landscape_flat.material = landscape_material;
 
-    addObject(scene, fbx);
+    //addObject(scene, fbx);
     addObject(scene, landscape_flat);
 
     Application application{

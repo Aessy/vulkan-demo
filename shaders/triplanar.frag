@@ -5,6 +5,20 @@
 
 #define PI 3.1415926535897932384626433832795
 
+const int DisplacementMap = 1 << 0;
+const int DisplacementNormalMap = 1 << 1;
+const int RoughnessMap = 1 << 2;
+const int MetalnessMap = 1 << 3;
+const int AoMap = 1 << 4;
+const int AlbedoMap = 1 << 5;
+const int NormalMap = 1 << 6;
+
+int TriplanarSampling = 0;
+int UvSampling = 1;
+
+int Phong = 0;
+int Pbr = 1;
+
 layout(set = 0, binding = 0) uniform sampler2D texSampler[];
 
 struct LightBufferData
@@ -20,31 +34,25 @@ layout(set = 1, binding = 0) uniform UniformWorld{
     LightBufferData light;
 } world;
 
-layout(set = 3, binding = 0) uniform UniformTerrain{
-    float max_height;
-    uint displacement_map;
-    uint normal_map;
-    uint texture_id;
-    int roughness_texture_id;
-    int metallic_texture_id;
-    int ao_texture_id;
-
-    uint texture_normal_id;
-    float blend_sharpness;
-
+layout(set = 3, binding = 0) uniform MaterialData{
+    int material_features;
+    int sampling_mode;
+    int shade_mode;
+    int displacement_map;
+    int displacement_normal_map;
+    float displacement_y;
     float shininess;
     float specular_strength;
-
-    float metalness;
-    float roughness;
-    float ao;
-
+    int base_color_texture;
+    int base_color_normal_texture;
+    int roughness_texture;
+    int metalness_texture;
+    int ao_texture;
     float texture_scale;
-    
-    float lod_min;
-    float lod_max;
-    float weight;
-} terrain;
+    float roughness;
+    float metalness;
+    float ao;
+} material;
 
 struct ObjectData
 {
@@ -57,23 +65,27 @@ layout(std140,set = 2, binding = 0) readonly buffer ObjectBuffer{
 } ubo2;
 
 layout(location = 0) in vec3 position_worldspace;
-layout(location = 1) in vec3 normal;
+layout(location = 1) in vec3 in_normal;
+layout(location = 2) in mat3 in_TBN;
+layout(location = 8) in vec2 in_uv_tex;
+layout(location = 9) in vec2 in_uv_normal;
+
 layout(location = 0) out vec4 out_color;
 
-float findLod()
+int featureEnabled(int feature)
 {
-    float distance = length(world.pos - position_worldspace);
+    if ((feature & material.material_features) != 0)
+    {
+        return 1;
+    }
 
-    float n = smoothstep(0, terrain.weight, distance);
-    float diff = terrain.lod_max-terrain.lod_min;
-
-    return (n*diff)+terrain.lod_min;
+    return 0;
 }
 
 vec3 getBlending(vec3 world_normal)
 {
     vec3 blending = abs(world_normal);
-    blending = pow(blending, vec3(terrain.blend_sharpness));
+    blending = pow(blending, vec3(20));
     blending = normalize(max(blending, 0.00001));
     float b = (blending.x + blending.y + blending.z);
     blending /= vec3(b,b,b);
@@ -88,8 +100,8 @@ vec3 phong(vec3 normal, vec3 color)
 
     vec3 light_dir = normalize(world.light.position - position_worldspace);
     vec3 view_dir = normalize(world.pos - position_worldspace);
-    float shininess = terrain.shininess;
-    float specular_strength = terrain.specular_strength;
+    float shininess = material.shininess;
+    float specular_strength = material.specular_strength;
 
     // Ambient
     float ambient_strength = 0.1f;
@@ -194,58 +206,120 @@ vec4 sampleTexture(uint texture_id, float x, float y, float z, vec3 blending, fl
 
 float getRoughness(float x, float y, float z, vec3 blending, float scale)
 {
-    if (terrain.roughness_texture_id != -1){
-        return sampleTexture(terrain.roughness_texture_id, x, y, z, blending, scale).r;
+    if (featureEnabled(RoughnessMap) == 1)
+    {
+        return sampleTexture(material.roughness_texture, x, y, z, blending, scale).r;
     }
-    return terrain.roughness;
+    return material.roughness;
 }
 
 float getMetallic(float x, float y, float z, vec3 blending, float scale)
 {
-    if (terrain.metallic_texture_id != -1){
-        return sampleTexture(terrain.metallic_texture_id, x, y, z, blending, scale).r;
+    if (featureEnabled(MetalnessMap) == 1)
+    {
+        return sampleTexture(material.metalness_texture, x, y, z, blending, scale).r;
     }
-    return terrain.metalness;
+    return material.metalness;
 }
 
 float getAo(float x, float y, float z, vec3 blending, float scale)
 {
-    if (terrain.ao_texture_id!= -1){
-        return sampleTexture(terrain.ao_texture_id, x, y, z, blending, scale).r;
+    if (featureEnabled(AoMap) == 1)
+    {
+        return sampleTexture(material.ao_texture, x, y, z, blending, scale).r;
     }
-    return terrain.ao;
+    return material.ao;
+}
+
+vec3 uvSampling()
+{
+    float scale = material.texture_scale;
+    vec3 albedo = vec3(1,0,0);
+    vec3 normal = vec3(0,1,0);
+
+    if (featureEnabled(AlbedoMap) == 1)
+    {
+        albedo = texture(texSampler[material.base_color_texture], in_uv_tex*scale).rgb;
+    }
+    if (featureEnabled(NormalMap) == 1)
+    {
+        normal = normalize(2*texture(texSampler[material.base_color_normal_texture], in_uv_normal*scale).rgb-1.0f);
+    }
+
+    // Put texture normal into TBN space. It is ready for use.
+    normal = normalize(in_TBN * normal);
+
+    // Shade with phong algorithm
+    if (material.shade_mode == Phong)
+    {
+        return phong(normal, albedo);
+    }
+    // Shade with PBR algorithm
+    else if (material.shade_mode == Pbr)
+    {
+        float roughness = material.roughness;
+        float metalness = material.metalness;
+        float ao = material.ao;
+    
+        if (featureEnabled(RoughnessMap) == 1)
+        {
+            roughness = texture(texSampler[material.roughness_texture], in_uv_tex*scale).r;
+        }
+        if (featureEnabled(MetalnessMap) == 1)
+        {
+            metalness = texture(texSampler[material.metalness_texture], in_uv_tex*scale).r;
+        }
+        if (featureEnabled(AoMap) == 1)
+        {
+            ao = texture(texSampler[material.ao_texture], in_uv_tex*scale).r;
+        }
+
+        return pbr(normal, albedo, roughness, metalness, ao);
+    }
+}
+
+vec3 triplanarSampling()
+{
+    float x = position_worldspace.x;
+    float y = position_worldspace.y;
+    float z = position_worldspace.z;
+    float scale = material.texture_scale;
+
+    vec3 normal = normalize(in_normal);
+    vec3 blending = getBlending(normal);
+
+    vec3 albedo = sampleTexture(material.base_color_texture, x,y,z, blending, scale).rgb;
+
+    vec3 final_normal = normal;
+    if (featureEnabled(NormalMap) == 1)
+    {
+        // TODO: Blend texture normal
+    }
+    if (material.shade_mode == Phong)
+    {
+        return phong(final_normal, albedo);
+    }
+    else if (material.shade_mode == Pbr)
+    {
+        float roughness = getRoughness(x,y,z,blending,scale);
+        float metalness = getMetallic(x,y,z,blending,scale);
+        float ao        = getAo(x,y,z,blending,scale);
+
+        return pbr(normal, albedo, roughness, metalness, ao);
+    }
+
+    return vec3(0,0,0);
 }
 
 void main()
 {
-    vec3 light_color = vec3(1,1,1);
 
-    float scale = terrain.texture_scale;
-
-    float lod = findLod();
-    vec3 n = normalize(normal);
-
-    float y = position_worldspace.y;
-    float x = position_worldspace.x;
-    float z = position_worldspace.z;
-    vec3 blending = getBlending(n);
-    
-    vec4 tex = sampleTexture(terrain.texture_id, x,y,z, blending, scale);
-
-    float roughness = getRoughness(x,y,z,blending,scale);
-    float metallic = getMetallic(x,y,z,blending,scale);
-    float ao = getAo(x,y,z,blending,scale);
-
-    vec3 xaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(y,z)*scale).rgb-1;
-    vec3 yaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(x,z)*scale).rgb-1;
-    vec3 zaxis_normal = 2*texture(texSampler[terrain.texture_normal_id], vec2(x,y)*scale).rgb-1;
-    
-    vec3 normal_tex =  normalize(xaxis_normal * blending.x + yaxis_normal * blending.y + zaxis_normal * blending.z).xyz;
-    vec3 final_normal = normalize(normal + normal_tex);
-    
-    //vec3 result = phong(final_normal, tex.rgb);
-    //vec3 result = pbr(final_normal, tex.rgb);
-    vec3 result = pbr(final_normal, tex.rgb, roughness, metallic, ao);
-
-    out_color = vec4(result, 1);
+    if (material.sampling_mode == UvSampling)
+    {
+        out_color = vec4(uvSampling(), 1);
+    }
+    else if (material.sampling_mode == TriplanarSampling)
+    {
+        out_color = vec4(triplanarSampling(), 1);
+    }
 }

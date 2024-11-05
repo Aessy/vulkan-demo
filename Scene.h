@@ -89,55 +89,5 @@ inline ModelBufferObject createModelBufferObject(Object const& object)
     auto translation = glm::translate(glm::mat4(1.0f), object.position);
     auto scale = glm::scale(glm::mat4(1.0f), glm::vec3(object.scale, object.scale, object.scale));
     model_buffer.model = translation * rotation * scale;
-
-    auto& material = object.material;
-
-    model_buffer.texture_index = material.base_color_texture;
-    model_buffer.shading_style = material.mode;
-    if (material.mode == ReflectionShadeMode::Phong)
-    {
-        model_buffer.shininess = material.shininess;
-        model_buffer.specular_strength = material.specular_strength;
-    }
-    else if (material.mode == ReflectionShadeMode::PBR)
-    {
-        model_buffer.metallness = material.metallic;
-        model_buffer.roughness = material.roughness;
-        model_buffer.ao = material.ao;
-        model_buffer.texture_normal = material.base_color_normal_texture;
-        model_buffer.texture_roughness = material.roughness_texture;
-        model_buffer.texture_ao = material.ao_texture;
-    }
-
     return model_buffer;
-}
-
-inline TerrainBufferObject createTerrainBufferObject(Object const& object)
-{
-    auto& material = object.material;
-    TerrainBufferObject tbo{};
-
-    tbo.displacement_map = material.displacement_map_texture,
-    tbo.normal_map = material.normal_map_texture;
-    tbo.max_height = material.displacement_y;
-
-    tbo.texture_id = material.base_color_texture;
-    tbo.texture_normal_map = material.base_color_texture;
-    tbo.metalness = material.metallic;
-    tbo.roughness = material.roughness;
-    tbo.ao = material.ao;
-
-    if (material.has_rougness_tex) {
-        tbo.roughness_texture_id = material.roughness_texture;
-    }
-    if (material.has_metallic_tex) {
-        tbo.metallic_texture_id = material.metallic_texture;
-    }
-    if (material.has_ao_tex) {
-        tbo.ao_texture_id = material.ao_texture;
-    }
-
-    tbo.texture_scale = material.scaling_factor;
-
-    return tbo;
 }

@@ -2,6 +2,20 @@
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_debug_printf : enable
 
+const int DisplacementMap = 1 << 0;
+const int DisplacementNormalMap = 1 << 1;
+const int RoughnessMap = 1 << 2;
+const int MetalnessMap = 1 << 3;
+const int AoMap = 1 << 4;
+const int AlbedoMap = 1 << 5;
+const int NormalMap = 1 << 6;
+
+int TriplanarSampling = 0;
+int UvSampling = 1;
+
+int Phong = 0;
+int Pbr = 1;
+
 layout(set = 0, binding = 0) uniform sampler2D texSampler[];
 
 struct LightBufferData
@@ -27,17 +41,25 @@ layout(std140,set = 2, binding = 0) readonly buffer ObjectBuffer{
     ObjectData objects[];
 } ubo2;
 
-layout(set = 3, binding = 0) uniform UniformTerrain{
-    float max_height;
-    uint displacement_map;
-    uint normal_map;
-    uint texture_id;
-    float blend_sharpness;
+layout(set = 3, binding = 0) uniform MaterialData{
+    int material_features;
+    int sampling_mode;
+    int shade_mode;
+    int displacement_map;
+    int displacement_normal_map;
+    float displacement_y;
+    float shininess;
+    float specular_strength;
+    int base_color_texture;
+    int base_color_normal_texture;
+    int roughness_texture;
+    int metallic_texture;
+    int ao_texture;
     float texture_scale;
-    float lod_min;
-    float lod_max;
-    float weight;
-} terrain;
+    float roughness;
+    float metallic;
+    float ao;
+} material;
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec2 in_tex_coord;
@@ -48,6 +70,9 @@ layout(location = 5) in vec3 in_bitangent;
 
 layout(location = 0) out vec3 position_worldspace;
 layout(location = 1) out vec3 normal;
+layout(location = 2) out mat3 TBN;
+layout(location = 8) out vec2 uv_tex;
+layout(location = 9) out vec2 uv_normal;
 
 void main()
 {
@@ -55,16 +80,42 @@ void main()
     
     vec3 pos = inPosition;
     
-    vec4 displace = texture(texSampler[terrain.displacement_map], in_normal_coord);
-    vec3 normal_sampled = normalize(2*texture(texSampler[terrain.normal_map], in_normal_coord).rbg-1.0);
+    // Displace the vertex if a vertex map is included
+    if ((material.material_features & DisplacementMap) != 0)
+    {
+        vec4 displace = texture(texSampler[material.displacement_map], in_normal_coord);
+        float displacement = displace.r * material.displacement_y;
+        pos.y = displacement;
+    }
 
-    float displacement = displace.r * terrain.max_height;
+    vec3 normal = in_normal;
 
-    // pos = pos + normal_sampled * displacement;
-    pos.y = displace.r * terrain.max_height;
+    // Sample vertex normal from normal map if included
+    if ((material.material_features & NormalMap) != 0)
+    {
+        normal = normalize(2*texture(texSampler[material.displacement_normal_map], in_normal_coord).rbg-1.0);
+    }
+
+    // The inverse transpose model matrix is used for putting the vertex normal into model space
+    mat3 inv_trans = inverse(transpose(mat3(ubo.model)));
+
+    // For UV sampling we require the tangent and bitangent to be present and generate the TBN output
+    if (material.sampling_mode == UvSampling)
+    {
+        vec3 T = normalize(vec3(ubo.model * vec4(in_tangent, 0)));
+        vec3 B = normalize(vec3(ubo.model * vec4(in_bitangent, 0)));
+        vec3 N = normalize(inv_trans * in_normal);
+        TBN = mat3(T, B, N);
+    }
+    else
+    {
+        TBN = mat3(1.0f);
+    }
 
     gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);
 
     position_worldspace = (ubo.model * vec4(pos,1)).xyz;
-    normal = normalize(vec3(ubo.model * vec4(normal_sampled, 0.0)));
+    normal = (inv_trans * normal);
+    uv_tex = in_tex_coord;
+    uv_normal = in_normal_coord;
 }

@@ -36,13 +36,12 @@ inline void renderScene(vk::CommandBuffer& cmd_buffer, Scene const& scene, std::
                     writeBuffer(model->buffers[frame],ubo,i);
                 }
             }
-            else if (auto* model = std::get_if<buffer_types::Terrain>(&buffer))
+            else if (auto* material= std::get_if<buffer_types::MaterialShaderData>(&buffer))
             {
                 for (size_t i = 0; i < o.second.size(); ++i)
                 {
                     auto &obj = scene.objs[o.second[i]];
-                    auto ubo = createTerrainBufferObject(obj);
-                    writeBuffer(model->buffers[frame],ubo);
+                    writeBuffer(material->buffers[frame],obj.material.shader_data);
                 }
             }
         }
