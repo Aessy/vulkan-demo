@@ -478,14 +478,14 @@ int main()
                                 | MaterialFeatureFlag::AlbedoMap
                                 | MaterialFeatureFlag::NormalMap,
             .sampling_mode = SamplingMode::TriplanarSampling,
-            .shade_mode = ReflectionShadeMode::Phong,
+            .shade_mode = ReflectionShadeMode::Pbr,
             .displacement_map_texture = 10,
             .normal_map_texture = 11,
             .base_color_texture = 17,
             .base_color_normal_texture = 18,
             .roughness_texture = 19,
             .ao_texture = 20,
-            .scaling_factor = 0.1f,
+            .scaling_factor = 10.0f,
             .roughness = 0,
             .metallic = 0,
             .ao = 0,
@@ -543,7 +543,7 @@ int main()
     scene.camera = camera;
     scene.light.position = glm::vec3(12.8,56,-10);
     scene.light.light_color = glm::vec3(1,1,1);
-    scene.light.strength = 50.0f;
+    scene.light.strength = 5.0f;
     
     // Sun light comes from directly down.
     scene.light.sun_dir = glm::vec3(0,1,0);

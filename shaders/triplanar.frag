@@ -199,38 +199,38 @@ vec3 pbr(vec3 normal, vec3 albedo, float roughness, float metalness, float ao)
     return color;
 }
 
-vec4 sampleTexture(uint texture_id, float x, float y, float z, vec3 blending, float scale)
+vec4 sampleTexture(uint texture_id, vec2 uvX, vec2 uvY, vec2 uvZ, vec3 blending, float scale)
 {
-    vec4 xaxis = texture(texSampler[texture_id], vec2(y,z)*scale);
-    vec4 yaxis = texture(texSampler[texture_id], vec2(x,z)*scale);
-    vec4 zaxis = texture(texSampler[texture_id], vec2(x,y)*scale);
+    vec4 xaxis = texture(texSampler[texture_id], uvX*scale);
+    vec4 yaxis = texture(texSampler[texture_id], uvY*scale);
+    vec4 zaxis = texture(texSampler[texture_id], uvZ*scale);
 
     return xaxis * blending.x + yaxis * blending.y + zaxis * blending.z;
 }
 
-float getRoughness(float x, float y, float z, vec3 blending, float scale)
+float getRoughness(vec2 uvX, vec2 uvY, vec2 uvZ, vec3 blending, float scale)
 {
     if (featureEnabled(RoughnessMap) == 1)
     {
-        return sampleTexture(material.roughness_texture, x, y, z, blending, scale).r;
+        return sampleTexture(material.roughness_texture, uvX, uvY, uvZ, blending, scale).r;
     }
     return material.roughness;
 }
 
-float getMetallic(float x, float y, float z, vec3 blending, float scale)
+float getMetalness(vec2 uvX, vec2 uvY, vec2 uvZ, vec3 blending, float scale)
 {
     if (featureEnabled(MetalnessMap) == 1)
     {
-        return sampleTexture(material.metalness_texture, x, y, z, blending, scale).r;
+        return sampleTexture(material.metalness_texture, uvX, uvY, uvZ, blending, scale).r;
     }
     return material.metalness;
 }
 
-float getAo(float x, float y, float z, vec3 blending, float scale)
+float getAo(vec2 uvX, vec2 uvY, vec2 uvZ, vec3 blending, float scale)
 {
     if (featureEnabled(AoMap) == 1)
     {
-        return sampleTexture(material.ao_texture, x, y, z, blending, scale).r;
+        return sampleTexture(material.ao_texture, uvX, uvY, uvZ, blending, scale).r;
     }
     return material.ao;
 }
@@ -289,15 +289,31 @@ vec3 triplanarSampling()
     float z = position_worldspace.z;
     float scale = material.texture_scale;
 
+    vec2 uvX = vec2(z,y);
+    vec2 uvY = vec2(x,z);
+    vec2 uvZ = vec2(x,y);
     vec3 normal = normalize(in_normal);
     vec3 blending = getBlending(normal);
 
-    vec3 albedo = sampleTexture(material.base_color_texture, x,y,z, blending, scale).rgb;
+    vec3 albedo = sampleTexture(material.base_color_texture, uvX,uvY,uvZ, blending, scale).rgb;
 
     vec3 final_normal = normal;
     if (featureEnabled(NormalMap) == 1)
     {
-        // TODO: Blend texture normal
+        // UDN Blend
+        vec4 xaxis = texture(texSampler[material.base_color_normal_texture], uvX*scale);
+        vec4 yaxis = texture(texSampler[material.base_color_normal_texture], uvY*scale);
+        vec4 zaxis = texture(texSampler[material.base_color_normal_texture], uvZ*scale);
+
+        vec3 normal_x = vec3(xaxis.xy + final_normal.zy, final_normal.x);
+        vec3 normal_y = vec3(yaxis.xy + final_normal.xz, final_normal.y);
+        vec3 normal_z = vec3(zaxis.xy + final_normal.xy, final_normal.z);
+
+        final_normal = normalize(
+            normal_x.zyx * blending.x +
+            normal_y.xzy * blending.y +
+            normal_z.xyz * blending.z
+        );
     }
     if (material.shade_mode == Phong)
     {
@@ -305,11 +321,11 @@ vec3 triplanarSampling()
     }
     else if (material.shade_mode == Pbr)
     {
-        float roughness = getRoughness(x,y,z,blending,scale);
-        float metalness = getMetallic(x,y,z,blending,scale);
-        float ao        = getAo(x,y,z,blending,scale);
+        float roughness = getRoughness(uvX,uvY,uvZ,blending,scale);
+        float metalness = getMetalness(uvX,uvY,uvZ,blending,scale);
+        float ao        = getAo(uvX,uvY,uvY,blending,scale);
 
-        return pbr(normal, albedo, roughness, metalness, ao);
+        return pbr(final_normal, albedo, roughness, metalness, ao);
     }
 
     return vec3(0,0,0);
