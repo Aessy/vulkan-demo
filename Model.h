@@ -21,6 +21,7 @@ struct LightBufferObject
 {
     alignas(16) glm::vec3 position;
     alignas(16) glm::vec3 light_color;
+    alignas(16) glm::vec3 sun_dir;
     float strength;
 };
 

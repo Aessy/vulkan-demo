@@ -66,8 +66,8 @@ struct MaterialShaderData
     float displacement_y{0};
 
     // Shininess and specular reflection 0-1 for phong shading
-    float shininess;
-    float specular_strength;
+    float shininess{2};
+    float specular_strength{0.5};
 
     // Texture maps
     int base_color_texture;

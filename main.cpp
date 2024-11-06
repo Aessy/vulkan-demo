@@ -450,7 +450,7 @@ int main()
 
     Models models;
     // int landscape_fbx = models.loadModelAssimp("./models/canyon_low_res.fbx");
-    //int sphere_fbx = models.loadModelAssimp("./models/sphere.fbx");
+    int sphere_fbx = models.loadModelAssimp("./models/sphere.fbx");
     int plain_id = models.loadModel("./models/plain.obj");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
 
@@ -467,6 +467,30 @@ int main()
 
     std::vector<std::unique_ptr<Program>> programs;
     programs.push_back(createProgram(terrain_program_triplanar, core, textures, core.render_pass, "Landscape triplanar"));
+
+    Material base_material{
+        .name = {"Base"},
+        .program = 0,
+        .shader_data = {
+            .material_features =  
+                                  MaterialFeatureFlag::RoughnessMap
+                                | MaterialFeatureFlag::AoMap
+                                | MaterialFeatureFlag::AlbedoMap
+                                | MaterialFeatureFlag::NormalMap,
+            .sampling_mode = SamplingMode::TriplanarSampling,
+            .shade_mode = ReflectionShadeMode::Phong,
+            .displacement_map_texture = 10,
+            .normal_map_texture = 11,
+            .base_color_texture = 17,
+            .base_color_normal_texture = 18,
+            .roughness_texture = 19,
+            .ao_texture = 20,
+            .scaling_factor = 0.1f,
+            .roughness = 0,
+            .metallic = 0,
+            .ao = 0,
+        }
+    };
 
     Material landscape_material{
         .name = {"Landscape"},
@@ -499,7 +523,7 @@ int main()
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
     //camera.pos = glm::vec3(0,300,-5);
-    camera.pos = glm::vec3(0,150,0);
+    camera.pos = glm::vec3(0,0,0);
 
     updateCameraFront(camera);
 
@@ -509,15 +533,20 @@ int main()
     auto landscape_flat_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
     auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
     //auto landscape_mesh_id = meshes.loadMesh(core, models.models.at(landscape_fbx), "landscape fbx");
-    //auto sphere_id = meshes.loadMesh(core, models.models.at(sphere_fbx), "sphere fbx");
+    auto sphere_id = meshes.loadMesh(core, models.models.at(sphere_fbx), "sphere fbx");
 
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
+
+    auto box_id = meshes.loadMesh(core, box, "box");
 
     Scene scene;
     scene.camera = camera;
     scene.light.position = glm::vec3(12.8,56,-10);
     scene.light.light_color = glm::vec3(1,1,1);
     scene.light.strength = 50.0f;
+    
+    // Sun light comes from directly down.
+    scene.light.sun_dir = glm::vec3(0,1,0);
     //scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
 
     for (int i = 0; i < programs.size(); ++i)
@@ -528,14 +557,18 @@ int main()
     //auto object = createObject(meshes.meshes.at(mesh_id));
     //object.material = 1;
 
-    //auto fbx = createObject(meshes.meshes.at(sphere_id));
-    //fbx.material = base_material;
+    auto fbx = createObject(meshes.meshes.at(sphere_id));
+    fbx.material = base_material;
 
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
     landscape_flat.material = landscape_material;
 
-    //addObject(scene, fbx);
-    addObject(scene, landscape_flat);
+    auto box_object = createObject(meshes.meshes.at(box_id));
+    box_object.material = base_material;
+
+    //addObject(scene, landscape_flat);
+    addObject(scene, fbx);
+    //addObject(scene, box_object);
 
     Application application{
         .textures = std::move(textures),

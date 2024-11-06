@@ -349,6 +349,18 @@ void showLight(LightBufferObject& light)
             light.position.y = std::sin(drag)*3000;
         }
 
+        ImGui::Text("Sun Dir");
+        ImGui::DragFloat("Pos x", &light.sun_dir.x, 0.1f, -100.0f, 100);
+        ImGui::DragFloat("Pos y", &light.sun_dir.y, 0.1f, -100.0f, 100);
+        ImGui::DragFloat("Pos z", &light.sun_dir.z, 0.1f, -100.0f, 100);
+
+        static float drag_sun = 2.4f;
+        if (ImGui::DragFloat("sun sin/cos", &drag_sun, 0.01,0,4000))
+        {
+            light.sun_dir.x = std::cos(drag_sun);
+            light.sun_dir.y = std::sin(drag_sun);
+        }
+
         ImGui::Text("Strength");
         ImGui::DragFloat("Strength", &light.strength, 1.0f, 0.0f, 1000.0f);
 
@@ -419,12 +431,15 @@ void showObject(Object& obj, Application& app)
             ImGui::InputFloat("Displacement Y", &i.displacement_y, 0.5f, 2.0f);
         }
 
+        static const std::vector<std::string> sampling_mode{"Triplanar", "UV"};
+        ComboBoxName(sampling_mode, "Sampling Mode", i.sampling_mode, [](auto& text){return text.c_str();});
+
         ComboBoxName(modes, "Shading Mode", i.shade_mode, [](auto& text){return text.c_str();});
 
         if (i.shade_mode == ReflectionShadeMode::Phong)
         {
-            ImGui::SliderFloat("Shininess", &i.shininess, 0.0f, 1.0f);
-            ImGui::SliderFloat("Specular Strength", &i.specular_strength, 0.0f, 1.0f);
+            ImGui::DragFloat("Shininess", &i.shininess, 0.5f, 2.0f, 256.0f);
+            ImGui::DragFloat("Specular Strength", &i.specular_strength, 0.01f, 0.0f, 1.0f);
         }
         if (i.shade_mode == ReflectionShadeMode::Pbr)
         {

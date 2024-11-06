@@ -22,6 +22,7 @@ struct LightBufferData
 {
     vec3 position;
     vec3 light_color;
+    vec3 sun_dir;
     float strength;
 };
 layout(set = 1, binding = 0) uniform UniformWorld{
@@ -77,7 +78,6 @@ layout(location = 9) out vec2 uv_normal;
 void main()
 {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
-    
     vec3 pos = inPosition;
     
     // Displace the vertex if a vertex map is included
@@ -113,9 +113,9 @@ void main()
     }
 
     gl_Position = world.proj * world.view * ubo.model * vec4(pos, 1.0);
-
     position_worldspace = (ubo.model * vec4(pos,1)).xyz;
+
     out_normal = (inv_trans * normal);
-    uv_tex = in_normal_coord;
-    uv_normal = in_normal_coord;
+    uv_tex = in_tex_coord;
+    uv_normal = in_tex_coord;
 }

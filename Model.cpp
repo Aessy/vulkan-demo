@@ -17,7 +17,8 @@ int Models::loadModelAssimp(std::string const& path)
 {
     Assimp::Importer importer;
     auto *scene = importer.ReadFile(path,  aiProcess_Triangulate
-                                                                        | aiProcess_CalcTangentSpace);
+                                                                 | aiProcess_CalcTangentSpace
+                                                                 | aiProcess_FlipWindingOrder);
 
     if (!scene)
     {
@@ -70,7 +71,16 @@ int Models::loadModelAssimp(std::string const& path)
             }
 
             model.vertices.push_back(vert);
-            model.indices.push_back(model.indices.size());
+            //model.indices.push_back(model.indices.size());
+        }
+
+        for (int i = 0; i < mesh->mNumFaces; ++i)
+        {
+            auto face = mesh->mFaces[i];
+            for (int index = 0; index < face.mNumIndices; ++index)
+            {
+                model.indices.push_back(face.mIndices[index]);
+            }
         }
     }
     else
@@ -174,28 +184,28 @@ Model createBox()
     };
     const std::vector<uint32_t> indices = {
         // Front
-        0, 1, 3,
-        3, 2, 0,
+        0, 2, 3,
+        3, 1, 0,
 
         // Top
-        7, 6, 4,
-        4, 5, 7,
+        7, 5, 4,
+        4, 6, 7,
 
         // Bottom
-        11, 9, 8,
-        8, 10, 11,
+        11, 10, 8,
+        8, 9, 11,
 
         // Left
-        12, 14, 15,
-        15, 13, 12,
+        12, 13, 15,
+        15, 14, 12,
 
         // Right
-        16, 17, 19,
-        19, 18, 16,
+        16, 18, 19,
+        19, 17, 16,
 
         // Back
-        20, 22, 23,
-        23, 21, 20
+        20, 21, 23,
+        23, 22, 20
     };
 
     Model model;
