@@ -451,7 +451,7 @@ int main()
     Models models;
     // int landscape_fbx = models.loadModelAssimp("./models/canyon_low_res.fbx");
     int sphere_fbx = models.loadModelAssimp("./models/sphere.fbx");
-    int plain_id = models.loadModel("./models/plain.obj");
+    int dune_id = models.loadModelAssimp("./models/dune.fbx");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
 
     auto height_map_1_model = createFlatGround(1023, 512, 4);
@@ -518,6 +518,28 @@ int main()
         }
     };
 
+    Material dune_material{
+        .name = {"Dune"},
+        .program = 0,
+        .shader_data = {
+            .material_features =  
+                                  MaterialFeatureFlag::RoughnessMap
+                                | MaterialFeatureFlag::AoMap
+                                | MaterialFeatureFlag::AlbedoMap
+                                | MaterialFeatureFlag::NormalMap,
+            .sampling_mode = SamplingMode::TriplanarSampling,
+            .shade_mode = ReflectionShadeMode::Pbr,
+            .base_color_texture = 17,
+            .base_color_normal_texture = 18,
+            .roughness_texture = 19,
+            .ao_texture = 20,
+            .scaling_factor = 0.1f,
+            .roughness = 0,
+            .metallic = 0,
+            .ao = 0,
+        }
+    };
+
     Camera camera;
     camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 2048.0f);
     camera.pitch_yawn = glm::vec2(-90, 0);
@@ -534,6 +556,7 @@ int main()
     auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
     //auto landscape_mesh_id = meshes.loadMesh(core, models.models.at(landscape_fbx), "landscape fbx");
     auto sphere_id = meshes.loadMesh(core, models.models.at(sphere_fbx), "sphere fbx");
+    auto dune_mesh_id = meshes.loadMesh(core, models.models.at(dune_id), "Dune");
 
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
@@ -566,8 +589,12 @@ int main()
     auto box_object = createObject(meshes.meshes.at(box_id));
     box_object.material = base_material;
 
-    //addObject(scene, landscape_flat);
-    addObject(scene, fbx);
+    auto dune_object = createObject(meshes.meshes.at(dune_mesh_id));
+    dune_object.material = dune_material;
+
+    //addObject(scene, dune_object);
+    addObject(scene, landscape_flat);
+    //addObject(scene, fbx);
     //addObject(scene, box_object);
 
     Application application{

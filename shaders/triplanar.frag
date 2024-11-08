@@ -183,6 +183,10 @@ vec3 pbr(vec3 normal, vec3 albedo, float roughness, float metalness, float ao)
     // Geometry function
     float G = geometrySmith(normal, view_dir, light_dir, roughness);
 
+    vec3 kd = mix(vec3(1.0) - F, vec3(0.0), metalness);
+    vec3 diffuseBRDF = kd * albedo;
+
+
     vec3 specular = (NDF * G * F) / max(4.0 * max(dot(normal, view_dir), 0.0) * max(dot(normal, light_dir), 0.0), 0.001);
 
     // Diffuse reflection (Lambertian)
@@ -301,9 +305,13 @@ vec3 triplanarSampling()
     if (featureEnabled(NormalMap) == 1)
     {
         // UDN Blend
-        vec4 xaxis = texture(texSampler[material.base_color_normal_texture], uvX*scale);
-        vec4 yaxis = texture(texSampler[material.base_color_normal_texture], uvY*scale);
-        vec4 zaxis = texture(texSampler[material.base_color_normal_texture], uvZ*scale);
+        vec3 xaxis = normalize(2*texture(texSampler[material.base_color_normal_texture], uvX*scale).rgb-1);
+        vec3 yaxis = normalize(2*texture(texSampler[material.base_color_normal_texture], uvY*scale).rgb-1);
+        vec3 zaxis = normalize(2*texture(texSampler[material.base_color_normal_texture], uvZ*scale).rgb-1);
+
+        vec3 world_normal_x = xaxis.zyx;
+        vec3 world_normal_y = yaxis.xzy;
+        vec3 world_normal_z = zaxis;
 
         vec3 normal_x = vec3(xaxis.xy + final_normal.zy, final_normal.x);
         vec3 normal_y = vec3(yaxis.xy + final_normal.xz, final_normal.y);
