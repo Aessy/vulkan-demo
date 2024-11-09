@@ -2,6 +2,7 @@
 
 #include "VulkanRenderSystem.h"
 
+#include <spdlog/spdlog.h>
 #include <stb/stb_image.h>
 
 #include <filesystem>
@@ -109,7 +110,7 @@ static std::tuple<vk::Image, vk::DeviceMemory, uint32_t> createTextureImage(Rend
 
     if (!pixels)
     {
-        std::cout << std::string("Could not load texture") + path + "\n";
+        spdlog::warn("Could not load texture: {}", path);
     }
 
     uint32_t mip_levels = static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;
@@ -125,7 +126,11 @@ static std::tuple<vk::Image, vk::DeviceMemory, uint32_t> createTextureImage(Rend
     stbi_image_free(pixels);
 
     auto image = createImage(state, width, height, mip_levels, format, vk::ImageTiling::eOptimal,
-                        vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::SampleCountFlagBits::e1);
+                 vk::ImageUsageFlagBits::eTransferDst
+                      | vk::ImageUsageFlagBits::eTransferSrc
+                      | vk::ImageUsageFlagBits::eSampled,
+                        vk::MemoryPropertyFlagBits::eDeviceLocal,
+                        vk::SampleCountFlagBits::e1);
 
     transitionImageLayout(state, image.first, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, mip_levels);
     copyBufferToImage(state, staging_buffer, image.first, width, height);
@@ -161,7 +166,7 @@ Texture createTexture(RenderingState const& state, std::string const& path, Text
 
         if (!pixels)
         {
-            std::cout << std::string("Could not load texture") + path + "\n";
+            spdlog::warn("Could not load texture", path);
             return {};
         }
 

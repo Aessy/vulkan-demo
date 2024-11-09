@@ -1,4 +1,5 @@
 #include "Material.h"
+#include "Skybox.h"
 #include "X11/Xlib.h"
 #undef True
 #undef False
@@ -63,6 +64,8 @@
 #include "imgui.h"
 
 #include "Gui.h"
+
+#include <spdlog/spdlog.h>
 
 
 void loop(GLFWwindow* window)
@@ -176,7 +179,7 @@ DrawResult drawFrame(RenderingState& state, RenderingSystem& render_system)
     else if (   next_image.result != vk::Result::eSuccess
              && next_image.result != vk::Result::eSuboptimalKHR)
     {
-        std::cout << "Failed to acquire swap chain image\n";
+        spdlog::warn("Failed to acquire swap chain image");
         return DrawResult::EXIT;
     }
 
@@ -224,8 +227,6 @@ DrawResult drawFrame(RenderingState& state, RenderingSystem& render_system)
 
 bool processEvent(Event const& event, App& app)
 {
-    std::cout << "Event\n";
-
     if (event.key == GLFW_KEY_W && event.action == GLFW_PRESS)
     {
         app.keyboard.up = true;
@@ -318,8 +319,6 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
 
         camera.pitch_yawn += diff * camera_speed * delta;
 
-        std::cout << glm::to_string(camera.pitch_yawn);
-
         if (camera.pitch_yawn.y >= 90)
         {
             camera.pitch_yawn.y = 89;
@@ -385,6 +384,7 @@ static layer_types::Program createTriplanarLandscapeProgram()
             .fragment = true
         }
     }});
+
     program_desc.buffers.push_back({layer_types::Buffer{
         .name = {{"terrain_buffer"}},
         .type = layer_types::BufferType::MaterialShaderData,
@@ -451,7 +451,7 @@ int main()
     Models models;
     // int landscape_fbx = models.loadModelAssimp("./models/canyon_low_res.fbx");
     int sphere_fbx = models.loadModelAssimp("./models/sphere.fbx");
-    int dune_id = models.loadModelAssimp("./models/dune.fbx");
+    // int dune_id = models.loadModelAssimp("./models/dune.fbx");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
 
     auto height_map_1_model = createFlatGround(1023, 512, 4);
@@ -465,8 +465,26 @@ int main()
 
     auto terrain_program_triplanar = createTriplanarLandscapeProgram();
 
+    auto pipeline_input = createDefaultPipelineInput();
+
     std::vector<std::unique_ptr<Program>> programs;
-    programs.push_back(createProgram(terrain_program_triplanar, core, textures, core.render_pass, "Landscape triplanar"));
+    programs.push_back(createProgram(terrain_program_triplanar, core, textures, core.render_pass, "Landscape triplanar", pipeline_input));
+
+    auto skybox = createSkybox(core, core.render_pass,{
+        "./textures/clouds1/clouds1_east.bmp",
+        "./textures/clouds1/clouds1_west.bmp",
+        "./textures/clouds1/clouds1_up.bmp",
+        "./textures/clouds1/clouds1_down.bmp",
+        "./textures/clouds1/clouds1_north.bmp",
+        "./textures/clouds1/clouds1_south.bmp"});
+
+    programs.push_back(std::move(skybox.program));
+
+    Material sky_box_material {
+        .name = {"Skybox"},
+        .program = 1,
+        .shader_data = {}
+    };
 
     Material base_material{
         .name = {"Base"},
@@ -556,7 +574,7 @@ int main()
     auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
     //auto landscape_mesh_id = meshes.loadMesh(core, models.models.at(landscape_fbx), "landscape fbx");
     auto sphere_id = meshes.loadMesh(core, models.models.at(sphere_fbx), "sphere fbx");
-    auto dune_mesh_id = meshes.loadMesh(core, models.models.at(dune_id), "Dune");
+    //auto dune_mesh_id = meshes.loadMesh(core, models.models.at(dune_id), "Dune");
 
     //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
@@ -586,14 +604,16 @@ int main()
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
     landscape_flat.material = landscape_material;
 
-    auto box_object = createObject(meshes.meshes.at(box_id));
-    box_object.material = base_material;
+    auto sky_box = createObject(meshes.meshes.at(box_id));
+    sky_box.material = sky_box_material;
+    sky_box.scale = 800.0f;
 
-    auto dune_object = createObject(meshes.meshes.at(dune_mesh_id));
-    dune_object.material = dune_material;
+    //auto dune_object = createObject(meshes.meshes.at(dune_mesh_id));
+    //dune_object.material = dune_material;
 
     //addObject(scene, dune_object);
     addObject(scene, landscape_flat);
+    addObject(scene, sky_box);
     //addObject(scene, fbx);
     //addObject(scene, box_object);
 
@@ -614,7 +634,7 @@ int main()
     float total_time = 0;
     bool first_frame = true;
 
-    std::cout << "Starting rendering loop\n";
+    spdlog::info("Starting rendering loop");
 
     float camera_speed = 20;
 
@@ -644,7 +664,6 @@ int main()
         total_time += delta;
         if (total_time > 1)
         {
-            std::cout << "FPS: " << fps << '\n';
             fps = 0;
             total_time = 0;
         }

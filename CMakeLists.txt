@@ -11,13 +11,14 @@ set(SRC VulkanRenderSystem.cpp
         Program.cpp
         Textures.cpp
         Id.cpp
+        Skybox.cpp
         imgui_impl_vulkan.cpp
         imgui_impl_glfw.cpp)
 
 add_executable(vulkan-test ${SRC})
 target_compile_options(vulkan-test PUBLIC -g -std=c++23)
 target_compile_definitions(vulkan-test PUBLIC GLM_ENABLE_EXPERIMENTAL)
-target_link_libraries(vulkan-test glfw vulkan X11 imgui assimp)
+target_link_libraries(vulkan-test glfw vulkan X11 imgui assimp fmt spdlog)
 
 add_custom_target(shaders
                   COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders
@@ -34,6 +35,8 @@ add_custom_target(shaders
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/post_processing.vert --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/post_processing_vert.spv
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/triplanar.vert --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/triplanar_vert.spv
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/triplanar.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/triplanar_frag.spv
+                  COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/skybox.vert --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/skybox_vert.spv
+                  COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/skybox.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/skybox_frag.spv
                   DEPENDS vulkan-test)
 
 add_custom_target(copy-models ALL

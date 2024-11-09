@@ -22,13 +22,15 @@
 #include <iostream>
 #include <set>
 
+#include <spdlog/spdlog.h>
+
 struct SwapChainSupportDetails {
     vk::SurfaceCapabilitiesKHR capabilities;
     std::vector<vk::SurfaceFormat2KHR> formats;
     std::vector<vk::PresentModeKHR> present_modes;
 };
 
-static uint32_t findMemoryType(vk::PhysicalDevice const& physical_device, uint32_t type_filter, vk::MemoryPropertyFlags properties)
+uint32_t findMemoryType(vk::PhysicalDevice const& physical_device, uint32_t type_filter, vk::MemoryPropertyFlags properties)
 {
     auto mem_properties = physical_device.getMemoryProperties();
 
@@ -40,7 +42,7 @@ static uint32_t findMemoryType(vk::PhysicalDevice const& physical_device, uint32
         }
     }
 
-    std::cout << "Missing memory type\n";
+    spdlog::warn("Missing memory type");
     return 0;
 }
 
@@ -49,7 +51,6 @@ static void framebufferResizeCallback(GLFWwindow* window, int, int)
 {
     auto app = reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
 
-    std::cout << app->test << '\n';
     app->window_resize = true;
 }
 
@@ -94,7 +95,6 @@ bool checkValidationLayerSupport(std::vector<const char*> const& validation_laye
 
         for (auto const& layer_properties : layers)
         {
-            std::cout << "Layer property: " << layer_properties.layerName << '\n';;
             if (strcmp(name, layer_properties.layerName)  == 0)
             {
                 layer_found = true;
@@ -121,7 +121,7 @@ static auto createInstance(bool validation_layers_on)
     bool use_validation_layer = validation_layers_on && checkValidationLayerSupport(validation_layers);
     if (use_validation_layer)
     {
-        std::cout << "Using validation layers\n";
+        spdlog::info("Using validation layers");
     }
 
     vk::ApplicationInfo app_info{};
@@ -161,9 +161,7 @@ static auto createInstance(bool validation_layers_on)
         info.enabledLayerCount = 0;
     }
 
-    std::cout << "Extension count: " << glfw_extensions_count << '\n';
-
-    std::cout << "Extensaions " << *glfw_extensions << '\n';
+    spdlog::info("GLFW Extension count: {}", glfw_extensions_count);
 
     return vk::createInstance(info, nullptr).value;
 }
@@ -196,7 +194,7 @@ static int scoreDevice(vk::PhysicalDevice const& device)
         return 0;
     }
 
-    std::cout << "Score: " << score << '\n';
+    spdlog::info("Device Score: {}", score);
 
     return score;
 }
@@ -236,13 +234,13 @@ static vk::PhysicalDevice createPhysicalDevice(vk::Instance const& instance)
     auto devices = instance.enumeratePhysicalDevices().value;
     if (devices.empty())
     {
-        std::cout << "No GPU with vulkan support\n";
+        spdlog::info("No GPU with vulkan support");
         return {};
     }
 
     std::sort(devices.begin(), devices.end(), [](auto const& lhs, auto const& rhs) {return scoreDevice(lhs) < scoreDevice(rhs);});
 
-    std::cout << "GPU count: " << devices.size() << '\n';
+    spdlog::info("GPU count: ", devices.size());
     vk::PhysicalDevice physical_device = devices.back();
     return physical_device;
 }
@@ -259,7 +257,6 @@ static QueueFamilyIndices findQueueFamilies(vk::PhysicalDevice const& physical_d
         if (queue_family.queueFlags & vk::QueueFlagBits::eGraphics)
         {
             indices.graphics_family = i;
-            std::cout << "Found graphics queue: " << i << '\n';
         }
 
         vk::Bool32 present_support = physical_device.getSurfaceSupportKHR(i, surface).value;
@@ -267,7 +264,6 @@ static QueueFamilyIndices findQueueFamilies(vk::PhysicalDevice const& physical_d
         if (present_support)
         {
             indices.present_family = i;
-            std::cout << "Found present_queue: " << i << '\n';
         }
 
         if (indices.graphics_family && indices.present_family)
@@ -298,7 +294,6 @@ static vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device,
     auto result = physical_device.enumerateDeviceExtensionProperties();
     for (auto const& extension : result.value)
     {
-        std::cout << "Extension: " << extension.extensionName << '\n';
     }
     float queue_priority = 1.0f;
 
@@ -389,14 +384,14 @@ vk::PresentModeKHR chooseSwapPresentMode(std::vector<vk::PresentModeKHR>const& p
 {
     for (auto const& available_present_mode : present_modes)
     {
-        std::cout << "Present mode: " << vk::to_string(available_present_mode) << '\n';
+        spdlog::info("Present mode: {}", vk::to_string(available_present_mode));
         if (available_present_mode == vk::PresentModeKHR::eMailbox)
         {
             return available_present_mode;
         }
     }
 
-    std::cout << "Using fifo present mode\n";
+    spdlog::info("Using fifo present mode");
     return vk::PresentModeKHR::eFifo;
 }
 
@@ -404,7 +399,6 @@ vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities, GL
 {
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
     {
-        std::cout << "extent from Capabilities\n";
         return capabilities.currentExtent;
     }
     else
@@ -617,7 +611,6 @@ static std::vector<vk::CommandBuffer> createCommandBuffer(vk::Device const& devi
 
     auto command_buffers = device.allocateCommandBuffers(alloc_info);
 
-    std::cout << "Command buffer size: " << command_buffers.value.size() << '\n';
     return command_buffers.value;
 }
 
@@ -695,7 +688,7 @@ std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, 
     return std::make_pair(texture_image.value, texture_image_memory.value);
 }
 
-vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels, vk::ImageViewType view_type)
+vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels, vk::ImageViewType view_type, uint32_t level_count)
 {
     vk::ImageViewCreateInfo view_info;
     view_info.sType = vk::StructureType::eImageViewCreateInfo;
@@ -705,7 +698,7 @@ vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, 
     view_info.subresourceRange.aspectMask = aspec_flags;
     view_info.subresourceRange.baseMipLevel = 0;
     view_info.subresourceRange.baseArrayLayer = 0;
-    view_info.subresourceRange.layerCount = 1;
+    view_info.subresourceRange.layerCount = level_count;
     view_info.subresourceRange.levelCount= mip_levels;
 
     auto texture_image_view = device.createImageView(view_info);
@@ -983,7 +976,7 @@ bool hasStencilComponent(vk::Format format)
     return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
 }
 
-void transitionImageLayout(vk::CommandBuffer& cmd_buffer, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels)
+void transitionImageLayout(vk::CommandBuffer& cmd_buffer, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels, uint32_t layer_count)
 {
     vk::ImageMemoryBarrier barrier{};
     barrier.sType = vk::StructureType::eImageMemoryBarrier;
@@ -1012,7 +1005,7 @@ void transitionImageLayout(vk::CommandBuffer& cmd_buffer, vk::Image const& image
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = mip_levels;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
+    barrier.subresourceRange.layerCount = layer_count;
     barrier.srcAccessMask = static_cast<vk::AccessFlagBits>(0); // TODO
     barrier.dstAccessMask = static_cast<vk::AccessFlagBits>(0); // TODO
                                                                 //
@@ -1148,7 +1141,7 @@ void transitionImageLayout(vk::CommandBuffer& cmd_buffer, vk::Image const& image
     }
     else
     {
-        std::cout << "Error transition image\n";
+        spdlog::info("Error transition image");
         return;
     }
 
@@ -1156,11 +1149,11 @@ void transitionImageLayout(vk::CommandBuffer& cmd_buffer, vk::Image const& image
 
 }
 
-void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels)
+void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels, uint32_t layer_count)
 {
     auto cmd_buffer = beginSingleTimeCommands(state);
 
-    transitionImageLayout(cmd_buffer, image, format, old_layout, new_layout, mip_levels);
+    transitionImageLayout(cmd_buffer, image, format, old_layout, new_layout, mip_levels, layer_count);
 
     endSingleTimeCommands(state, cmd_buffer);
 }
@@ -1215,9 +1208,9 @@ vk::Buffer createBuffer(RenderingState const& state,
     return buffer;
 }
 
-vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels)
+vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels, uint32_t level_count)
 {
-    auto texture_image_view = createImageView(state.device, texture_image, format, vk::ImageAspectFlagBits::eColor, mip_levels);
+    auto texture_image_view = createImageView(state.device, texture_image, format, vk::ImageAspectFlagBits::eColor, mip_levels, vk::ImageViewType::e2D, level_count);
     return texture_image_view;
 }
 
@@ -1318,8 +1311,6 @@ vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> 
 
 vk::ShaderModule createShaderModule(std::vector<char> const& code, vk::Device const& device)
 {
-    std::cout << code.size() << '\n';
-
     vk::ShaderModuleCreateInfo create_info;
     create_info.sType = vk::StructureType::eShaderModuleCreateInfo;
     create_info.setCodeSize(code.size());
@@ -1329,7 +1320,7 @@ vk::ShaderModule createShaderModule(std::vector<char> const& code, vk::Device co
 
     if (shader_module.result != vk::Result::eSuccess)
     {
-        std::cout << "Failed creating shader module\n";
+        spdlog::warn("Failed creating shader module");
     }
     return shader_module.value;
 
@@ -1415,7 +1406,59 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout> createComputePipeline(v
     return std::make_pair(pipeline, pipeline_layout);
 }
 
-std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<ShaderStage> shader_stages, vk::SampleCountFlagBits msaa, vk::PolygonMode polygon_mode)
+
+vk::PipelineRasterizationStateCreateInfo createRasterizerState()
+{
+    vk::PipelineRasterizationStateCreateInfo rasterizer{};
+
+    rasterizer.sType = vk::StructureType::ePipelineRasterizationStateCreateInfo;
+    rasterizer.depthClampEnable = false;
+    rasterizer.rasterizerDiscardEnable = false;
+    rasterizer.polygonMode = vk::PolygonMode::eFill;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+    rasterizer.frontFace = vk::FrontFace::eClockwise;
+    rasterizer.depthBiasEnable = false;
+    rasterizer.depthBiasConstantFactor = 0.0f;
+    rasterizer.depthBiasClamp = 0.0f;
+    rasterizer.depthBiasSlopeFactor = 0.0f;
+
+    return rasterizer;
+};
+
+
+vk::PipelineDepthStencilStateCreateInfo createDepthStencil()
+{
+    vk::PipelineDepthStencilStateCreateInfo depth_stencil;
+    depth_stencil.sType = vk::StructureType::ePipelineDepthStencilStateCreateInfo;
+    depth_stencil.depthTestEnable = true;
+    depth_stencil.depthWriteEnable = true;
+
+    depth_stencil.depthCompareOp = vk::CompareOp::eLess;
+    depth_stencil.depthBoundsTestEnable = false;
+    depth_stencil.minDepthBounds = 0.0f;
+    depth_stencil.maxDepthBounds = 1.0f;
+    depth_stencil.stencilTestEnable = false;
+
+    return depth_stencil;
+}
+
+GraphicsPipelineInput createDefaultPipelineInput()
+{
+    return {
+        createRasterizerState(),
+        createDepthStencil()
+    };
+}
+
+std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device,
+                                                                                vk::Extent2D const& swap_chain_extent,
+                                                                                vk::RenderPass const& render_pass,
+                                                                                std::vector<vk::DescriptorSetLayout> const& desc_set_layout,
+                                                                                std::vector<ShaderStage> shader_stages,
+                                                                                vk::SampleCountFlagBits msaa,
+                                                                                vk::PolygonMode polygon_mode,
+                                                                                GraphicsPipelineInput const& input)
 {
     std::string path;
     std::vector<vk::PipelineShaderStageCreateInfo> stages;
@@ -1488,19 +1531,6 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     viewport_state.setScissors(scissor);
 
 
-    vk::PipelineRasterizationStateCreateInfo rasterizer{};
-    rasterizer.sType = vk::StructureType::ePipelineRasterizationStateCreateInfo;
-    rasterizer.depthClampEnable = false;
-    rasterizer.rasterizerDiscardEnable = false;
-    rasterizer.polygonMode = vk::PolygonMode::eFill;
-    rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = vk::CullModeFlagBits::eBack;
-    rasterizer.frontFace = vk::FrontFace::eClockwise;
-    rasterizer.depthBiasEnable = false;
-    rasterizer.depthBiasConstantFactor = 0.0f;
-    rasterizer.depthBiasClamp = 0.0f;
-    rasterizer.depthBiasSlopeFactor = 0.0f;
-
     vk::PipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = vk::StructureType::ePipelineMultisampleStateCreateInfo;
     multisampling.sampleShadingEnable = false;
@@ -1542,25 +1572,7 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     range.setSize(sizeof(ModelBufferObject));
     range.setOffset(0);
 
-
-    //pipeline_layout_info.setPushConstantRanges(range);
-    // pipeline_layout_info.pushConstantRangeCount = 0;
-    // pipeline_layout_info.pPushConstantRanges = nullptr;
-
-
     auto pipeline_layout = device.createPipelineLayout(pipeline_layout_info);
-
-    vk::PipelineDepthStencilStateCreateInfo depth_stencil;
-    depth_stencil.sType = vk::StructureType::ePipelineDepthStencilStateCreateInfo;
-    depth_stencil.depthTestEnable = true;
-    depth_stencil.depthWriteEnable = true;
-
-    depth_stencil.depthCompareOp = vk::CompareOp::eLess;
-    depth_stencil.depthBoundsTestEnable = false;
-    depth_stencil.minDepthBounds = 0.0f;
-    depth_stencil.maxDepthBounds = 1.0f;
-    depth_stencil.stencilTestEnable = false;
-
 
     vk::GraphicsPipelineCreateInfo pipeline_info;
     pipeline_info.sType = vk::StructureType::eGraphicsPipelineCreateInfo;
@@ -1571,9 +1583,9 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
     pipeline_info.setPVertexInputState(&vertex_input_info);
     pipeline_info.setPInputAssemblyState(&input_assembly);
     pipeline_info.setPViewportState(&viewport_state);
-    pipeline_info.setPRasterizationState(&rasterizer);
+    pipeline_info.setPRasterizationState(&input.rasterizer_state);
     pipeline_info.setPMultisampleState(&multisampling);
-    pipeline_info.setPDepthStencilState(&depth_stencil);
+    pipeline_info.setPDepthStencilState(&input.depth_stencil);
     pipeline_info.setPColorBlendState(&color_blending);
     pipeline_info.setPDynamicState(&dynamic_state);
 
@@ -1600,7 +1612,6 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
 
 void recreateSwapchain(RenderingState& state)
 {
-    std::cout << "Recreating swapchain" << '\n';
     auto result = state.device.waitIdle();
 
     // Destroy the swapchain
@@ -1615,7 +1626,6 @@ void recreateSwapchain(RenderingState& state)
     state.framebuffer_resources.clear();
     state.framebuffers = createFrameBuffers(state);
 
-    std::cout << "Finish recreating\n";
 }
 
 

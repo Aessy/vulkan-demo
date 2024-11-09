@@ -8,6 +8,7 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_enums.hpp>
 #include <vulkan/vulkan_handles.hpp>
+#include <spdlog/spdlog.h>
 
 DescriptionPoolAndSet createDescriptorSet(vk::Device const& device, vk::DescriptorSetLayout const& layout,
                                           std::vector<vk::DescriptorSetLayoutBinding> const& layout_bindings)
@@ -31,7 +32,8 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
                                                                             std::string const& tess_ctrl,
                                                                             std::string const& tess_evu,
                                                                             std::string const& compute,
-                                                                            vk::PolygonMode polygon_mode)
+                                                                            vk::PolygonMode polygon_mode,
+                                                                            GraphicsPipelineInput const& input)
 {
     // Create layouts for the descriptor sets
     std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
@@ -94,7 +96,7 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
     else
     {
         // Create the default pipeline
-        graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, render_pass, descriptor_set_layouts, shader_stages, rendering_state.msaa, polygon_mode);
+        graphic_pipeline = createGraphicsPipline(rendering_state.device, rendering_state.swap_chain.extent, render_pass, descriptor_set_layouts, shader_stages, rendering_state.msaa, polygon_mode, input);
     }
 
     // Create descriptor set for the textures, lights, and matrices
@@ -102,11 +104,10 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
     std::vector<DescriptionPoolAndSet> desc_sets;
     for (auto const& descriptor_set_layout : descriptor_set_layouts)
     {
-        std::cout << "Creating set\n";
         desc_sets.push_back(createDescriptorSet(rendering_state.device, descriptor_set_layout, descriptor_set_layout_bindings[i++]));
     }
 
-    std::cout << "Finished creating GPU program\n";
+    spdlog::info("Finished creating GPU program");
 
     return { graphic_pipeline.first, graphic_pipeline.second, desc_sets};
 };
@@ -135,7 +136,8 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
                                        RenderingState const& core,
                                        Textures const& textures,
                                        vk::RenderPass const& render_pass,
-                                       std::string const& name)
+                                       std::string const& name,
+                                       GraphicsPipelineInput const& input)
 {
     namespace lt = layer_types;
 
@@ -186,7 +188,7 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
             break;
     };
 
-    auto program = createGpuProgram(descriptor_set_layout_bindings, core, render_pass, vertex_path, fragment_path, tess_ctrl_path, tess_evu_path, compute_path, polygon_mode);
+    auto program = createGpuProgram(descriptor_set_layout_bindings, core, render_pass, vertex_path, fragment_path, tess_ctrl_path, tess_evu_path, compute_path, polygon_mode, input);
 
     std::vector<buffer_types::ModelType> model_types;
 

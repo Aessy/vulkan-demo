@@ -82,4 +82,5 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
                                        RenderingState const& core,
                                        Textures const& textures,
                                        vk::RenderPass const& render_pass,
-                                       std::string const& name);
+                                       std::string const& name,
+                                       GraphicsPipelineInput const& input);

@@ -6,6 +6,7 @@
 #include "VulkanRenderSystem.h"
 #include <vulkan/vulkan_enums.hpp>
 #include <imgui.h>
+#include <spdlog/spdlog.h>
 #include "imgui_impl_vulkan.h"
 
 static std::unique_ptr<Program> createPostProcessingProgram(RenderingState const& state, vk::RenderPass const& render_pass)
@@ -88,7 +89,8 @@ static std::unique_ptr<Program> createPostProcessingProgram(RenderingState const
     
     // Make the program like this for now. Update the descriptor set each frame
     // with the correct color attachment.
-    return createProgram(program_desc, state, {}, render_pass, "Post Processing");
+    auto pipeline_input = createDefaultPipelineInput();
+    return createProgram(program_desc, state, {}, render_pass, "Post Processing", pipeline_input);
 }
 
 static std::unique_ptr<Program> createComputeFogProgram(RenderingState const& state, vk::RenderPass const& render_pass)
@@ -144,7 +146,7 @@ static std::unique_ptr<Program> createComputeFogProgram(RenderingState const& st
         }
     }});
 
-    return createProgram(program_desc, state, {}, render_pass, "Compute Fog");
+    return createProgram(program_desc, state, {}, render_pass, "Compute Fog", {});
 }
 
 inline void postProcessingUpdateDescriptorSets(RenderingState const& state,
@@ -425,16 +427,16 @@ PostProcessing createPostProcessing(RenderingState const& state)
 
     pp.fog_buffer = createFogBuffer(state, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
-    std::cout << "Creating post processing render pass\n";
+    spdlog::info("Creating post processing render pass");
     pp.render_pass = createPostProcessingRenderPass(state.swap_chain.swap_chain_image_format, state.device, state.msaa);
 
-    std::cout << "Creating post processing framebuffer\n";
+    spdlog::info("Creating post processing framebuffer");
     pp.framebuffer = createPostProcessingFramebuffers(state, pp.render_pass);
 
-    std::cout << "Creating post processing program\n";
+    spdlog::info("Creating post processing program");
     pp.program = createPostProcessingProgram(state, pp.render_pass);
 
-    std::cout << "Creating compute fog program\n";
+    spdlog::info("Creating compute fog program");
     pp.fog_compute_program= createComputeFogProgram(state, pp.render_pass);
 
     return pp;

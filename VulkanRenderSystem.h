@@ -143,15 +143,26 @@ struct RenderingState
 
     Camera camera;
     vk::SampleCountFlagBits msaa;
-    
 };
+
+struct GraphicsPipelineInput
+{
+    vk::PipelineRasterizationStateCreateInfo rasterizer_state{};
+    vk::PipelineDepthStencilStateCreateInfo depth_stencil{};
+};
+
+vk::PipelineRasterizationStateCreateInfo createRasterizerState();
+vk::PipelineDepthStencilStateCreateInfo createDepthStencil();
+
+GraphicsPipelineInput createDefaultPipelineInput();
 
 RenderingState createVulkanRenderState();
 void initImgui(vk::Device const& device, vk::PhysicalDevice const& physical, vk::Instance const& instance,
                vk::Queue const& queue, vk::RenderPass const& render_pass,
                RenderingState& state, GLFWwindow* window, vk::SampleCountFlagBits msaa);
 std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::SampleCountFlagBits num_samples = vk::SampleCountFlagBits::e1);
-vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels, vk::ImageViewType view_type = vk::ImageViewType::e2D);
+vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels, vk::ImageViewType view_type = vk::ImageViewType::e2D, uint32_t level_count = 1);
+uint32_t findMemoryType(vk::PhysicalDevice const& physical_device, uint32_t type_filter, vk::MemoryPropertyFlags properties);
 
 vk::ShaderModule createShaderModule(std::vector<char> const& code, vk::Device const& device);
 
@@ -159,10 +170,10 @@ vk::CommandBuffer beginSingleTimeCommands(RenderingState const& state);;
 void endSingleTimeCommands(RenderingState const& state, vk::CommandBuffer const& cmd_buffer);
 vk::Buffer createVertexBuffer(RenderingState const& state, std::vector<Vertex> const& vertices);
 vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> indices);
-void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels);
-void transitionImageLayout(vk::CommandBuffer& cmd_buffer, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels);
+void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels, uint32_t layer_count = 1);
+void transitionImageLayout(vk::CommandBuffer& cmd_buffer, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels, uint32_t layer_count = 1);
 void copyBufferToImage(RenderingState const& state, vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height);
-vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels);
+vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels, uint32_t level_count = 1);
 vk::Sampler createTextureSampler(RenderingState const& state, bool mip_maps);
 vk::Buffer createBuffer(RenderingState const& state,
                         vk::DeviceSize size, vk::BufferUsageFlags usage,
@@ -179,7 +190,7 @@ struct ShaderStage
     vk::ShaderStageFlagBits stage;
 };
 
-std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<ShaderStage> shader_stages, vk::SampleCountFlagBits msaa, vk::PolygonMode polygon_mode);
+std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<ShaderStage> shader_stages, vk::SampleCountFlagBits msaa, vk::PolygonMode polygon_mode, GraphicsPipelineInput const& input);
 
 
 std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout> createComputePipeline(vk::Device const& device, ShaderStage const& compute_stage, std::vector<vk::DescriptorSetLayout> const& desc_set_layouts);

@@ -114,8 +114,6 @@ inline auto createDescriptorSetLayout(Device const& device, std::vector<vk::Desc
 
     auto layout = device.createDescriptorSetLayout(layout_info);
 
-    std::cout << "Layout size: " << static_cast<int>(layout_info.bindingCount) <<'\n';
-    std::cout << "Layout create: " << static_cast<int>(layout.result) <<'\n';
     return layout.value;
 }
 
@@ -162,7 +160,6 @@ inline void updateUniformBuffer(Device const& device, std::vector<UniformBuffer>
     {
         vk::DescriptorBufferInfo buffer_info{};
         buffer_info.buffer = uniform_buffer[i].uniform_buffers;
-        std::cout << sizeof(UniformObject) << '\n';
         buffer_info.offset = 0;
         buffer_info.range = sizeof(UniformObject) * size;
 

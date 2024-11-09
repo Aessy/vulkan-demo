@@ -223,7 +223,6 @@ Model createModelFromHeightMap(std::string const& height_map_path, float size, f
 
     stbi_image_free(pixels);
 
-    std::cout << "Loaded height_map " << width << ":" << width << " " << channels << '\n';
     return m;
 
 }
