@@ -15,6 +15,11 @@
 #include <string>
 #include <iostream>
 
+static_assert(sizeof(int) == 4, "");
+static_assert(sizeof(float) == 4, "");
+static_assert(sizeof(glm::vec4) == 16, "");
+
+
 int Models::loadModelAssimp(std::string const& path)
 {
     Assimp::Importer importer;

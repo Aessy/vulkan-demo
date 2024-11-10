@@ -386,17 +386,16 @@ static layer_types::Program createTriplanarLandscapeProgram()
     }});
 
     program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"terrain_buffer"}},
+        .name = {{"material shader data"}},
         .type = layer_types::BufferType::MaterialShaderData,
-        .size = 1,
+        .size = 10,
         .binding = layer_types::Binding {
             .name = {{"binding model"}},
             .binding = 0,
-            .type = layer_types::BindingType::Uniform,
+            .type = layer_types::BindingType::Storage,
             .size = 1,
             .vertex = true,
             .fragment = true,
-            .tess_evu = true
         }
     }});
 
@@ -454,7 +453,7 @@ int main()
     // int dune_id = models.loadModelAssimp("./models/dune.fbx");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
 
-    auto height_map_1_model = createFlatGround(1023, 512, 4);
+    auto height_map_1_model = createFlatGround(2047, 1024, 4);
     models.models.insert({height_map_1_model.id, height_map_1_model});
     //auto height_map_1_model = createFlatGround(2047, 500, 4);
 
@@ -524,7 +523,7 @@ int main()
             .shade_mode = ReflectionShadeMode::Pbr,
             .displacement_map_texture = 10,
             .normal_map_texture = 11,
-            .displacement_y = 28.16f,
+            .displacement_y = 64.0f,
             .base_color_texture = 17,
             .base_color_normal_texture = 18,
             .roughness_texture = 19,
@@ -559,11 +558,11 @@ int main()
     };
 
     Camera camera;
-    camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 2048.0f);
+    camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 100000.0f);
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
     //camera.pos = glm::vec3(0,300,-5);
-    camera.pos = glm::vec3(0,0,0);
+    camera.pos = glm::vec3(0,60,0);
 
     updateCameraFront(camera);
 
@@ -582,7 +581,7 @@ int main()
 
     Scene scene;
     scene.camera = camera;
-    scene.light.position = glm::vec3(12.8,56,-10);
+    scene.light.position = glm::vec3(450000,0,0);
     scene.light.light_color = glm::vec3(1,1,1);
     scene.light.strength = 5.0f;
     
@@ -597,9 +596,6 @@ int main()
     //auto object = createObject(meshes.meshes.at(mesh_id));
     //object.material = 1;
 
-    auto fbx = createObject(meshes.meshes.at(sphere_id));
-    fbx.material = base_material;
-
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
     landscape_flat.material = landscape_material;
 
@@ -607,13 +603,18 @@ int main()
     sky_box.material = sky_box_material;
     sky_box.scale = 800.0f;
 
+    auto fbx = createObject(meshes.meshes.at(sphere_id));
+    fbx.material = base_material;
+    fbx.position = glm::vec3(0,200,0);
+
+
     //auto dune_object = createObject(meshes.meshes.at(dune_mesh_id));
     //dune_object.material = dune_material;
 
     //addObject(scene, dune_object);
     addObject(scene, landscape_flat);
     addObject(scene, sky_box);
-    //addObject(scene, fbx);
+    addObject(scene, fbx);
     //addObject(scene, box_object);
 
     Application application{

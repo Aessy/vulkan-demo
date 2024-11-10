@@ -35,7 +35,7 @@ void main()
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
 
     mat3 view_rotation_only = inverse(mat3(world.view));
-    frag_dir = view_rotation_only * in_position;
+    frag_dir = (ubo.model * vec4(in_position, 1)).xyz;
 
-    gl_Position = world.proj * mat4(mat3(ubo.model)) * vec4(in_position, 1.0);
+    gl_Position = world.proj * world.view * ubo.model * vec4(in_position, 1.0);
 }

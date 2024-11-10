@@ -36,7 +36,18 @@ layout(set = 1, binding = 0) uniform UniformWorld{
     LightBufferData light;
 } world;
 
-layout(set = 3, binding = 0) uniform MaterialData{
+struct ObjectData
+{
+    mat4 model;
+    uint texture_index;
+};
+
+layout(std430, set = 2, binding = 0) readonly buffer ObjectBuffer{
+    ObjectData objects[];
+} ubo2;
+
+struct MaterialData
+{
     int material_features;
     int sampling_mode;
     int shade_mode;
@@ -54,25 +65,22 @@ layout(set = 3, binding = 0) uniform MaterialData{
     float roughness;
     float metalness;
     float ao;
-} material;
-
-struct ObjectData
-{
-    mat4 model;
-    uint texture_index;
 };
 
-layout(std140,set = 2, binding = 0) readonly buffer ObjectBuffer{
-    ObjectData objects[];
-} ubo2;
+layout(std430, set = 3, binding = 0) readonly buffer MaterialBufferObject{
+    MaterialData objects[];
+} materials;
 
-layout(location = 0) in vec3 position_worldspace;
-layout(location = 1) in vec3 in_normal;
-layout(location = 2) in mat3 in_TBN;
-layout(location = 8) in vec2 in_uv_tex;
-layout(location = 9) in vec2 in_uv_normal;
+layout(location = 0)  in vec3 position_worldspace;
+layout(location = 1)  in vec3 in_normal;
+layout(location = 2)  in mat3 in_TBN;
+layout(location = 8)  in vec2 in_uv_tex;
+layout(location = 9)  in vec2 in_uv_normal;
+layout(location = 10) in flat int instance;
 
 layout(location = 0) out vec4 out_color;
+
+MaterialData material;
 
 int featureEnabled(int feature)
 {
@@ -344,6 +352,7 @@ vec3 triplanarSampling()
 
 void main()
 {
+    material = materials.objects[instance];
     if (material.sampling_mode == UvSampling)
     {
         out_color = vec4(uvSampling(), 1);

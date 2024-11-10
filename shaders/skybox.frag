@@ -122,20 +122,34 @@ vec3 tonemap( vec3 x ) {
 
 void main()
 {
-    vec3 view_dir = normalize(frag_dir);
+    vec3 view_dir = normalize(frag_dir - world.pos);
     vec3 sun_dir = normalize(world.light.sun_pos);
 
     float sun_int = sunIntensity(dot(sun_dir, up_dir));
     float sun_fade = 1.0 - clamp( 1.0 - exp(world.light.sun_pos.y / atmosphere.sun_distance), 0.0, 1.0);
 
+
     float rayleigh_coefficient = atmosphere.rayleigh_scatter - (0.0 * (1.0 - sun_fade));
+    
 
     vec3 total_rayleigh_coeff = RayleighConst * rayleigh_coefficient;
     vec3 total_mie_coeff = totalMie(atmosphere.turbidity) * atmosphere.mie_coefficient;
 
-
     float zenith_angle = acos(max(0.0, dot(up_dir, view_dir)));
-    float avg_density_height = 0.25;
+    
+
+    // GL_EXT_debug_printf
+    //float normalized_zenith = zenith_angle / (0.5 * 3.1459);
+
+    //vec3 red = vec3(1.0, 0.3, 0.6);
+    //vec3 blue = vec3(0.6, 0.6, 1.0);
+
+    //vec3 zen_val = mix(red, blue, normalized_zenith);
+    //out_color = vec4(zen_val, 1.0);
+    
+
+    
+    float avg_density_height = 0.15;
 
     float denom = 1.0 / (cos(zenith_angle) + avg_density_height * pow(93.885 - ((zenith_angle * 180.0) / PI), -1.253));
     float ray_optical_depth = rayleighZenithLength * denom;

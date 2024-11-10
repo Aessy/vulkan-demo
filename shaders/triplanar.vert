@@ -22,7 +22,7 @@ struct LightBufferData
 {
     vec3 position;
     vec3 light_color;
-    vec3 sun_dir;
+    vec3 sun_pos;
     float strength;
     float time_of_the_day;
 };
@@ -39,11 +39,12 @@ struct ObjectData
     uint texture_index;
 };
 
-layout(std140,set = 2, binding = 0) readonly buffer ObjectBuffer{
+layout(std430,set = 2, binding = 0) readonly buffer ObjectBuffer{
     ObjectData objects[];
 } ubo2;
 
-layout(set = 3, binding = 0) uniform MaterialData{
+struct MaterialData
+{
     int material_features;
     int sampling_mode;
     int shade_mode;
@@ -61,7 +62,11 @@ layout(set = 3, binding = 0) uniform MaterialData{
     float roughness;
     float metallic;
     float ao;
-} material;
+};
+
+layout(std430, set = 3, binding = 0) readonly buffer MaterialBufferObject{
+    MaterialData objects[];
+} materials;
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec2 in_tex_coord;
@@ -75,10 +80,15 @@ layout(location = 1) out vec3 out_normal;
 layout(location = 2) out mat3 TBN;
 layout(location = 8) out vec2 uv_tex;
 layout(location = 9) out vec2 uv_normal;
+layout(location = 10) out int instance;
+
+MaterialData material;
 
 void main()
 {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
+    material = materials.objects[gl_BaseInstance];
+
     vec3 pos = inPosition;
     
     // Displace the vertex if a vertex map is included
@@ -119,4 +129,5 @@ void main()
     out_normal = (inv_trans * normal);
     uv_tex = in_tex_coord;
     uv_normal = in_tex_coord;
+    instance = gl_BaseInstance;
 }

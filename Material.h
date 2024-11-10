@@ -52,7 +52,6 @@ enum ReflectionShadeMode : int
     Phong = 0,
     Pbr = 1
 };
-
 struct MaterialShaderData
 {
     // Landscape rendering supports phong and PBR
@@ -84,6 +83,8 @@ struct MaterialShaderData
     float metallic;
     float ao;
 };
+
+static_assert(sizeof(MaterialShaderData) == 68, "");
 
 struct Material
 {

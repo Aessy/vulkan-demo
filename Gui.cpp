@@ -369,6 +369,7 @@ void showLight(LightBufferObject& light, Scene& scene)
         ImGui::DragFloat("Mie Scattering dir", &scene.atmosphere.mie_scattering_dir, 0.001, -0.99, 0.99);
         ImGui::SliderFloat("Sun exposure", &scene.atmosphere.sun_exposure, 0, 5000);
         ImGui::DragFloat("Luminance", &scene.atmosphere.luminance, 0.01, 0.1, 1.2);
+        ImGui::SliderFloat("Sun Distance", &scene.atmosphere.sun_distance, 100, 1000000);
 
         ImGui::Text("Sun Dir");
         ImGui::DragFloat("Pos x", &light.sun_pos.x, 0.1f, -100.0f, 100);

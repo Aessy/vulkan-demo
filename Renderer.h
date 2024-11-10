@@ -41,7 +41,7 @@ inline void renderScene(vk::CommandBuffer& cmd_buffer, Scene const& scene, std::
                 for (size_t i = 0; i < o.second.size(); ++i)
                 {
                     auto &obj = scene.objs[o.second[i]];
-                    writeBuffer(material->buffers[frame],obj.material.shader_data);
+                    writeBuffer(material->buffers[frame],obj.material.shader_data, i);
                 }
             }
             else if (auto* atmosphere = std::get_if<buffer_types::AtmosphereShaderData>(&buffer))
