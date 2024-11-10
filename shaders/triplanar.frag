@@ -25,8 +25,9 @@ struct LightBufferData
 {
     vec3 position;
     vec3 light_color;
-    vec3 sun_dir;
+    vec3 sun_pos;
     float strength;
+    float time_of_the_day;
 };
 layout(set = 1, binding = 0) uniform UniformWorld{
     mat4 view;
@@ -96,10 +97,11 @@ vec3 getBlending(vec3 world_normal)
 
 vec3 phong(vec3 normal, vec3 color)
 {
+    vec3 sun_dir = normalize(world.light.sun_pos);
     vec3 light_color = vec3(1,1,1);
     vec3 material_diffuse_color = color;
 
-    vec3 light_dir = normalize(world.light.sun_dir);
+    vec3 light_dir = sun_dir;
     vec3 view_dir = normalize(world.pos - position_worldspace);
     float shininess = material.shininess;
     float specular_strength = material.specular_strength;
@@ -162,10 +164,11 @@ float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 vec3 pbr(vec3 normal, vec3 albedo, float roughness, float metalness, float ao)
 {
     vec3 view_dir = normalize(world.pos - position_worldspace);
+    vec3 sun_dir = normalize(world.light.sun_pos);
+    vec3 light_dir = sun_dir;
     
     //vec3 light_dir = normalize(world.light.position - position_worldspace);
 
-    vec3 light_dir = normalize(world.light.sun_dir);
     vec3 light_color = world.light.light_color;
     float light_intensity = world.light.strength;
 

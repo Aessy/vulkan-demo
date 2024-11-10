@@ -37,6 +37,7 @@ struct Scene
     TerrainBufferObject terrain;
 
     FogVolumeBufferObject fog;
+    Atmosphere atmosphere;
 };
 
 inline void addObject(Scene& scene, Object o)

@@ -12,6 +12,7 @@
 #include "height_map.h"
 
 #include "Application.h"
+#include <spdlog/spdlog.h>
 
 namespace gui
 {
@@ -333,7 +334,7 @@ void showCamera(Camera const& camera)
     }
 }
 
-void showLight(LightBufferObject& light)
+void showLight(LightBufferObject& light, Scene& scene)
 {
     if (ImGui::BeginPopup("light"))
     {
@@ -349,20 +350,48 @@ void showLight(LightBufferObject& light)
             light.position.y = std::sin(drag)*3000;
         }
 
-        ImGui::Text("Sun Dir");
-        ImGui::DragFloat("Pos x", &light.sun_dir.x, 0.1f, -100.0f, 100);
-        ImGui::DragFloat("Pos y", &light.sun_dir.y, 0.1f, -100.0f, 100);
-        ImGui::DragFloat("Pos z", &light.sun_dir.z, 0.1f, -100.0f, 100);
+        static float phi = 0.0f;
+        static float theta = glm::pi<float>() * 0.5f;
+        bool phi_changed = ImGui::DragFloat("Sun vertical angle", &phi, 0.001f, -glm::pi<float>(), glm::pi<float>());
+        bool theta_changed = ImGui::DragFloat("Sun horizontal angle", &theta, 0.001f, -0.5 * glm::pi<float>(), 0.5*glm::pi<float>());
+        if (phi_changed || theta_changed)
+        {
+            glm::vec3 sun_sphere;
+            sun_sphere.x = scene.atmosphere.sun_distance * glm::cos(phi);
+            sun_sphere.y = scene.atmosphere.sun_distance * glm::sin(phi) * glm::sin(theta);
+            sun_sphere.z = scene.atmosphere.sun_distance * glm::sin(phi) * glm::cos(theta);
+            light.sun_pos = sun_sphere;
+        }
 
+        ImGui::DragFloat("Mie Coefficient", &scene.atmosphere.mie_coefficient, 0.001f, 0.0, 1.0);
+        ImGui::DragFloat("Rayleight scatter", &scene.atmosphere.rayleigh_scatter, 0.001, 0.1, 6.0);
+        ImGui::DragFloat("Turbidity", &scene.atmosphere.turbidity, 0.1, 150.0f, 0.1f);
+        ImGui::DragFloat("Mie Scattering dir", &scene.atmosphere.mie_scattering_dir, 0.001, -0.99, 0.99);
+        ImGui::SliderFloat("Sun exposure", &scene.atmosphere.sun_exposure, 0, 5000);
+        ImGui::DragFloat("Luminance", &scene.atmosphere.luminance, 0.01, 0.1, 1.2);
+
+        ImGui::Text("Sun Dir");
+        ImGui::DragFloat("Pos x", &light.sun_pos.x, 0.1f, -100.0f, 100);
+        ImGui::DragFloat("Pos y", &light.sun_pos.y, 0.1f, -100.0f, 100);
+        ImGui::DragFloat("Pos z", &light.sun_pos.z, 0.1f, -100.0f, 100);
+
+/*
         static float drag_sun = 2.4f;
         if (ImGui::DragFloat("sun sin/cos", &drag_sun, 0.01,0,4000))
         {
             light.sun_dir.x = std::cos(drag_sun);
             light.sun_dir.y = std::sin(drag_sun);
         }
+*/
 
         ImGui::Text("Strength");
         ImGui::DragFloat("Strength", &light.strength, 1.0f, 0.0f, 1000.0f);
+        static float time_of_the_day = 0.5f;
+        if (ImGui::DragFloat("Time of the day", &time_of_the_day, 0.01f, 0.0f, 1.0f))
+        {
+            spdlog::info("Dragging");
+            light.time_of_the_day = time_of_the_day;
+        }
 
         static float colors[3] {light.light_color.r, light.light_color.g, light.light_color.b};
 
@@ -542,7 +571,7 @@ void showScene(Application& app, Scene& scene, Models& models)
             ImGui::OpenPopup("light");
         }
 
-        showLight(light);
+        showLight(light, scene);
         ImGui::TreePop();
     }
 

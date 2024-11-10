@@ -49,7 +49,10 @@ struct PostProcessingData : BufferBase
 struct MaterialShaderData : BufferBase
 {};
 
-using ModelType = std::variant<Model, World, Terrain, FogVolume, PostProcessingData, MaterialShaderData>;
+struct AtmosphereShaderData : BufferBase
+{};
+
+using ModelType = std::variant<Model, World, Terrain, FogVolume, PostProcessingData, MaterialShaderData, AtmosphereShaderData>;
 
 };
 

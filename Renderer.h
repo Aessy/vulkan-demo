@@ -44,6 +44,13 @@ inline void renderScene(vk::CommandBuffer& cmd_buffer, Scene const& scene, std::
                     writeBuffer(material->buffers[frame],obj.material.shader_data);
                 }
             }
+            else if (auto* atmosphere = std::get_if<buffer_types::AtmosphereShaderData>(&buffer))
+            {
+                for (size_t i = 0; i < o.second.size(); ++i)
+                {
+                    writeBuffer(atmosphere->buffers[frame],scene.atmosphere);
+                }
+            }
         }
 
         cmd_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, program.program.pipeline[0]);

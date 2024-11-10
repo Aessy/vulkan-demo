@@ -24,6 +24,7 @@ struct LightBufferData
     vec3 light_color;
     vec3 sun_dir;
     float strength;
+    float time_of_the_day;
 };
 layout(set = 1, binding = 0) uniform UniformWorld{
     mat4 view;

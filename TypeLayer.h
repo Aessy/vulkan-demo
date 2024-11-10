@@ -27,6 +27,7 @@ enum class BufferType : int
     FogVolumeObject,
     PostProcessingDataBufferObject,
     MaterialShaderData,
+    AtmosphereShaderData,
     NoBuffer,
 };
 

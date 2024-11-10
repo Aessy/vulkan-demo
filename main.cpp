@@ -450,7 +450,7 @@ int main()
 
     Models models;
     // int landscape_fbx = models.loadModelAssimp("./models/canyon_low_res.fbx");
-    int sphere_fbx = models.loadModelAssimp("./models/sphere.fbx");
+    int sphere_fbx = models.loadModelAssimp("./models/sky_sphere.fbx");
     // int dune_id = models.loadModelAssimp("./models/dune.fbx");
     int cylinder_id = models.loadModel("./models/cylinder.obj");
 
@@ -587,7 +587,6 @@ int main()
     scene.light.strength = 5.0f;
     
     // Sun light comes from directly down.
-    scene.light.sun_dir = glm::vec3(0,1,0);
     //scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
 
     for (int i = 0; i < programs.size(); ++i)
@@ -604,7 +603,7 @@ int main()
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
     landscape_flat.material = landscape_material;
 
-    auto sky_box = createObject(meshes.meshes.at(box_id));
+    auto sky_box = createObject(meshes.meshes.at(sphere_id));
     sky_box.material = sky_box_material;
     sky_box.scale = 800.0f;
 
@@ -664,6 +663,7 @@ int main()
         total_time += delta;
         if (total_time > 1)
         {
+            spdlog::info("Time of the day: {}", application.scene.light.time_of_the_day);
             fps = 0;
             total_time = 0;
         }
@@ -679,6 +679,19 @@ int main()
         {
             updateCamera(delta, camera_speed, core.swap_chain.extent, application.scene.camera, app, core.window);
         }
+
+/*
+        float theta = application.scene.light.sun_vertical_angle;
+        float phi = application.scene.light.sun_horizontal_angle;
+
+        glm::vec3 sun_sphere;
+        sun_sphere.x = application.scene.atmosphere.sun_distance * glm::cos(phi);
+        sun_sphere.y = application.scene.atmosphere.sun_distance * glm::sin(phi) * glm::sin(theta);
+        sun_sphere.z = application.scene.atmosphere.sun_distance * glm::sin(phi) * glm::sin(theta);
+        application.scene.atmosphere.sun_pos = sun_sphere;
+*/
+        //float sun_angle = application.scene.light.time_of_the_day * glm::pi<float>();
+        //application.scene.light.sun_dir = glm::normalize(glm::vec3(glm::cos(sun_angle), glm::sin(sun_angle), 0.0f));
 
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();

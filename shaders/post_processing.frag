@@ -7,6 +7,7 @@ layout(set = 0, binding = 0) uniform sampler2DMS color_sampler;
 layout(set = 1, binding = 0) uniform sampler3D fog_sampler;
 layout(set = 2, binding = 0) uniform sampler2D depth_sampler;
 
+precision highp float;
 struct LightBufferData
 {
     vec3 position;
@@ -110,6 +111,18 @@ vec3 tone_map_ACES(vec3 hdr_color) {
     return clamp((hdr_color * (a * hdr_color+ b)) / (hdr_color* (c * hdr_color+ d) + e), 0.0, 1.0);
 }
 
+// Function to get a tonemapping with a filmic feel, as per Uncharted 2:
+// http://filmicworlds.com/blog/filmic-tonemapping-operators/ 
+const float A = 0.15;
+const float B = 0.50;
+const float C = 0.10;
+const float D = 0.20;
+const float E = 0.02;
+const float F = 0.30;
+vec3 tonemap( vec3 x ) {
+	return ( (x * (A*x + C*B) + D*E) / (x * (A*x + B) + D*F) ) - E/F;
+}
+
 void main()
 {
     ivec2 texture_size = textureSize(color_sampler);
@@ -137,7 +150,12 @@ void main()
 
     if (data.hdr == 1)
     {
-        final_color = vec4(tone_map_ACES(final_color.rgb), final_color.a);
+        vec3 white_scale = 1.0 / tonemap(vec3(1000.0));
+        vec3 mapped = tonemap(final_color.rgb);
+
+        final_color = vec4((white_scale * mapped), final_color.a);
+        // final_color = vec4(tone_map_ACES(final_color.rgb), final_color.a);
+
     }
 
     fragColor = final_color;

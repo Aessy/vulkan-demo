@@ -11,6 +11,13 @@
 #include <string>
 #include <map>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include "glm/gtx/string_cast.hpp"
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/geometric.hpp>
+#include <glm/trigonometric.hpp>
+
 struct ModelBufferObject
 {
     alignas(16) glm::mat4 model;
@@ -21,8 +28,9 @@ struct LightBufferObject
 {
     alignas(16) glm::vec3 position;
     alignas(16) glm::vec3 light_color;
-    alignas(16) glm::vec3 sun_dir;
+    alignas(16) glm::vec3 sun_pos;
     float strength;
+    float time_of_the_day{0.5};
 };
 
 struct WorldBufferObject
@@ -39,6 +47,18 @@ struct FogVolumeBufferObject
     float base_density = 0.00f;
     float max_density = 0.9f;
     alignas(16) glm::vec3 color = glm::vec3(1,1,1);
+};
+
+struct Atmosphere
+{
+    float sun_distance{450000};
+    float mie_coefficient{0.005};
+    float mie_scattering_dir{0.758};
+    float rayleigh_scatter{2};
+
+    float turbidity{10};
+    float luminance{1};
+    float sun_exposure{1000.0};
 };
 
 struct TerrainBufferObject

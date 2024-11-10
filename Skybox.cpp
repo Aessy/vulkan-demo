@@ -26,7 +26,8 @@ std::unique_ptr<Program> createSkyBoxProgram(RenderingState const& state, vk::Re
             .binding = 0,
             .type = layer_types::BindingType::Uniform,
             .size = 1,
-            .vertex = true
+            .vertex = true,
+            .fragment = true
         }
     }});
 
@@ -50,6 +51,20 @@ std::unique_ptr<Program> createSkyBoxProgram(RenderingState const& state, vk::Re
             .name = {{"binding model"}},
             .binding = 0,
             .type = layer_types::BindingType::Storage,
+            .size = 1,
+            .vertex = true,
+            .fragment = true
+        }
+    }});
+
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"model_buffer"}},
+        .type = layer_types::BufferType::AtmosphereShaderData,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding model"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
             .size = 1,
             .vertex = true,
             .fragment = true
