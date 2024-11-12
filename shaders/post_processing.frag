@@ -141,7 +141,7 @@ void main()
 
     if (fog.enabled == 1)
     {
-        final_color = calculateVolumetricFog(scene_color);
+        final_color = calculateVolumetricFog(scene_color); 
     }
     else
     {
@@ -153,7 +153,6 @@ void main()
         vec3 white_scale = 1.0 / tonemap(vec3(1000.0));
         vec3 mapped = tonemap(final_color.rgb);
 
-        final_color = vec4((white_scale * mapped), final_color.a);
         // final_color = vec4(tone_map_ACES(final_color.rgb), final_color.a);
 
     }

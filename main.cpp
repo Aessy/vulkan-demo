@@ -1,13 +1,21 @@
 #include "Material.h"
 #include "Skybox.h"
+#ifdef __linux__
 #include "X11/Xlib.h"
+#endif
 #undef True
 #undef False
 
 #define VK_USE_PLATFORM_XLIB_KHR
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
+
+#ifdef __linux__
 #define GLFW_EXPOSE_NATIVE_X11
+#elif _WIN32
+#define GLFW_EXPOSE_NATIVE_WIN32
+#endif
+
 #include "GLFW/glfw3native.h"
 
 #define VULKAN_HPP_NO_EXCEPTIONS
@@ -451,7 +459,7 @@ int main()
     // int landscape_fbx = models.loadModelAssimp("./models/canyon_low_res.fbx");
     int sphere_fbx = models.loadModelAssimp("./models/sky_sphere.fbx");
     // int dune_id = models.loadModelAssimp("./models/dune.fbx");
-    int cylinder_id = models.loadModel("./models/cylinder.obj");
+    // int cylinder_id = models.loadModel("./models/cylinder.obj");
 
     auto height_map_1_model = createFlatGround(2047, 1024, 4);
     models.models.insert({height_map_1_model.id, height_map_1_model});
@@ -470,12 +478,13 @@ int main()
     programs.push_back(createProgram(terrain_program_triplanar, core, textures, core.render_pass, "Landscape triplanar", pipeline_input));
 
     auto skybox = createSkybox(core, core.render_pass,{
-        "./textures/clouds1/clouds1_east.bmp",
-        "./textures/clouds1/clouds1_west.bmp",
-        "./textures/clouds1/clouds1_up.bmp",
-        "./textures/clouds1/clouds1_down.bmp",
-        "./textures/clouds1/clouds1_north.bmp",
-        "./textures/clouds1/clouds1_south.bmp"});
+        "./textures/grass.png",
+        "./textures/grass.png",
+        "./textures/grass.png",
+        "./textures/grass.png",
+        "./textures/grass.png",
+        "./textures/grass.png",
+    });
 
     programs.push_back(std::move(skybox.program));
 
@@ -570,7 +579,7 @@ int main()
 
     Meshes meshes;
     auto landscape_flat_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
-    auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
+    // auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
     //auto landscape_mesh_id = meshes.loadMesh(core, models.models.at(landscape_fbx), "landscape fbx");
     auto sphere_id = meshes.loadMesh(core, models.models.at(sphere_fbx), "sphere fbx");
     //auto dune_mesh_id = meshes.loadMesh(core, models.models.at(dune_id), "Dune");

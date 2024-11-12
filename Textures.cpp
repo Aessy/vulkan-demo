@@ -149,7 +149,7 @@ Texture createTexture(RenderingState const& state, std::string const& path, Text
         auto [image, mem, mip_maps] = createTextureImage(state, format, path);
         auto image_view = createTextureImageView(state, image, format, mip_maps);
 
-        auto file_name = std::filesystem::path(path).filename();
+        auto file_name = std::filesystem::path(path).filename().string();
 
         return Texture {
             .image = image,
@@ -174,7 +174,7 @@ Texture createTexture(RenderingState const& state, std::string const& path, Text
         stbi_image_free(pixels);
         auto image_view = createTextureImageView(state, image, format, mip_maps);
 
-        auto file_name = std::filesystem::path(path).filename();
+        auto file_name = std::filesystem::path(path).filename().string();
 
         return Texture {
             .image = image,

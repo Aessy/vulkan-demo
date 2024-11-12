@@ -23,7 +23,6 @@ void main()
     uv_frag[4] = vec2(0, 1);
     uv_frag[5] = vec2(0, 0);
 
-    debugPrintfEXT("index: %i", gl_VertexIndex);
     gl_Position = vec4(coords[gl_VertexIndex], 1.0);
     uv_out = uv_frag[gl_VertexIndex];
 }

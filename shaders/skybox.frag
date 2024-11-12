@@ -119,6 +119,10 @@ vec3 tonemap( vec3 x ) {
 	return ( (x * (A*x + C*B) + D*E) / (x * (A*x + B) + D*F) ) - E/F;
 }
 
+float randomNoise(vec2 uv) {
+    return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
 
 void main()
 {
@@ -186,6 +190,9 @@ void main()
     vec3 curr = exposure_bias * tex_color;
     //vec3 white_scale = 1.0 / tonemap(vec3(1000.0));
     vec3 color = curr;
+
+    float noise = randomNoise(frag_dir.xy) * 0.009; // Adjust strength as needed
+    color += noise;
 
     //vec3 retColor = pow( color, vec3( 1.0 / (1.2 + (1.2 * sun_fade) ) ) );
     

@@ -44,6 +44,7 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
     std::vector<ShaderStage> shader_stages;
     if (shader_vert.size())
     {
+        spdlog::info("Creating shader module for {}", shader_vert);
         ShaderStage s {
             .module = createShaderModule(readFile(shader_vert), rendering_state.device),
             .stage = vk::ShaderStageFlagBits::eVertex
@@ -53,6 +54,7 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
     }
     if (shader_frag.size())
     {
+        spdlog::info("Creating shader module for {}", shader_frag);
         ShaderStage s {
             .module = createShaderModule(readFile(shader_frag), rendering_state.device),
             .stage = vk::ShaderStageFlagBits::eFragment
@@ -80,6 +82,7 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
     }
     if (compute.size())
     {
+        spdlog::info("Creating shader module for {}", compute);
         ShaderStage s {
             .module = createShaderModule(readFile(compute), rendering_state.device),
             .stage = vk::ShaderStageFlagBits::eCompute

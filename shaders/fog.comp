@@ -5,7 +5,7 @@
 layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
 
 layout(rgba32f, set = 0, binding = 0) writeonly uniform image3D depthOutput;
-layout(set = 1, binding = 0) uniform sampler2D depthTexture;
+layout(set = 1, binding = 0) uniform sampler2D noise_texture;
 
 struct LightBufferData
 {
@@ -26,11 +26,30 @@ layout(set = 3, binding = 0) uniform UniformFog{
     float density;
     float max_density;
     vec3 color;
+    float turbulence;
+    float wind;
+    float time;
 } fog;
 
 void main()
 {
     ivec3 voxelCoord = ivec3(gl_GlobalInvocationID.xyz);
 
-    imageStore(depthOutput, voxelCoord, vec4(fog.density, 0.0, 0.0, 0.0));
+    vec2 fog_pos;
+    fog_pos.x = float(voxelCoord.x)/128.0f;
+    fog_pos.y = float(voxelCoord.y)/128.0f;
+
+	float3 p = floor(x);
+	float3 f = frac(x);
+	f = f * f * (3.0 - 2.0 * f);
+	float2 uv = (p.xy + float2(37.0,17.0) * p.z) + f.xy;
+
+
+
+    vec2 noise_coord = fog_pos + (fog.wind * fog.time);
+
+    float noise_value = texture(noise_texture, noise_coord).r * fog.turbulence;
+
+
+    imageStore(depthOutput, voxelCoord, vec4(fog.density+noise_value, 0.0, 0.0, 0.0));
 }

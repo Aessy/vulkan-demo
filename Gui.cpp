@@ -646,6 +646,9 @@ void showScene(Application& app, Scene& scene, Models& models)
     }
 
     ImGui::DragFloat("Fog Density", &app.scene.fog.base_density, 0.01f, 0.00f, 100.0f);
+    ImGui::DragFloat("Turbulence", &app.scene.fog.turbulence, 0.00001f, 0.00f, 100.0f);
+    ImGui::DragFloat("Wind", &app.scene.fog.wind, 0.01f, 0.00f, 100.0f);
+    ImGui::DragFloat("Time", &app.scene.fog.time, 0.01f, 0.00f, 100.0f);
 
     static float fog_color[3] {scene.fog.color.r, scene.fog.color.g, scene.fog.color.b};
     if (ImGui::ColorEdit3("Color", fog_color))

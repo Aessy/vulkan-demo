@@ -47,6 +47,9 @@ struct FogVolumeBufferObject
     float base_density = 0.00f;
     float max_density = 0.9f;
     alignas(16) glm::vec3 color = glm::vec3(1,1,1);
+    float turbulence;
+    float wind;
+    float time;
 };
 
 struct Atmosphere

@@ -140,13 +140,16 @@ static auto createInstance(bool validation_layers_on)
     uint32_t glfw_extensions_count = 0;
     auto glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extensions_count);
 
-    static const std::vector<char const*> extensions
+    std::vector<char const*> extensions;
+    for (int i = 0; i< glfw_extensions_count; ++i)
     {
-        VK_KHR_SURFACE_EXTENSION_NAME,
-        "VK_KHR_xcb_surface",
-        VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME,
-        VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
-    };
+        extensions.push_back(glfw_extensions[i]);
+    }
+
+    extensions.push_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+    extensions.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
+
+
 
     info.enabledExtensionCount = extensions.size();
     info.ppEnabledExtensionNames = extensions.data();
@@ -163,7 +166,10 @@ static auto createInstance(bool validation_layers_on)
 
     spdlog::info("GLFW Extension count: {}", glfw_extensions_count);
 
-    return vk::createInstance(info, nullptr).value;
+    auto instance = vk::createInstance(info, nullptr);
+    checkResult(instance.result);
+
+    return instance.value;
 }
 
 static vk::SurfaceKHR createSurface(vk::Instance const& instance, GLFWwindow* window)
@@ -231,17 +237,18 @@ DepthResources createColorResources(RenderingState const& state, vk::Format form
 
 static vk::PhysicalDevice createPhysicalDevice(vk::Instance const& instance)
 {
-    auto devices = instance.enumeratePhysicalDevices().value;
-    if (devices.empty())
+    auto devices = instance.enumeratePhysicalDevices();
+    checkResult(devices.result);
+    if (devices.value.empty())
     {
         spdlog::info("No GPU with vulkan support");
         return {};
     }
 
-    std::sort(devices.begin(), devices.end(), [](auto const& lhs, auto const& rhs) {return scoreDevice(lhs) < scoreDevice(rhs);});
+    std::sort(devices.value.begin(), devices.value.end(), [](auto const& lhs, auto const& rhs) {return scoreDevice(lhs) < scoreDevice(rhs);});
 
-    spdlog::info("GPU count: ", devices.size());
-    vk::PhysicalDevice physical_device = devices.back();
+    spdlog::info("GPU count: {}", devices.value.size());
+    vk::PhysicalDevice physical_device = devices.value.back();
     return physical_device;
 }
 
@@ -368,6 +375,12 @@ static SwapChainSupportDetails querySwapChainSupport(vk::PhysicalDevice const& d
 
 vk::SurfaceFormatKHR chooseSwapSurfaceFoprmat(std::vector<vk::SurfaceFormat2KHR> const& available_formats)
 {
+    for (auto const& available_format : available_formats)
+    {
+        // TODO: HDR support if available.
+        spdlog::info("Available format: {} Color Space KHR: {}", vk::to_string(available_format.surfaceFormat.format),
+                                                                 vk::to_string(available_format.surfaceFormat.colorSpace));
+    }
     for (auto const& available_format : available_formats)
     {
         // TODO: Look more into HDR Surface format
@@ -839,10 +852,13 @@ RenderingState createVulkanRenderState()
 
     auto window = setupGlfw(*app);
 
+    spdlog::info("Creating instance");
     auto const instance = createInstance(true);
 
+    spdlog::info("Creating surface");
     auto const surface = createSurface(instance, window);
 
+    spdlog::info("Creating physical device");
     auto const physical_device = createPhysicalDevice(instance);
     auto const msaa_samples = getMaxUsableSampleCount(physical_device);
 
@@ -1311,6 +1327,8 @@ vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> 
 
 vk::ShaderModule createShaderModule(std::vector<char> const& code, vk::Device const& device)
 {
+    spdlog::info("Creating shader module. Code size: {}", code.size());
+
     vk::ShaderModuleCreateInfo create_info;
     create_info.sType = vk::StructureType::eShaderModuleCreateInfo;
     create_info.setCodeSize(code.size());

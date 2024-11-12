@@ -39,3 +39,4 @@ struct TextureInput
 };
 
 Textures createTextures(RenderingState const& core, std::vector<TextureInput> const& paths);
+Texture createTexture(RenderingState const& state, std::string const& path, TextureType type, vk::Format format, vk::Sampler sampler);

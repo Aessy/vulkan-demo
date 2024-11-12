@@ -175,14 +175,6 @@ inline void postProcessingUpdateDescriptorSets(RenderingState const& state,
     auto depth_descriptor_set = ppp.fog_compute_program->program.descriptor_sets[1].set[state.current_frame];
     auto depth_descriptor_binding = ppp.fog_compute_program->program.descriptor_sets[1].layout_bindings[0];
 
-    DepthResources const& resources = state.framebuffer_resources[image_index].depth_resolved_resources;
-    Texture depth_texture{.image=resources.depth_image, .memory=resources.depth_image_memory,
-                         .view=resources.depth_image_view,
-                         .sampler=ppp.sampler,
-                         .name="",
-                         .mip_levels=1};
-    updateImageSampler(state.device, {depth_texture}, {depth_descriptor_set}, depth_descriptor_binding);
-
     // Update the 3D texture descriptor set
     auto desc_set = ppp.fog_compute_program->program.descriptor_sets[0].set[state.current_frame];
     auto desc_binding = ppp.fog_compute_program->program.descriptor_sets[0].layout_bindings[0];
@@ -420,6 +412,22 @@ static vk::RenderPass createPostProcessingRenderPass(vk::Format const swap_chain
     return render_pass.value;
 }
 
+void createNoiseTexture(RenderingState const& state, Program const& program)
+{
+    auto sampler = createTextureSampler(state, false);
+    auto texture = createTexture(state,
+                                 "./textures/noise.png",
+                                 TextureType::Map,
+                                 vk::Format::eR8G8B8A8Unorm,
+                                 sampler);
+
+    for (int i = 0; i < 2; ++i)
+    {
+        updateImageSampler(state.device, {texture}, {program.program.descriptor_sets[1].set[i]},
+                                    program.program.descriptor_sets[1].layout_bindings[0]);
+    }
+}
+
 PostProcessing createPostProcessing(RenderingState const& state)
 {
     PostProcessing pp;
@@ -437,7 +445,9 @@ PostProcessing createPostProcessing(RenderingState const& state)
     pp.program = createPostProcessingProgram(state, pp.render_pass);
 
     spdlog::info("Creating compute fog program");
-    pp.fog_compute_program= createComputeFogProgram(state, pp.render_pass);
+    pp.fog_compute_program = createComputeFogProgram(state, pp.render_pass);
+
+    createNoiseTexture(state, *pp.fog_compute_program.get());
 
     return pp;
 }

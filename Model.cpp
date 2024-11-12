@@ -1,8 +1,6 @@
 #include "Model.h"
 #include <stdexcept>
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
 #include <assimp/Importer.hpp>
 
 #include <assimp/Importer.hpp>      // C++ importer interface
@@ -100,6 +98,7 @@ int Models::loadModelAssimp(std::string const& path)
 
 int Models::loadModel(std::string const& model_path)
 {
+    /*
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -145,6 +144,8 @@ int Models::loadModel(std::string const& model_path)
     models.insert({model.id, model});
 
     return model.id;
+    */
+    return -1;
 }
 
 Model createBox()

@@ -2,6 +2,9 @@ project(vulkan)
 
 cmake_minimum_required(VERSION 3.21)
 
+set(CMAKE_C_COMPILER gcc.exe)
+set(CMAKE_C_COMPILER g++.exe)
+
 set(SRC VulkanRenderSystem.cpp
         main.cpp
         PostProcessing.cpp
@@ -13,12 +16,22 @@ set(SRC VulkanRenderSystem.cpp
         Id.cpp
         Skybox.cpp
         imgui_impl_vulkan.cpp
-        imgui_impl_glfw.cpp)
+        imgui_impl_glfw.cpp
+        imgui/imgui.cpp
+        imgui/imgui_draw.cpp
+        imgui/imgui_tables.cpp
+        imgui/imgui_widgets.cpp
+        )
 
 add_executable(vulkan-test ${SRC})
 target_compile_options(vulkan-test PUBLIC -g -std=c++23)
 target_compile_definitions(vulkan-test PUBLIC GLM_ENABLE_EXPERIMENTAL)
+
+IF(WIN32)
+target_link_libraries(vulkan-test vulkan-1 glfw3 libassimp)
+ELSEIF(LINUX)
 target_link_libraries(vulkan-test glfw vulkan X11 imgui assimp fmt spdlog)
+ENDIF()
 
 add_custom_target(shaders
                   COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders

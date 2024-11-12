@@ -17,8 +17,6 @@
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
 
-#include <boost/container/flat_map.hpp>
-
 #include <map>
 #include <vector>
 

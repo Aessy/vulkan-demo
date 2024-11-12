@@ -1,15 +1,18 @@
 #pragma once
 
-// For some reason after updating vulkan, X11 defines True and False as macros 
-// which vulkan defines as globals... undef after xlib is included
-#include "X11/Xlib.h"
+#ifdef __linux__
+#define VK_USE_PLATFORM_XLIB_KHR
+#define GLFW_EXPOSE_NATIVE_X11
+#elif _WIN32
+#define VK_USE_PLATFORM_WIN32_KHR
+#define GLFW_EXPOSE_NATIVE_WIN32
+#endif
 #undef True
 #undef False
 
-#define VK_USE_PLATFORM_XLIB_KHR
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
-#define GLFW_EXPOSE_NATIVE_X11
+
 #include "GLFW/glfw3native.h"
 
 #define VULKAN_HPP_NO_EXCEPTIONS
