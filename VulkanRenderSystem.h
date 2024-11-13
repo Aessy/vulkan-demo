@@ -247,3 +247,51 @@ auto createStorageBuffers(RenderingState const& state, uint32_t size)
     return ubos;
 }
 
+template<typename Vertex>
+static constexpr vk::VertexInputBindingDescription getBindingDescription()
+{
+    auto desc = vk::VertexInputBindingDescription{};
+    desc.binding = 0;
+    desc.stride = sizeof(Vertex);
+    desc.inputRate = vk::VertexInputRate::eVertex;
+
+    return desc;
+};
+
+template<typename Vertex>
+static constexpr std::array<vk::VertexInputAttributeDescription, 6> getAttributeDescriptions()
+{
+    std::array<vk::VertexInputAttributeDescription, 6> desc;
+
+    desc[0].binding = 0;
+    desc[0].location = 0;
+    desc[0].format = vk::Format::eR32G32B32Sfloat;
+    desc[0].offset = offsetof(Vertex, pos);
+
+    desc[1].binding = 0;
+    desc[1].location = 1;
+    desc[1].format = vk::Format::eR32G32Sfloat;
+    desc[1].offset = offsetof(Vertex, tex_coord);
+
+    desc[2].binding = 0;
+    desc[2].location = 2;
+    desc[2].format = vk::Format::eR32G32B32Sfloat;
+    desc[2].offset = offsetof(Vertex, normal);
+
+    desc[3].binding = 0;
+    desc[3].location = 3;
+    desc[3].format = vk::Format::eR32G32Sfloat;
+    desc[3].offset = offsetof(Vertex, normal_coord);
+
+    desc[4].binding = 0;
+    desc[4].location = 4;
+    desc[4].format = vk::Format::eR32G32B32Sfloat;
+    desc[4].offset = offsetof(Vertex, tangent);
+
+    desc[5].binding = 0;
+    desc[5].location = 5;
+    desc[5].format = vk::Format::eR32G32B32Sfloat;
+    desc[5].offset = offsetof(Vertex, bitangent);
+
+    return  desc;
+}

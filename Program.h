@@ -87,3 +87,27 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
                                        vk::RenderPass const& render_pass,
                                        std::string const& name,
                                        GraphicsPipelineInput const& input);
+
+struct PipelineData
+{
+    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> descriptor_set_layout_bindings;
+    std::vector<ShaderStage> shader_stages;
+    std::vector<DescriptionPoolAndSet> descriptor_sets;
+    std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
+
+    layer_types::Program const& program_data;
+};
+
+PipelineData createPipelineData(RenderingState const& state, layer_types::Program const& program_data);
+
+struct Pipeline
+{
+    vk::Pipeline pipeline;
+
+    std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
+    std::vector<std::vector<vk::DescriptorSetLayoutBinding>> bindings;
+
+    std::vector<buffer_types::ModelType> buffers;
+};
+
+Pipeline bindPipeline(RenderingState const& core, PipelineData const& pipeline_data, vk::Pipeline const& pipeline);

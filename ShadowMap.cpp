@@ -3,10 +3,14 @@
 #include <glm/glm.hpp>
 
 #include "VulkanRenderSystem.h"
+#include "Program.h"
 
 #include <limits>
 #include <vector>
+
+#include <spdlog/spdlog.h>
 #include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_structs.hpp>
 
 std::vector<glm::vec4> getFrustumCorners(glm::mat4 const& proj_view)
 {
@@ -107,6 +111,7 @@ static glm::mat4 getLightSpaceMatrix(float const near, float const far, vk::Exte
     auto const light_view = glm::lookAt(center + light_dir, center, glm::vec3(0.0f, 1.0f, 0.0f));
 
     auto const light_projection = getLightProjection(light_view, corners);
+    return light_projection;
 }
 
 std::vector<glm::mat4> getLightSpaceMatrices(vk::Extent2D const& size, Camera const& camera, glm::vec3 const& light_dir)
@@ -147,7 +152,7 @@ static std::vector<vk::Framebuffer> createCascadedShadowmapFramebuffers(Renderin
         std::array<vk::ImageView, 1> attachments = {depth_image.depth_image_view};
         vk::FramebufferCreateInfo framebuffer_info{};
         framebuffer_info.sType = vk::StructureType::eFramebufferCreateInfo;
-        framebuffer_info.setRenderPass(state.render_pass);
+        framebuffer_info.setRenderPass(render_pass);
         framebuffer_info.attachmentCount = attachments.size();
         framebuffer_info.setAttachments(attachments);
         framebuffer_info.width = state.swap_chain.extent.width;
@@ -155,7 +160,7 @@ static std::vector<vk::Framebuffer> createCascadedShadowmapFramebuffers(Renderin
         framebuffer_info.layers = 1;
 
         auto result = state.device.createFramebuffer(framebuffer_info);
-        checkResult(result);
+        checkResult(result.result);
 
         framebuffers.push_back(result.value);
     }
@@ -163,14 +168,122 @@ static std::vector<vk::Framebuffer> createCascadedShadowmapFramebuffers(Renderin
     return framebuffers;
 }
 
+static vk::Pipeline createCascadedShadowMapPipeline(PipelineData const& pipeline_data,
+                                                    vk::Extent2D const& swap_chain_extent,
+                                                    vk::Device const& device,
+                                                    vk::RenderPass const& render_pass)
+{
 
-static vk::RenderPass createShadowMapRenderPass(vk::Format const swap_chain_image_format,
-                                                vk::Device const& device,
-                                                vk::SampleCountFlagBits msaa)
+    vk::ShaderStageFlags shader_flags{};
+
+    std::vector<vk::PipelineShaderStageCreateInfo> stages;
+    for (auto& stage : pipeline_data.shader_stages)
+    {
+        vk::PipelineShaderStageCreateInfo stage_info;
+        stage_info.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+        stage_info.stage = stage.stage;
+        stage_info.module = stage.module;
+        stage_info.pName = "main";
+        stages.push_back(stage_info);
+
+        shader_flags |= stage_info.stage;
+    }
+
+    // Expect Vertex and Fragment shader
+    if (   (shader_flags & vk::ShaderStageFlagBits::eVertex
+         &&(shader_flags & vk::ShaderStageFlagBits::eFragment)) == 0)
+    {
+        spdlog::info("Invalid shader modules");
+        return vk::Pipeline{};
+    }
+
+    vk::PipelineVertexInputStateCreateInfo vertex_input_info {};
+
+    constexpr auto biding_descrition = getBindingDescription<Vertex>();
+    constexpr auto attrib_descriptions = getAttributeDescriptions<Vertex>();
+
+    vertex_input_info.sType = vk::StructureType::ePipelineVertexInputStateCreateInfo;
+    vertex_input_info.setVertexBindingDescriptions(biding_descrition);
+    vertex_input_info.setVertexAttributeDescriptions(attrib_descriptions);
+
+    vk::PipelineRasterizationStateCreateInfo rasterization_state{};
+    rasterization_state.depthClampEnable = VK_FALSE;
+    rasterization_state.rasterizerDiscardEnable = VK_FALSE;
+    rasterization_state.polygonMode = vk::PolygonMode::eFill;
+    rasterization_state.cullMode = vk::CullModeFlagBits::eBack;  // Cull back faces
+    rasterization_state.frontFace = vk::FrontFace::eClockwise;
+    rasterization_state.lineWidth = 1.0f;
+
+    vk::PipelineDepthStencilStateCreateInfo depth_stencil_state{};
+    depth_stencil_state.depthTestEnable = VK_TRUE;
+    depth_stencil_state.depthWriteEnable = VK_TRUE;
+    depth_stencil_state.depthCompareOp = vk::CompareOp::eLess;
+    depth_stencil_state.stencilTestEnable = VK_FALSE;
+
+    vk::PipelineInputAssemblyStateCreateInfo input_assembly_state{};
+    input_assembly_state.topology = vk::PrimitiveTopology::eTriangleList;
+    input_assembly_state.primitiveRestartEnable = VK_FALSE;
+
+    vk::Viewport viewport{};
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = (float)swap_chain_extent.width;
+    viewport.height= (float)swap_chain_extent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    vk::Rect2D scissor{};
+    scissor.offset = vk::Offset2D(0,0);
+    scissor.extent = swap_chain_extent;
+
+    vk::PipelineViewportStateCreateInfo viewport_state{};
+    viewport_state.setViewports(viewport);
+    viewport_state.setScissors(scissor);
+
+    vk::PipelineLayoutCreateInfo pipeline_layout_info{};
+    pipeline_layout_info.sType = vk::StructureType::ePipelineLayoutCreateInfo;
+    pipeline_layout_info.setSetLayouts(pipeline_data.descriptor_set_layouts);
+
+    auto pipeline_layout = device.createPipelineLayout(pipeline_layout_info);
+    checkResult(pipeline_layout.result);
+
+    vk::GraphicsPipelineCreateInfo pipeline_info;
+    pipeline_info.sType = vk::StructureType::eGraphicsPipelineCreateInfo;
+
+    vk::PipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = vk::StructureType::ePipelineMultisampleStateCreateInfo;
+    multisampling.sampleShadingEnable = false;
+    multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+    multisampling.minSampleShading = 1.0f;
+    multisampling.pSampleMask = nullptr;
+    multisampling.alphaToCoverageEnable = false;
+    multisampling.alphaToOneEnable = false;
+
+    pipeline_info.setPVertexInputState(&vertex_input_info);
+    pipeline_info.setStages(stages);
+    pipeline_info.setPInputAssemblyState(&input_assembly_state);
+    pipeline_info.setPViewportState(&viewport_state);
+    pipeline_info.setPRasterizationState(&rasterization_state);
+    pipeline_info.setPDepthStencilState(&depth_stencil_state);
+    pipeline_info.setPMultisampleState(&multisampling);
+    pipeline_info.setLayout(pipeline_layout.value);
+    pipeline_info.setRenderPass(render_pass);
+    pipeline_info.setSubpass(0);
+    pipeline_info.basePipelineIndex = 0;
+    pipeline_info.basePipelineIndex = -1;
+
+    auto pipeline = device.createGraphicsPipelines(VK_NULL_HANDLE, pipeline_info);
+    checkResult(pipeline.result);
+
+    return pipeline.value[0];
+}
+
+
+static vk::RenderPass createShadowMapRenderPass(vk::Device const& device)
 {
 
     vk::AttachmentDescription2 depth_attachment{};
-    depth_attachment.format = vk::Format::eR16Sfloat;
+    depth_attachment.format = vk::Format::eD32Sfloat;
     depth_attachment.samples = vk::SampleCountFlagBits::e1;
     depth_attachment.loadOp = vk::AttachmentLoadOp::eClear;
     depth_attachment.storeOp = vk::AttachmentStoreOp::eStore;
@@ -179,7 +292,7 @@ static vk::RenderPass createShadowMapRenderPass(vk::Format const swap_chain_imag
     depth_attachment.initialLayout = vk::ImageLayout::eUndefined;
     depth_attachment.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
-    vk::AttachmentReference2 depth_attachment_ref;
+    vk::AttachmentReference2 depth_attachment_ref{};
     depth_attachment_ref.attachment = 0;
     depth_attachment_ref.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
@@ -192,7 +305,7 @@ static vk::RenderPass createShadowMapRenderPass(vk::Format const swap_chain_imag
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;  // Previous render pass
     dependency.dstSubpass = 0;  // This post-processing subpass
     dependency.setSrcStageMask(vk::PipelineStageFlagBits::eEarlyFragmentTests);
-    dependency.setSrcAccessMask(vk::AccessFlagBits::eShaderRead);
+    dependency.setSrcAccessMask(vk::AccessFlagBits::eDepthStencilAttachmentRead);
 
     dependency.dstStageMask = vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests;
     dependency.dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
@@ -200,6 +313,7 @@ static vk::RenderPass createShadowMapRenderPass(vk::Format const swap_chain_imag
     std::array<vk::AttachmentDescription2, 1> attachments {depth_attachment};
     vk::RenderPassCreateInfo2 renderPassInfo{};
     renderPassInfo.setAttachments(attachments);
+    renderPassInfo.setAttachmentCount(1);
     renderPassInfo.setSubpasses(subpass);
     renderPassInfo.setDependencies(dependency);
 
@@ -214,3 +328,33 @@ struct CascadedShadowMap
 {
     
 };
+
+void createCascadedShadowMap(RenderingState const& core)
+{
+    constexpr unsigned int n_cascades = 6;
+    auto const render_pass = createShadowMapRenderPass(core.device);
+    auto const framebuffers = createCascadedShadowmapFramebuffers(core, render_pass, n_cascades);
+
+    // Create pipeline
+    layer_types::Program program_desc;
+    program_desc.fragment_shader = {{"./shaders/triplanar_frag.spv"}};
+    program_desc.vertex_shader= {{"./shaders/triplanar_vert.spv"}};
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"world_buffer"}},
+        .type = layer_types::BufferType::WorldBufferObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding world"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .vertex = true,
+            .fragment = true,
+            .tess_ctrl = true,
+        }
+    }});
+
+    auto const pipeline_data = createPipelineData(core, program_desc);
+    auto const pipeline = createCascadedShadowMapPipeline(pipeline_data, core.swap_chain.extent, core.device, render_pass);
+    auto const final_pipeline = bindPipeline(core, pipeline_data, pipeline);
+}

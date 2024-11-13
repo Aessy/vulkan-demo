@@ -66,6 +66,7 @@
 #include "Renderer.h"
 #include "Application.h"
 #include "PostProcessing.h"
+#include "ShadowMap.h"
 
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
@@ -461,8 +462,8 @@ int main()
     // int dune_id = models.loadModelAssimp("./models/dune.fbx");
     // int cylinder_id = models.loadModel("./models/cylinder.obj");
 
-    //auto height_map_1_model = createFlatGround(2047, 1024, 4);
-    //models.models.insert({height_map_1_model.id, height_map_1_model});
+    auto height_map_1_model = createFlatGround(2047, 1024, 4);
+    models.models.insert({height_map_1_model.id, height_map_1_model});
     //auto height_map_1_model = createFlatGround(2047, 500, 4);
 
     //models.models.insert({height_map_1_model.id, height_map_1_model});
@@ -578,8 +579,8 @@ int main()
     auto box = createBox();
 
     Meshes meshes;
-    //auto landscape_flat_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
-    //auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
+    auto landscape_flat_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
+    // auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
     //auto landscape_mesh_id = meshes.loadMesh(core, models.models.at(landscape_fbx), "landscape fbx");
     auto sphere_id = meshes.loadMesh(core, models.models.at(sphere_fbx), "sphere fbx");
     //auto dune_mesh_id = meshes.loadMesh(core, models.models.at(dune_id), "Dune");
@@ -605,26 +606,28 @@ int main()
     //auto object = createObject(meshes.meshes.at(mesh_id));
     //object.material = 1;
 
-    //auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
-    //landscape_flat.material = landscape_material;
+    auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
+    landscape_flat.material = landscape_material;
 
     auto sky_box = createObject(meshes.meshes.at(sphere_id));
     sky_box.material = sky_box_material;
     sky_box.scale = 800.0f;
 
-    //auto fbx = createObject(meshes.meshes.at(sphere_id));
-    //fbx.material = base_material;
-    //fbx.position = glm::vec3(0,200,0);
+    auto fbx = createObject(meshes.meshes.at(sphere_id));
+    fbx.material = base_material;
+    fbx.position = glm::vec3(0,200,0);
 
 
     //auto dune_object = createObject(meshes.meshes.at(dune_mesh_id));
     //dune_object.material = dune_material;
 
     //addObject(scene, dune_object);
-    //addObject(scene, landscape_flat);
+    addObject(scene, landscape_flat);
     addObject(scene, sky_box);
-    //addObject(scene, fbx);
+    addObject(scene, fbx);
     //addObject(scene, box_object);
+
+    createCascadedShadowMap(core);
 
     Application application{
         .textures = std::move(textures),
