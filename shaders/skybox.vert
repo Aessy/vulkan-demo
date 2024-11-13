@@ -1,6 +1,7 @@
 #version 460
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_debug_printf : enable
+precision highp float;
 
 struct LightBufferData
 {
