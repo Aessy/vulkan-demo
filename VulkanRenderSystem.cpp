@@ -648,13 +648,13 @@ static Semaphores createSemaphores(vk::Device const& device)
     return semaphores;
 }
 
-DepthResources createDepth(RenderingState const& state, vk::SampleCountFlagBits msaa)
+DepthResources createDepth(RenderingState const& state, vk::SampleCountFlagBits msaa, unsigned int layer_count)
 {
     vk::Format format = getDepthFormat();
 
     auto depth_image = createImage(state, state.swap_chain.extent.width, state.swap_chain.extent.height, 1, format,
                             vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,
-                            vk::MemoryPropertyFlagBits::eDeviceLocal, msaa);
+                            vk::MemoryPropertyFlagBits::eDeviceLocal, msaa, layer_count);
 
     
 
@@ -667,7 +667,7 @@ DepthResources createDepth(RenderingState const& state, vk::SampleCountFlagBits 
 }
 
 
-std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::SampleCountFlagBits n_samples)
+std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::SampleCountFlagBits n_samples, unsigned int layer_count)
 {
     vk::ImageCreateInfo image_info;
     image_info.sType = vk::StructureType::eImageCreateInfo;
@@ -676,7 +676,7 @@ std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, 
     image_info.extent.height = height;
     image_info.extent.depth = 1;
     image_info.mipLevels = mip_levels;
-    image_info.arrayLayers = 1;
+    image_info.arrayLayers = layer_count;
     image_info.format = format;
     image_info.tiling = tiling;
     image_info.initialLayout = vk::ImageLayout::eUndefined;
