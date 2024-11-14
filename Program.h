@@ -52,7 +52,10 @@ struct MaterialShaderData : BufferBase
 struct AtmosphereShaderData : BufferBase
 {};
 
-using ModelType = std::variant<Model, World, Terrain, FogVolume, PostProcessingData, MaterialShaderData, AtmosphereShaderData>;
+struct CascadedShadowMapBufferObject: BufferBase
+{};
+
+using ModelType = std::variant<Model, World, Terrain, FogVolume, PostProcessingData, MaterialShaderData, AtmosphereShaderData, CascadedShadowMapBufferObject>;
 
 };
 
@@ -103,11 +106,12 @@ PipelineData createPipelineData(RenderingState const& state, layer_types::Progra
 struct Pipeline
 {
     vk::Pipeline pipeline;
+    vk::PipelineLayout pipeline_layout;
 
     std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
     std::vector<std::vector<vk::DescriptorSetLayoutBinding>> bindings;
-
+    std::vector<DescriptionPoolAndSet> descriptor_sets;
     std::vector<buffer_types::ModelType> buffers;
 };
 
-Pipeline bindPipeline(RenderingState const& core, PipelineData const& pipeline_data, vk::Pipeline const& pipeline);
+Pipeline bindPipeline(RenderingState const& core, PipelineData const& pipeline_data, vk::Pipeline const& pipeline, vk::PipelineLayout const& pipeline_layout);

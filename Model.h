@@ -91,6 +91,11 @@ struct TerrainBufferObject
     float weight{300};
 };
 
+struct CascadedShadowMapBufferObject
+{
+    glm::mat4 light_projection_view;
+};
+
 struct PostProcessingBufferObject
 {
     int hdr_resolve{0};

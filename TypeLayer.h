@@ -28,6 +28,7 @@ enum class BufferType : int
     PostProcessingDataBufferObject,
     MaterialShaderData,
     AtmosphereShaderData,
+    CascadedShadowMapBufferObject,
     NoBuffer,
 };
 

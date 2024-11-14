@@ -7,6 +7,7 @@
 #include "Model.h"
 #include "PostProcessing.h"
 #include "Material.h"
+#include "ShadowMap.h"
 
 #include <memory>
 #include <vector>
@@ -24,5 +25,6 @@ struct Application
     Scene scene;
 
     PostProcessing ppp;
+    CascadedShadowMap shadow_map;
 
 };

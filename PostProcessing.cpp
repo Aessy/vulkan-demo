@@ -447,7 +447,7 @@ PostProcessing createPostProcessing(RenderingState const& state)
     spdlog::info("Creating compute fog program");
     pp.fog_compute_program = createComputeFogProgram(state, pp.render_pass);
 
-    createNoiseTexture(state, *pp.fog_compute_program.get());
+    // createNoiseTexture(state, *pp.fog_compute_program.get());
 
     return pp;
 }

@@ -28,6 +28,8 @@ struct Object
 
     std::optional<Lod> lod;
 
+    bool shadow = false;
+
     int id = Id();
 };
 

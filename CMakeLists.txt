@@ -47,6 +47,8 @@ add_custom_target(shaders
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/triplanar.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/triplanar_frag.spv
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/skybox.vert --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/skybox_vert.spv
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/skybox.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/skybox_frag.spv
+                  COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/cascaded_shadow.vert --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/cascaded_shadow_vert.spv
+                  COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/cascaded_shadow.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/cascaded_shadow_frag.spv
                   DEPENDS vulkan-test)
 
 add_custom_target(copy-models ALL

@@ -102,6 +102,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
 
     auto& command_buffer = state.command_buffer[state.current_frame];
 
+
     vk::CommandBufferBeginInfo begin_info{};
     begin_info.sType = vk::StructureType::eCommandBufferBeginInfo;
     begin_info.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
@@ -110,19 +111,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
     auto result = command_buffer.begin(begin_info);
     checkResult(result);
 
-    //auto desc_set = state.descriptor_sets[0].set[0];
-    //auto desc_set_2 = state.descriptor_sets[0].set[1];
-
-/*
-    runPipeline(command_buffer, render_system.scene, render_system.fog_program, state.current_frame);
-
-    vk::MemoryBarrier memory_barrier{};
-    memory_barrier.sType = vk::StructureType::eMemoryBarrier;
-    memory_barrier.srcAccessMask = vk::AccessFlagBits::eShaderWrite;
-    memory_barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-
-    command_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eFragmentShader, vk::DependencyFlags{}, memory_barrier, {}, {});
-*/
+    shadowMapRenderPass(state, app.shadow_map, app.scene, command_buffer);
 
     vk::RenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
@@ -462,7 +451,7 @@ int main()
     // int dune_id = models.loadModelAssimp("./models/dune.fbx");
     // int cylinder_id = models.loadModel("./models/cylinder.obj");
 
-    auto height_map_1_model = createFlatGround(2047, 1024, 4);
+    auto height_map_1_model = createFlatGround(256, 1024, 4);
     models.models.insert({height_map_1_model.id, height_map_1_model});
     //auto height_map_1_model = createFlatGround(2047, 500, 4);
 
@@ -608,6 +597,7 @@ int main()
 
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
     landscape_flat.material = landscape_material;
+    landscape_flat.shadow = true;
 
     auto sky_box = createObject(meshes.meshes.at(sphere_id));
     sky_box.material = sky_box_material;
@@ -627,15 +617,14 @@ int main()
     addObject(scene, fbx);
     //addObject(scene, box_object);
 
-    createCascadedShadowMap(core);
-
     Application application{
         .textures = std::move(textures),
         .models = std::move(models),
         .meshes = std::move(meshes),
         .programs = std::move(programs),
         .scene = std::move(scene),
-        .ppp = createPostProcessing(core)
+        .ppp = createPostProcessing(core),
+        .shadow_map = createCascadedShadowMap(core)
     };
 
     initImgui(core.device, core.physical_device, core.instance, core.graphics_queue, application.ppp.render_pass, core, core.window, core.msaa);

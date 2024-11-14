@@ -701,7 +701,7 @@ std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, 
     return std::make_pair(texture_image.value, texture_image_memory.value);
 }
 
-vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels, vk::ImageViewType view_type, uint32_t level_count)
+vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels, vk::ImageViewType view_type, uint32_t level_count, uint32_t base_level)
 {
     vk::ImageViewCreateInfo view_info;
     view_info.sType = vk::StructureType::eImageViewCreateInfo;
@@ -710,7 +710,7 @@ vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, 
     view_info.format = format;
     view_info.subresourceRange.aspectMask = aspec_flags;
     view_info.subresourceRange.baseMipLevel = 0;
-    view_info.subresourceRange.baseArrayLayer = 0;
+    view_info.subresourceRange.baseArrayLayer = base_level;
     view_info.subresourceRange.layerCount = level_count;
     view_info.subresourceRange.levelCount= mip_levels;
 
@@ -1226,7 +1226,7 @@ vk::Buffer createBuffer(RenderingState const& state,
 
 vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels, uint32_t level_count)
 {
-    auto texture_image_view = createImageView(state.device, texture_image, format, vk::ImageAspectFlagBits::eColor, mip_levels, vk::ImageViewType::e2D, level_count);
+    auto texture_image_view = createImageView(state.device, texture_image, format, vk::ImageAspectFlagBits::eColor, mip_levels, vk::ImageViewType::e2D, level_count, 0);
     return texture_image_view;
 }
 

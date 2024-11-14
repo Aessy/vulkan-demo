@@ -221,6 +221,9 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
             case lt::BufferType::AtmosphereShaderData:
                 model_types.push_back(createModel<Atmosphere, buffer_types::AtmosphereShaderData>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size));
                 break;
+            case lt::BufferType::CascadedShadowMapBufferObject:
+                model_types.push_back(createModel<CascadedShadowMapBufferObject, buffer_types::CascadedShadowMapBufferObject>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size));
+                break;
             case lt::BufferType::NoBuffer:
                 if (buffer.binding.type == lt::BindingType::TextureSampler)
                 {
@@ -353,7 +356,7 @@ PipelineData createPipelineData(RenderingState const& state, layer_types::Progra
     };
 }
 
-Pipeline bindPipeline(RenderingState const& core, PipelineData const& pipeline_data, vk::Pipeline const& pipeline)
+Pipeline bindPipeline(RenderingState const& core, PipelineData const& pipeline_data, vk::Pipeline const& pipeline, vk::PipelineLayout const& pipeline_layout)
 {
     namespace lt = layer_types;
 
@@ -385,6 +388,9 @@ Pipeline bindPipeline(RenderingState const& core, PipelineData const& pipeline_d
             case lt::BufferType::AtmosphereShaderData:
                 model_types.push_back(createModel<Atmosphere, buffer_types::AtmosphereShaderData>(core,  buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size));
                 break;
+            case lt::BufferType::CascadedShadowMapBufferObject:
+                model_types.push_back(createModel<CascadedShadowMapBufferObject, buffer_types::CascadedShadowMapBufferObject>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size));
+                break;
             case lt::BufferType::NoBuffer:
                 break;
         };
@@ -394,8 +400,10 @@ Pipeline bindPipeline(RenderingState const& core, PipelineData const& pipeline_d
 
     return Pipeline{
         .pipeline = pipeline,
+        .pipeline_layout = pipeline_layout,
         .descriptor_set_layouts = pipeline_data.descriptor_set_layouts,
         .bindings = pipeline_data.descriptor_set_layout_bindings,
+        .descriptor_sets = pipeline_data.descriptor_sets,
         .buffers = model_types
     };
 }
