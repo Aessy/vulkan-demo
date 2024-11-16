@@ -116,12 +116,12 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
 };
 
 template<typename BufferType, typename BufferTypeOut>
-auto createModel(RenderingState const& core, layer_types::BindingType binding_type, DescriptionPoolAndSet const& descriptor_set, int size)
+auto createModel(RenderingState const& core, layer_types::BindingType binding_type, DescriptionPoolAndSet const& descriptor_set, int size, int count = 1)
 {
     std::vector<UniformBuffer> buffers;
     if (binding_type == layer_types::BindingType::Uniform)
     {
-        buffers = createUniformBuffers<BufferType>(core);
+        buffers = createUniformBuffers<BufferType>(core, count);
     }
     else if (binding_type == layer_types::BindingType::Storage)
     {
@@ -222,7 +222,7 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
                 model_types.push_back(createModel<Atmosphere, buffer_types::AtmosphereShaderData>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size));
                 break;
             case lt::BufferType::CascadedShadowMapBufferObject:
-                model_types.push_back(createModel<CascadedShadowMapBufferObject, buffer_types::CascadedShadowMapBufferObject>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size));
+                model_types.push_back(createModel<CascadedShadowMapBufferObject, buffer_types::CascadedShadowMapBufferObject>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size, buffer.count));
                 break;
             case lt::BufferType::NoBuffer:
                 if (buffer.binding.type == lt::BindingType::TextureSampler)
@@ -368,28 +368,28 @@ Pipeline bindPipeline(RenderingState const& core, PipelineData const& pipeline_d
         switch (buffer.type)
         {
             case lt::BufferType::ModelBufferObject:
-                model_types.push_back(createModel<ModelBufferObject, buffer_types::Model>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size));
+                model_types.push_back(createModel<ModelBufferObject, buffer_types::Model>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
                 break;
             case lt::BufferType::WorldBufferObject:
-                model_types.push_back(createModel<WorldBufferObject, buffer_types::World>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size));
+                model_types.push_back(createModel<WorldBufferObject, buffer_types::World>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
                 break;
             case lt::BufferType::TerrainBufferObject:
-                model_types.push_back(createModel<TerrainBufferObject, buffer_types::Terrain>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size));
+                model_types.push_back(createModel<TerrainBufferObject, buffer_types::Terrain>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
                 break;
             case lt::BufferType::FogVolumeObject:
-                model_types.push_back(createModel<FogVolumeBufferObject, buffer_types::FogVolume>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size));
+                model_types.push_back(createModel<FogVolumeBufferObject, buffer_types::FogVolume>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
                 break;
             case lt::BufferType::PostProcessingDataBufferObject:
-                model_types.push_back(createModel<PostProcessingBufferObject, buffer_types::PostProcessingData>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size));
+                model_types.push_back(createModel<PostProcessingBufferObject, buffer_types::PostProcessingData>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
                 break;
             case lt::BufferType::MaterialShaderData:
-                model_types.push_back(createModel<MaterialShaderData, buffer_types::MaterialShaderData>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size));
+                model_types.push_back(createModel<MaterialShaderData, buffer_types::MaterialShaderData>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
                 break;
             case lt::BufferType::AtmosphereShaderData:
-                model_types.push_back(createModel<Atmosphere, buffer_types::AtmosphereShaderData>(core,  buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size));
+                model_types.push_back(createModel<Atmosphere, buffer_types::AtmosphereShaderData>(core,  buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
                 break;
             case lt::BufferType::CascadedShadowMapBufferObject:
-                model_types.push_back(createModel<CascadedShadowMapBufferObject, buffer_types::CascadedShadowMapBufferObject>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size));
+                model_types.push_back(createModel<CascadedShadowMapBufferObject, buffer_types::CascadedShadowMapBufferObject>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
                 break;
             case lt::BufferType::NoBuffer:
                 break;

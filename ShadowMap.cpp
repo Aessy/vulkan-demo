@@ -74,10 +74,10 @@ static glm::mat4 getLightProjection(glm::mat4 const& light_view, std::vector<glm
         const auto trf = light_view * v;
         min_x = std::min(min_x, trf.x);
         max_x = std::max(max_x, trf.x);
-        min_x = std::min(min_y, trf.y);
-        max_x = std::max(max_y, trf.y);
-        min_x = std::min(min_z, trf.z);
-        max_x = std::max(max_z, trf.z);
+        min_y = std::min(min_y, trf.y);
+        max_y = std::max(max_y, trf.y);
+        min_z = std::min(min_z, trf.z);
+        max_z = std::max(max_z, trf.z);
     }
 
     constexpr float z_mult = 10.0f;
@@ -110,7 +110,8 @@ static glm::mat4 getLightSpaceMatrix(float const near, float const far, vk::Exte
                                              float(framebuffer_size.width) / float(framebuffer_size.height),
                                              near, far);
 
-    auto const corners = getFrustumCornersWorldSpace(projection, camera.view);
+    auto const view = glm::lookAt(camera.pos, (camera.pos + camera.camera_front), camera.up);
+    auto const corners = getFrustumCornersWorldSpace(projection, view);
     auto const center = getCenter(corners);
 
     auto const light_view = glm::lookAt(center + light_dir, center, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -150,43 +151,25 @@ void drawShadowMap(vk::CommandBuffer command_buffer,
                                 shadow_map.pipeline.pipeline);
 
 
+    uint32_t offset = cascade * sizeof(glm::mat4);
     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                             shadow_map.pipeline.pipeline_layout,
                             0,
                             1,
                             &shadow_map.pipeline.descriptor_sets[0].set[frame],
-                            0,
-                            nullptr);
+                            1,
+                            &offset);
 
-    uint32_t offset{};
+                            
+
     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                             shadow_map.pipeline.pipeline_layout,
                             1,
                             1,
                             &shadow_map.pipeline.descriptor_sets[1].set[frame],
-                            1,
-                            &offset);
+                            0,
+                            nullptr);
 
-    for (auto& buffer : shadow_map.pipeline.buffers)
-    {
-        // Write all the objects that should be included in the shadow map
-        if (auto* model = std::get_if<buffer_types::Model>(&buffer))
-        {
-            for (size_t i = 0; i < scene.objs.size(); ++i)
-            {
-                auto &obj = scene.objs[i];
-                if (obj.shadow)
-                {
-                    auto ubo = createModelBufferObject(obj);
-                    writeBuffer(model->buffers[frame],ubo,i);
-                }
-            }
-        }
-        else if (auto* model = std::get_if<buffer_types::CascadedShadowMapBufferObject>(&buffer))
-        {
-            writeBuffer(model->buffers[frame], light_space_matrix);
-        }
-    }
 
     for (size_t i = 0; i < scene.objs.size(); ++i)
     {
@@ -207,22 +190,38 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
     clear_values[0].color = vk::ClearColorValue(std::array<float,4>{0.3984,0.695,1});
     clear_values[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
-
-    vk::Viewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(state.swap_chain.extent.width);
-    viewport.height = static_cast<float>(state.swap_chain.extent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    vk::Rect2D scissor{};
-    scissor.offset = vk::Offset2D{0,0};
-    scissor.extent = state.swap_chain.extent;
-
     glm::vec3 light_dir = glm::normalize(scene.light.sun_pos);
     auto const light_space_matrix = getLightSpaceMatrices(state.swap_chain.extent, scene.camera, light_dir);
 
+    for (auto& buffer : shadow_map.pipeline.buffers)
+    {
+        // Write all the objects that should be included in the shadow map
+        if (auto* model = std::get_if<buffer_types::Model>(&buffer))
+        {
+            for (size_t i = 0; i < scene.objs.size(); ++i)
+            {
+                auto &obj = scene.objs[i];
+                if (obj.shadow)
+                {
+                    auto ubo = createModelBufferObject(obj);
+                    writeBuffer(model->buffers[state.current_frame],ubo,i);
+                }
+            }
+        }
+        else if (auto* model = std::get_if<buffer_types::CascadedShadowMapBufferObject>(&buffer))
+        {
+            for (int i = 0; i < light_space_matrix.size(); ++i)
+            {
+                
+                auto const view = glm::lookAt(scene.camera.pos, (scene.camera.pos + scene.camera.camera_front), scene.camera.up);
+                auto const proj = scene.camera.proj;
+
+                glm::mat4 MV = view * proj;
+
+                writeBuffer(model->buffers[state.current_frame], MV, i);
+            }
+        }
+    }
     for (int i = 0; i < shadow_map.n_cascaded_shadow_maps; ++i)
     {
         auto current_framebuffer = shadow_map.framebuffer[state.current_frame][i];
@@ -234,9 +233,6 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
         render_pass_info.setClearValues(clear_values);
         render_pass_info.renderArea.offset = vk::Offset2D(0,0);
         render_pass_info.renderArea.extent = state.swap_chain.extent;
-
-        command_buffer.setViewport(0,viewport);
-        command_buffer.setScissor(0,scissor);
 
         command_buffer.beginRenderPass(render_pass_info,
                                     vk::SubpassContents::eInline);
@@ -332,10 +328,11 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createCascadedShadowMapPipel
     rasterization_state.lineWidth = 1.0f;
 
     vk::PipelineDepthStencilStateCreateInfo depth_stencil_state{};
-    depth_stencil_state.depthTestEnable = VK_TRUE;
-    depth_stencil_state.depthWriteEnable = VK_TRUE;
+    depth_stencil_state.depthTestEnable = true;
+    depth_stencil_state.depthWriteEnable = true;
     depth_stencil_state.depthCompareOp = vk::CompareOp::eLess;
-    depth_stencil_state.stencilTestEnable = VK_FALSE;
+    depth_stencil_state.depthBoundsTestEnable = false;
+    depth_stencil_state.stencilTestEnable = false;
 
     vk::PipelineInputAssemblyStateCreateInfo input_assembly_state{};
     input_assembly_state.topology = vk::PrimitiveTopology::eTriangleList;
@@ -453,6 +450,19 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core)
     program_desc.fragment_shader = {{"./shaders/cascaded_shadow_frag.spv"}};
     program_desc.vertex_shader= {{"./shaders/cascaded_shadow_vert.spv"}};
 
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"shadow map buffer object"}},
+        .type = layer_types::BufferType::CascadedShadowMapBufferObject,
+        .count = 5,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding matrice"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .vertex = true,
+        }
+    }});
 
     program_desc.buffers.push_back({layer_types::Buffer{
         .name = {{"world_buffer"}},
@@ -462,19 +472,6 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core)
             .name = {{"binding world"}},
             .binding = 0,
             .type = layer_types::BindingType::Storage,
-            .size = 1,
-            .vertex = true,
-        }
-    }});
-
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"shadow map buffer object"}},
-        .type = layer_types::BufferType::CascadedShadowMapBufferObject,
-        .size = 1,
-        .binding = layer_types::Binding {
-            .name = {{"binding matrice"}},
-            .binding = 0,
-            .type = layer_types::BindingType::Uniform,
             .size = 1,
             .vertex = true,
         }

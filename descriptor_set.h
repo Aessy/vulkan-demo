@@ -169,7 +169,7 @@ inline void updateUniformBuffer(Device const& device, std::vector<UniformBuffer>
         desc_writes.dstBinding = binding.binding;
         desc_writes.dstArrayElement = 0;
         desc_writes.descriptorType = binding.descriptorType;
-        desc_writes.descriptorCount = size; // TODO: Add support for array
+        desc_writes.descriptorCount = size;
         desc_writes.setBufferInfo(buffer_info);
         ++i;
 

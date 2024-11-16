@@ -7,15 +7,13 @@ struct ObjectData
     uint texture_index;
 };
 
-layout(set = 1, binding = 0) uniform ShadowMapBuffer{
+layout(set = 0, binding = 0) uniform ShadowMapBuffer{
     mat4 light_matrix;
 } shadow_map;
 
-layout(std430, set = 0, binding = 0) readonly buffer ObjectBuffer{
+layout(std430, set = 1, binding = 0) readonly buffer ObjectBuffer{
     ObjectData objects[];
 } ubo2;
-
-    
 
 void main()
 {

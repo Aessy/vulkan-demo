@@ -57,6 +57,7 @@ struct Buffer
     std::array<char, 50> name{{}};
     BufferType type = BufferType::ModelBufferObject;
 
+    int count{1};
     int size{};
     Binding binding{};
 };

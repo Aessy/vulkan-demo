@@ -202,9 +202,9 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout> createComputePipeline(v
 void recreateSwapchain(RenderingState& state);
 
 template<typename BufferObject>
-auto createUniformBuffers(RenderingState const& state)
+auto createUniformBuffers(RenderingState const& state, int count = 1)
 {
-    vk::DeviceSize buffer_size = sizeof(BufferObject);
+    vk::DeviceSize buffer_size = sizeof(BufferObject) * count;
 
     std::vector<UniformBuffer> ubos;
     size_t const max_frames_in_flight = 2;

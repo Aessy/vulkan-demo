@@ -405,6 +405,7 @@ int main()
     srand (time(NULL));
     RenderingState core = createVulkanRenderState();
 
+    spdlog::info("Loading textures");
     Textures textures = createTextures(core,
         { 
           //{"./textures/canyon2_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
@@ -445,13 +446,15 @@ int main()
           {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_AO.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
         });
 
+    spdlog::info("Loading models");
     Models models;
     // int landscape_fbx = models.loadModelAssimp("./models/canyon_low_res.fbx");
     int sphere_fbx = models.loadModelAssimp("./models/sky_sphere.fbx");
     // int dune_id = models.loadModelAssimp("./models/dune.fbx");
+    
     // int cylinder_id = models.loadModel("./models/cylinder.obj");
 
-    auto height_map_1_model = createFlatGround(256, 1024, 4);
+    auto height_map_1_model = createFlatGround(4, 1024, 4);
     models.models.insert({height_map_1_model.id, height_map_1_model});
     //auto height_map_1_model = createFlatGround(2047, 500, 4);
 
@@ -534,6 +537,29 @@ int main()
         }
     };
 
+    Material landscape_flat_dune{
+        .name = {"Landscape"},
+        .program = 0,
+        .shader_data = {
+            .material_features =  MaterialFeatureFlag::DisplacementNormalMap
+                                | MaterialFeatureFlag::RoughnessMap
+                                | MaterialFeatureFlag::AoMap
+                                | MaterialFeatureFlag::AlbedoMap
+                                | MaterialFeatureFlag::NormalMap,
+            .sampling_mode = SamplingMode::TriplanarSampling,
+            .shade_mode = ReflectionShadeMode::Pbr,
+            .normal_map_texture = 3,
+            .base_color_texture = 17,
+            .base_color_normal_texture = 18,
+            .roughness_texture = 19,
+            .ao_texture = 20,
+            .scaling_factor = 0.1f,
+            .roughness = 0,
+            .metallic = 0,
+            .ao = 0,
+        }
+    };
+
     Material dune_material{
         .name = {"Dune"},
         .program = 0,
@@ -596,16 +622,13 @@ int main()
     //object.material = 1;
 
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
-    landscape_flat.material = landscape_material;
-    landscape_flat.shadow = true;
+    landscape_flat.material = landscape_flat_dune;
+    // landscape_flat.shadow = true;
 
     auto sky_box = createObject(meshes.meshes.at(sphere_id));
     sky_box.material = sky_box_material;
     sky_box.scale = 800.0f;
 
-    auto fbx = createObject(meshes.meshes.at(sphere_id));
-    fbx.material = base_material;
-    fbx.position = glm::vec3(0,200,0);
 
 
     //auto dune_object = createObject(meshes.meshes.at(dune_mesh_id));
@@ -614,7 +637,25 @@ int main()
     //addObject(scene, dune_object);
     addObject(scene, landscape_flat);
     addObject(scene, sky_box);
+
+    auto fbx = createObject(meshes.meshes.at(sphere_id));
+    fbx.material = base_material;
+    fbx.position = glm::vec3(0,30,0);
+    fbx.shadow = true;
     addObject(scene, fbx);
+
+    fbx.position = glm::vec3(10, 20, 0);
+    addObject(scene, fbx);
+
+    fbx.position = glm::vec3(30, 25, 10);
+    addObject(scene, fbx);
+
+    auto box_fbx = createObject(meshes.meshes.at(box_id));
+    box_fbx.material = base_material;
+    box_fbx.position = glm::vec3(25,25,10);
+    box_fbx.shadow = true;
+    addObject(scene, box_fbx);
+
     //addObject(scene, box_object);
 
     Application application{
