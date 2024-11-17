@@ -155,8 +155,8 @@ inline void postProcessingUpdateDescriptorSets(RenderingState const& state,
 {
     auto& ppp = post_processing;
 
-    auto& color_attachment = ppp.in_color_attachment[image_index];
-    auto& depth_attachment_resolve = ppp.in_depth_attachment[image_index];
+    auto& color_attachment = ppp.in_color_attachment[state.current_frame];
+    auto& depth_attachment_resolve = ppp.in_depth_attachment[state.current_frame];
 
     auto color_res_set = ppp.program->program.descriptor_sets[0].set[state.current_frame];
     auto color_res_binding = ppp.program->program.descriptor_sets[0].layout_bindings[0];
@@ -300,13 +300,13 @@ void postProcessingRenderPass(RenderingState const& state,
     scissor.extent = state.swap_chain.extent;
     command_buffer.setScissor(0,scissor);
 
-    transitionImageLayout(command_buffer, ppp.in_color_attachment[image_index].depth_image,
+    transitionImageLayout(command_buffer, ppp.in_color_attachment[state.current_frame].depth_image,
                                  vk::Format::eR16G16B16A16Sfloat,
                                  vk::ImageLayout::eColorAttachmentOptimal,
                                  vk::ImageLayout::eShaderReadOnlyOptimal,
                                  1);
 
-    transitionImageLayout(command_buffer, ppp.in_depth_attachment[image_index].depth_image, vk::Format::eD32Sfloat,
+    transitionImageLayout(command_buffer, ppp.in_depth_attachment[state.current_frame].depth_image, vk::Format::eD32Sfloat,
         vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
 
     postProcessingUpdateDescriptorSets(state, ppp, image_index);

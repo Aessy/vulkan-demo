@@ -94,7 +94,7 @@ void sceneRenderPass(vk::CommandBuffer command_buffer,
     vk::RenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
     render_pass_info.setRenderPass(scene_render_pass.render_pass);
-    render_pass_info.setFramebuffer(scene_render_pass.framebuffers[image_index].framebuffer);
+    render_pass_info.setFramebuffer(scene_render_pass.framebuffers[state.current_frame].framebuffer);
     render_pass_info.renderArea.offset = vk::Offset2D{0,0};
     render_pass_info.renderArea.extent = state.swap_chain.extent;
 
@@ -132,7 +132,7 @@ void sceneRenderPass(vk::CommandBuffer command_buffer,
 static std::vector<SceneFramebufferState> createFrameBuffers(RenderingState const& state, vk::RenderPass render_pass)
 {
     std::vector<SceneFramebufferState> swap_chain_frame_buffers;
-    for (auto const& swap_chain_image_view : state.image_views)
+    for (int i = 0; i < 2; ++i)
     {
         auto color_resources = createColorResources(state, vk::Format::eR16G16B16A16Sfloat);
         auto depth_image = createDepth(state, state.msaa);
