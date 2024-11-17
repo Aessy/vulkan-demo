@@ -191,7 +191,7 @@ void main()
     //vec3 white_scale = 1.0 / tonemap(vec3(1000.0));
     vec3 color = curr;
 
-    float noise = randomNoise(frag_dir.xy) * 0.009; // Adjust strength as needed
+    float noise = randomNoise(frag_dir.xy) * 0.0009; // Adjust strength as needed
     color += noise;
 
     //vec3 retColor = pow( color, vec3( 1.0 / (1.2 + (1.2 * sun_fade) ) ) );

@@ -587,7 +587,7 @@ int main()
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
     //camera.pos = glm::vec3(0,300,-5);
-    camera.pos = glm::vec3(0,60,0);
+    camera.pos = glm::vec3(0,20, 0);
 
     updateCameraFront(camera);
 
@@ -609,6 +609,12 @@ int main()
     scene.light.position = glm::vec3(450000,0,0);
     scene.light.light_color = glm::vec3(1,1,1);
     scene.light.strength = 5.0f;
+
+    glm::vec3 sun_sphere;
+    sun_sphere.x = scene.atmosphere.sun_distance * glm::cos(0.0);
+    sun_sphere.y = scene.atmosphere.sun_distance * glm::sin(0.0) * glm::sin(0.5f);
+    sun_sphere.z = scene.atmosphere.sun_distance * glm::sin(0.0) * glm::cos(0.5f);
+    scene.light.sun_pos = sun_sphere;
     
     // Sun light comes from directly down.
     //scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));

@@ -12,7 +12,10 @@ struct LightBufferData
 {
     vec3 position;
     vec3 light_color;
+    vec3 sun_pos;
     float strength;
+    float time_of_the_day;
+
 };
 layout(set = 3, binding = 0) uniform UniformWorld{
     mat4 view;
@@ -26,6 +29,9 @@ layout(set = 4, binding = 0) uniform Fog{
     float base_density;
     float max_density;
     vec3 color;
+    float turbulence;
+    float wind;
+    float time;
 } fog;
 
 layout(set = 5, binding = 0) uniform PostProcessingData{
@@ -153,7 +159,7 @@ void main()
         vec3 white_scale = 1.0 / tonemap(vec3(1000.0));
         vec3 mapped = tonemap(final_color.rgb);
 
-        // final_color = vec4(tone_map_ACES(final_color.rgb), final_color.a);
+        final_color = vec4(mapped, 1.0); //vec4(tone_map_ACES(final_color.rgb), final_color.a);
 
     }
 

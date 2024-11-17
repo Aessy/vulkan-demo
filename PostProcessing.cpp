@@ -416,7 +416,7 @@ void createNoiseTexture(RenderingState const& state, Program const& program)
 {
     auto sampler = createTextureSampler(state, false);
     auto texture = createTexture(state,
-                                 "./textures/noise.png",
+                                 "./textures/blue_noise.png",
                                  TextureType::Map,
                                  vk::Format::eR8G8B8A8Unorm,
                                  sampler);
