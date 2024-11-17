@@ -3,7 +3,9 @@
 #include "VulkanRenderSystem.h"
 #include "Scene.h"
 #include "Program.h"
+
 #include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_handles.hpp>
 
 template<typename BufferObject>
 inline void writeBuffer(UniformBuffer& dst, BufferObject const& src, size_t index = 0)
@@ -73,8 +75,6 @@ inline void renderScene(vk::CommandBuffer& cmd_buffer, Scene const& scene, std::
             auto &drawable = scene.objs[o.second[i]];
             cmd_buffer.bindVertexBuffers(0, drawable.mesh.vertex_buffer, {0});
             cmd_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
-
-            cmd_buffer.drawIndexedIndirect(vk::Buffer buffer, vk::DeviceSize offset, uint32_t drawCount, uint32_t stride)
             
             cmd_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0,0, i);
         }

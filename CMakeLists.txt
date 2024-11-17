@@ -5,24 +5,25 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_C_COMPILER gcc.exe)
 set(CMAKE_C_COMPILER g++.exe)
 
-set(SRC VulkanRenderSystem.cpp
-        main.cpp
-        PostProcessing.cpp
-        height_map.cpp
-        Gui.cpp
-        Model.cpp
-        Program.cpp
-        Textures.cpp
-        Id.cpp
-        Skybox.cpp
-        ShadowMap.cpp
-        imgui_impl_vulkan.cpp
-        imgui_impl_glfw.cpp
+set(SRC src/VulkanRenderSystem.cpp
+        src/main.cpp
+        src/PostProcessing.cpp
+        src/height_map.cpp
+        src/Gui.cpp
+        src/Model.cpp
+        src/Program.cpp
+        src/Textures.cpp
+        src/Id.cpp
+        src/Skybox.cpp
+        src/ShadowMap.cpp
+        src/imgui_impl_vulkan.cpp
+        src/imgui_impl_glfw.cpp
         )
 
 add_executable(vulkan-test ${SRC})
 target_compile_options(vulkan-test PUBLIC -g -std=c++23)
 target_compile_definitions(vulkan-test PUBLIC GLM_ENABLE_EXPERIMENTAL)
+target_include_directories(vulkan-test PUBLIC .)
 
 IF(WIN32)
 target_link_libraries(vulkan-test vulkan-1 glfw3 libassimp)
