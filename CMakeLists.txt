@@ -15,7 +15,7 @@ set(SRC src/VulkanRenderSystem.cpp
         src/Textures.cpp
         src/Id.cpp
         src/Skybox.cpp
-        src/ShadowMap.cpp
+        src/RenderPass/ShadowMap.cpp
         src/RenderPass/SceneRenderPass.cpp
         src/Pipelines/GeneralPurpuse.cpp
         src/Pipelines/Skybox.cpp

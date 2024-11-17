@@ -7,7 +7,7 @@
 #include "Model.h"
 #include "PostProcessing.h"
 #include "Material.h"
-#include "ShadowMap.h"
+#include "RenderPass/ShadowMap.h"
 #include "RenderPass/SceneRenderPass.h"
 
 #include <memory>

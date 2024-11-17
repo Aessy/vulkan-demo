@@ -66,11 +66,11 @@
 #include "Renderer.h"
 #include "Application.h"
 #include "PostProcessing.h"
-#include "ShadowMap.h"
 
 #include "Pipelines/GeneralPurpuse.h"
 #include "Pipelines/Skybox.h"
 
+#include "RenderPass/ShadowMap.h"
 #include "RenderPass/SceneRenderPass.h"
 
 #include "imgui_impl_glfw.h"
