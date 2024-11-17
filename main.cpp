@@ -366,7 +366,6 @@ static layer_types::Program createTriplanarLandscapeProgram()
             .size = 1,
             .vertex = true,
             .fragment = true,
-            .tess_ctrl = true,
         }
     }});
     program_desc.buffers.push_back({layer_types::Buffer{

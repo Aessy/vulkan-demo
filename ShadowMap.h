@@ -8,7 +8,7 @@
 struct CascadedShadowMap
 {
     vk::RenderPass render_pass;
-    std::array<std::vector<std::pair<vk::Framebuffer,vk::ImageView>>, 2> framebuffer;
+    std::array<std::pair<vk::Framebuffer,vk::ImageView>, 2> framebuffer;
 
     Pipeline pipeline;
 

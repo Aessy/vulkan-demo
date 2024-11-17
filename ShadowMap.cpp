@@ -160,13 +160,22 @@ void drawShadowMap(vk::CommandBuffer command_buffer,
                             1,
                             &offset);
 
-                            
-
+    offset = 0;
     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                             shadow_map.pipeline.pipeline_layout,
                             1,
                             1,
                             &shadow_map.pipeline.descriptor_sets[1].set[frame],
+                            1,
+                            &offset);
+
+                            
+
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                            shadow_map.pipeline.pipeline_layout,
+                            2,
+                            1,
+                            &shadow_map.pipeline.descriptor_sets[2].set[frame],
                             0,
                             nullptr);
 
@@ -186,10 +195,6 @@ void drawShadowMap(vk::CommandBuffer command_buffer,
 
 void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_map, Scene const& scene, vk::CommandBuffer command_buffer)
 {
-    std::array<vk::ClearValue, 2> clear_values{};
-    clear_values[0].color = vk::ClearColorValue(std::array<float,4>{0.3984,0.695,1});
-    clear_values[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
-
     glm::vec3 light_dir = glm::normalize(scene.light.sun_pos);
     auto const light_space_matrix = getLightSpaceMatrices(state.swap_chain.extent, scene.camera, light_dir);
 
@@ -221,61 +226,73 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
                 writeBuffer(model->buffers[state.current_frame], MV, i);
             }
         }
+        else if (auto* world = std::get_if<buffer_types::World>(&buffer))
+        {
+            auto ubo = createWorldBufferObject(scene);
+            writeBuffer(world->buffers[state.current_frame], ubo);
+        }
     }
-    for (int i = 0; i < shadow_map.n_cascaded_shadow_maps; ++i)
-    {
-        auto current_framebuffer = shadow_map.framebuffer[state.current_frame][i];
 
-        vk::RenderPassBeginInfo render_pass_info{};
-        render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
-        render_pass_info.setRenderPass(shadow_map.render_pass);
-        render_pass_info.setFramebuffer(current_framebuffer.first);
-        render_pass_info.setClearValues(clear_values);
-        render_pass_info.renderArea.offset = vk::Offset2D(0,0);
-        render_pass_info.renderArea.extent = state.swap_chain.extent;
+    auto current_framebuffer = shadow_map.framebuffer[state.current_frame];
 
-        command_buffer.beginRenderPass(render_pass_info,
-                                    vk::SubpassContents::eInline);
+    std::array<vk::ClearValue, 2> clear_values{};
+    clear_values[0].color = vk::ClearColorValue(std::array<float,4>{0.3984,0.695,1});
+    clear_values[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
-        drawShadowMap(command_buffer, i, scene, shadow_map, state.current_frame, light_space_matrix[i]);
+    vk::Viewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(state.swap_chain.extent.width);
+    viewport.height = static_cast<float>(state.swap_chain.extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
 
-        command_buffer.endRenderPass();
-    }
+    vk::Rect2D scissor{};
+    scissor.offset = vk::Offset2D{0,0};
+    scissor.extent = state.swap_chain.extent;
+
+    command_buffer.setScissor(0,scissor);
+    command_buffer.setViewport(0,viewport);
+
+    vk::RenderPassBeginInfo render_pass_info{};
+    render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
+    render_pass_info.setRenderPass(shadow_map.render_pass);
+    render_pass_info.setFramebuffer(current_framebuffer.first);
+    render_pass_info.setClearValues(clear_values);
+    render_pass_info.renderArea.offset = vk::Offset2D(0,0);
+    render_pass_info.renderArea.extent = state.swap_chain.extent;
+
+    command_buffer.beginRenderPass(render_pass_info,
+                                vk::SubpassContents::eInline);
+
+    drawShadowMap(command_buffer, 0, scene, shadow_map, state.current_frame, glm::mat4());
+
+    command_buffer.endRenderPass();
 }
 
-static std::array<std::vector<std::pair<vk::Framebuffer, vk::ImageView>>, 2> createCascadedShadowmapFramebuffers(RenderingState const& state,
+static std::array<std::pair<vk::Framebuffer, vk::ImageView>, 2> createCascadedShadowmapFramebuffers(RenderingState const& state,
                                                                         vk::RenderPass const& render_pass,
                                                                         unsigned int num_cascades)
 {
-    std::array<std::vector<std::pair<vk::Framebuffer,vk::ImageView>>, 2> framebuffers;
+    std::array<std::pair<vk::Framebuffer,vk::ImageView>, 2> framebuffers;
     for (int i = 0; i < 2; ++i)
     {
-        auto depth_image = createDepth(state, vk::SampleCountFlagBits::e1, num_cascades);
-        for (int cascade = 0; cascade < num_cascades; ++cascade)
-        {
-            auto depth_image_view = createImageView(state.device, depth_image.depth_image,
-                                                    vk::Format::eD32Sfloat,
-                                                    vk::ImageAspectFlagBits::eDepth,
-                                                    1,
-                                                    vk::ImageViewType::e2DArray,
-                                                    1,
-                                                    cascade);
+        auto depth_image = createDepth(state, vk::SampleCountFlagBits::e1);
 
-            std::array<vk::ImageView, 1> attachments = {depth_image_view};
-            vk::FramebufferCreateInfo framebuffer_info{};
-            framebuffer_info.sType = vk::StructureType::eFramebufferCreateInfo;
-            framebuffer_info.setRenderPass(render_pass);
-            framebuffer_info.attachmentCount = attachments.size();
-            framebuffer_info.setAttachments(attachments);
-            framebuffer_info.width = state.swap_chain.extent.width;
-            framebuffer_info.height = state.swap_chain.extent.height;
-            framebuffer_info.layers = 1;
+        std::array<vk::ImageView, 1> attachments = {depth_image.depth_image_view};
+        vk::FramebufferCreateInfo framebuffer_info{};
+        framebuffer_info.sType = vk::StructureType::eFramebufferCreateInfo;
+        framebuffer_info.setRenderPass(render_pass);
+        framebuffer_info.attachmentCount = attachments.size();
+        framebuffer_info.setAttachments(attachments);
+        framebuffer_info.width = state.swap_chain.extent.width;
+        framebuffer_info.height = state.swap_chain.extent.height;
+        framebuffer_info.layers = 1;
 
-            auto result = state.device.createFramebuffer(framebuffer_info);
-            checkResult(result.result);
+        auto result = state.device.createFramebuffer(framebuffer_info);
+        checkResult(result.result);
 
-            framebuffers[i].push_back({result.value, depth_image_view});
-        }
+        framebuffers[i] = {result.value, depth_image.depth_image_view};
     }
 
     return framebuffers;
@@ -333,6 +350,8 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createCascadedShadowMapPipel
     depth_stencil_state.depthCompareOp = vk::CompareOp::eLess;
     depth_stencil_state.depthBoundsTestEnable = false;
     depth_stencil_state.stencilTestEnable = false;
+    depth_stencil_state.minDepthBounds = 0.0f;
+    depth_stencil_state.maxDepthBounds = 1.0f;
 
     vk::PipelineInputAssemblyStateCreateInfo input_assembly_state{};
     input_assembly_state.topology = vk::PrimitiveTopology::eTriangleList;
@@ -457,6 +476,19 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core)
         .size = 1,
         .binding = layer_types::Binding {
             .name = {{"binding matrice"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .vertex = true,
+        }
+    }});
+
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"world_buffer"}},
+        .type = layer_types::BufferType::WorldBufferObject,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding world"}},
             .binding = 0,
             .type = layer_types::BindingType::Uniform,
             .size = 1,
