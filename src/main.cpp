@@ -68,6 +68,11 @@
 #include "PostProcessing.h"
 #include "ShadowMap.h"
 
+#include "Pipelines/GeneralPurpuse.h"
+#include "Pipelines/Skybox.h"
+
+#include "RenderPass/SceneRenderPass.h"
+
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 #include "imgui.h"
@@ -102,7 +107,6 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
 
     auto& command_buffer = state.command_buffer[state.current_frame];
 
-
     vk::CommandBufferBeginInfo begin_info{};
     begin_info.sType = vk::StructureType::eCommandBufferBeginInfo;
     begin_info.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
@@ -111,44 +115,8 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
     auto result = command_buffer.begin(begin_info);
     checkResult(result);
 
-    shadowMapRenderPass(state, app.shadow_map, app.scene, command_buffer);
-
-    vk::RenderPassBeginInfo render_pass_info{};
-    render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
-    render_pass_info.setRenderPass(state.render_pass);
-    render_pass_info.setFramebuffer(state.framebuffers[image_index]);
-    render_pass_info.renderArea.offset = vk::Offset2D{0,0};
-    render_pass_info.renderArea.extent = state.swap_chain.extent;
-
-    std::array<vk::ClearValue, 2> clear_values{};
-    clear_values[0].color = vk::ClearColorValue(std::array<float,4>{0.3984,0.695,1});
-    clear_values[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
-
-    render_pass_info.clearValueCount = clear_values.size();
-    render_pass_info.setClearValues(clear_values);
-
-
-    vk::Viewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(state.swap_chain.extent.width);
-    viewport.height = static_cast<float>(state.swap_chain.extent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    command_buffer.setViewport(0,viewport);
-    
-    vk::Rect2D scissor{};
-    scissor.offset = vk::Offset2D{0,0};
-    scissor.extent = state.swap_chain.extent;
-    command_buffer.setScissor(0,scissor);
-
-    command_buffer.beginRenderPass(&render_pass_info,
-                                   vk::SubpassContents::eInline);
-    draw(command_buffer, render_system, state.current_frame);
-
-    command_buffer.endRenderPass();
-
+    // shadowMapRenderPass(state, app.shadow_map, app.scene, command_buffer);
+    sceneRenderPass(command_buffer, state, render_system.scene_render_pass, render_system.scene, image_index);
     postProcessingRenderPass(state, app.ppp, command_buffer, render_system.scene, image_index);
     result = command_buffer.end();
 }
@@ -337,68 +305,6 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
     }
 }
 
-static layer_types::Program createTriplanarLandscapeProgram()
-{
-    layer_types::Program program_desc;
-    program_desc.fragment_shader = {{"./shaders/triplanar_frag.spv"}};
-    program_desc.vertex_shader= {{"./shaders/triplanar_vert.spv"}};
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"texture_buffer"}},
-        .type = layer_types::BufferType::NoBuffer,
-        .size = 1,
-        .binding = layer_types::Binding {
-            .name = {{"binding textures"}},
-            .binding = 0,
-            .type = layer_types::BindingType::TextureSampler,
-            .size = 32,
-            .vertex = true,
-            .fragment = true,
-        }
-    }});
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"world_buffer"}},
-        .type = layer_types::BufferType::WorldBufferObject,
-        .size = 1,
-        .binding = layer_types::Binding {
-            .name = {{"binding world"}},
-            .binding = 0,
-            .type = layer_types::BindingType::Uniform,
-            .size = 1,
-            .vertex = true,
-            .fragment = true,
-        }
-    }});
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"model_buffer"}},
-        .type = layer_types::BufferType::ModelBufferObject,
-        .size = 10,
-        .binding = layer_types::Binding {
-            .name = {{"binding model"}},
-            .binding = 0,
-            .type = layer_types::BindingType::Storage,
-            .size = 1,
-            .vertex = true,
-            .fragment = true
-        }
-    }});
-
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"material shader data"}},
-        .type = layer_types::BufferType::MaterialShaderData,
-        .size = 10,
-        .binding = layer_types::Binding {
-            .name = {{"binding model"}},
-            .binding = 0,
-            .type = layer_types::BindingType::Storage,
-            .size = 1,
-            .vertex = true,
-            .fragment = true,
-        }
-    }});
-
-    return program_desc;
-}
-
 int main()
 {
     srand (time(NULL));
@@ -462,23 +368,7 @@ int main()
     //auto terrain_program_wireframe = terrain_program_fill;
     //terrain_program_wireframe.polygon_mode = layer_types::PolygonMode::Line;
 
-    auto terrain_program_triplanar = createTriplanarLandscapeProgram();
-
-    auto pipeline_input = createDefaultPipelineInput();
-
-    std::vector<std::unique_ptr<Program>> programs;
-    programs.push_back(createProgram(terrain_program_triplanar, core, textures, core.render_pass, "Landscape triplanar", pipeline_input));
-
-    auto skybox = createSkybox(core, core.render_pass,{
-        "./textures/grass.png",
-        "./textures/grass.png",
-        "./textures/grass.png",
-        "./textures/grass.png",
-        "./textures/grass.png",
-        "./textures/grass.png",
-    });
-
-    programs.push_back(std::move(skybox.program));
+    auto scene_render_pass = createSceneRenderPass(core, textures);
 
     Material sky_box_material {
         .name = {"Skybox"},
@@ -618,7 +508,7 @@ int main()
     // Sun light comes from directly down.
     //scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
 
-    for (int i = 0; i < programs.size(); ++i)
+    for (int i = 0; i < scene_render_pass.pipelines.size(); ++i)
     {
         scene.programs[i] = {};
     }
@@ -663,13 +553,15 @@ int main()
 
     //addObject(scene, box_object);
 
+    auto ppp = createPostProcessing(core, scene_render_pass);
     Application application{
         .textures = std::move(textures),
         .models = std::move(models),
         .meshes = std::move(meshes),
-        .programs = std::move(programs),
+        .programs = {},
         .scene = std::move(scene),
-        .ppp = createPostProcessing(core),
+        .scene_render_pass = std::move(scene_render_pass),
+        .ppp = std::move(ppp),
         .shadow_map = createCascadedShadowMap(core)
     };
 

@@ -516,7 +516,7 @@ static auto createImageViews(SwapChain const& sc, vk::Device const& device)
     return swap_chain_image_views;
 }
 
-static vk::Format getDepthFormat()
+vk::Format getDepthFormat()
 {
     vk::Format format = vk::Format::eD32Sfloat;
     return format;

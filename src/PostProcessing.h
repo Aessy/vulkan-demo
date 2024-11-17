@@ -5,6 +5,7 @@
 #include "VulkanRenderSystem.h"
 #include "Program.h"
 #include "Scene.h"
+#include "RenderPass/SceneRenderPass.h"
 
 struct PostProcessing
 {
@@ -20,9 +21,13 @@ struct PostProcessing
     std::unique_ptr<Program> fog_compute_program;
 
     PostProcessingBufferObject buffer_object{};
+
+    std::vector<DepthResources> in_depth_attachment;
+    std::vector<DepthResources> in_color_attachment;
 };
 
-PostProcessing createPostProcessing(RenderingState const& state);
+PostProcessing createPostProcessing(RenderingState const& state,
+                                    SceneRenderPass const& scene);
 
 void postProcessingRenderPass(RenderingState const& state,
                               PostProcessing& ppp,

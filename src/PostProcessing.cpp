@@ -155,20 +155,22 @@ inline void postProcessingUpdateDescriptorSets(RenderingState const& state,
 {
     auto& ppp = post_processing;
 
+    auto& color_attachment = ppp.in_color_attachment[image_index];
+    auto& depth_attachment_resolve = ppp.in_depth_attachment[image_index];
+
     auto color_res_set = ppp.program->program.descriptor_sets[0].set[state.current_frame];
     auto color_res_binding = ppp.program->program.descriptor_sets[0].layout_bindings[0];
-
-    auto& color_attachment = state.framebuffer_resources[image_index].color_resources;
     updateImageSampler(state.device, {color_attachment.depth_image_view},
-                       post_processing.sampler, {color_res_set}, color_res_binding);
+                       ppp.sampler, {color_res_set}, color_res_binding);
 
     auto desc_set_blender = ppp.program->program.descriptor_sets[1].set[state.current_frame];
     auto desc_binding_blender = ppp.program->program.descriptor_sets[1].layout_bindings[0];
-    updateImageSampler(state.device, {ppp.fog_buffer[state.current_frame].second}, ppp.sampler, {desc_set_blender}, desc_binding_blender);
+    updateImageSampler(state.device, {ppp.fog_buffer[state.current_frame].second},
+                                ppp.sampler, {desc_set_blender}, desc_binding_blender);
 
     auto ppp_depth_descriptor_set = ppp.program->program.descriptor_sets[2].set[state.current_frame];
     auto ppp_depth_descriptor_binding= ppp.program->program.descriptor_sets[2].layout_bindings[0];
-    updateImageSampler(state.device, {state.framebuffer_resources[image_index].depth_resolved_resources.depth_image_view}, ppp.sampler,
+    updateImageSampler(state.device, {depth_attachment_resolve.depth_image_view}, ppp.sampler,
                        {ppp_depth_descriptor_set}, ppp_depth_descriptor_binding);
 
     // Bind the depth buffer to the fog program texture sampler
@@ -298,13 +300,13 @@ void postProcessingRenderPass(RenderingState const& state,
     scissor.extent = state.swap_chain.extent;
     command_buffer.setScissor(0,scissor);
 
-    transitionImageLayout(command_buffer, state.framebuffer_resources[image_index].color_resources.depth_image,
+    transitionImageLayout(command_buffer, ppp.in_color_attachment[image_index].depth_image,
                                  vk::Format::eR16G16B16A16Sfloat,
                                  vk::ImageLayout::eColorAttachmentOptimal,
                                  vk::ImageLayout::eShaderReadOnlyOptimal,
                                  1);
 
-    transitionImageLayout(command_buffer, state.framebuffer_resources[image_index].depth_resolved_resources.depth_image, vk::Format::eD32Sfloat,
+    transitionImageLayout(command_buffer, ppp.in_depth_attachment[image_index].depth_image, vk::Format::eD32Sfloat,
         vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
 
     postProcessingUpdateDescriptorSets(state, ppp, image_index);
@@ -428,7 +430,7 @@ void createNoiseTexture(RenderingState const& state, Program const& program)
     }
 }
 
-PostProcessing createPostProcessing(RenderingState const& state)
+PostProcessing createPostProcessing(RenderingState const& state, SceneRenderPass const& scene_render_pass)
 {
     PostProcessing pp;
     pp.sampler = createTextureSampler(state, false);
@@ -447,6 +449,11 @@ PostProcessing createPostProcessing(RenderingState const& state)
     spdlog::info("Creating compute fog program");
     pp.fog_compute_program = createComputeFogProgram(state, pp.render_pass);
 
+    for (auto const& attachment : scene_render_pass.framebuffers)
+    {
+        pp.in_color_attachment.push_back(attachment.color_resource);
+        pp.in_depth_attachment.push_back(attachment.depth_resolve_resource);
+    }
     // createNoiseTexture(state, *pp.fog_compute_program.get());
 
     return pp;

@@ -28,8 +28,6 @@ struct Scene
     std::vector<std::pair<int, int>> obj_inx;
     std::map<int, std::vector<int>> programs;
 
-    std::map<int, std::vector<Object>> objects;
-
     LightBufferObject light;
 
     TerrainBufferObject terrain;

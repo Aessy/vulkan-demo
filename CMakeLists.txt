@@ -16,6 +16,9 @@ set(SRC src/VulkanRenderSystem.cpp
         src/Id.cpp
         src/Skybox.cpp
         src/ShadowMap.cpp
+        src/RenderPass/SceneRenderPass.cpp
+        src/Pipelines/GeneralPurpuse.cpp
+        src/Pipelines/Skybox.cpp
         src/imgui_impl_vulkan.cpp
         src/imgui_impl_glfw.cpp
         )
@@ -23,7 +26,7 @@ set(SRC src/VulkanRenderSystem.cpp
 add_executable(vulkan-test ${SRC})
 target_compile_options(vulkan-test PUBLIC -g -std=c++23)
 target_compile_definitions(vulkan-test PUBLIC GLM_ENABLE_EXPERIMENTAL)
-target_include_directories(vulkan-test PUBLIC .)
+target_include_directories(vulkan-test PUBLIC src)
 
 IF(WIN32)
 target_link_libraries(vulkan-test vulkan-1 glfw3 libassimp)

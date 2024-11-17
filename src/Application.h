@@ -8,6 +8,7 @@
 #include "PostProcessing.h"
 #include "Material.h"
 #include "ShadowMap.h"
+#include "RenderPass/SceneRenderPass.h"
 
 #include <memory>
 #include <vector>
@@ -23,8 +24,7 @@ struct Application
     std::vector<std::unique_ptr<Program>> programs;
     std::vector<Material> materials;
     Scene scene;
-
+    SceneRenderPass scene_render_pass;
     PostProcessing ppp;
     CascadedShadowMap shadow_map;
-
 };

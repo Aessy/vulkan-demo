@@ -157,6 +157,8 @@ struct GraphicsPipelineInput
 vk::PipelineRasterizationStateCreateInfo createRasterizerState();
 vk::PipelineDepthStencilStateCreateInfo createDepthStencil();
 
+vk::Format getDepthFormat();
+
 GraphicsPipelineInput createDefaultPipelineInput();
 
 RenderingState createVulkanRenderState();
