@@ -115,7 +115,7 @@ void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingS
     auto result = command_buffer.begin(begin_info);
     checkResult(result);
 
-    // shadowMapRenderPass(state, app.shadow_map, app.scene, command_buffer);
+    shadowMapRenderPass(state, app.shadow_map, app.scene, command_buffer);
     sceneRenderPass(command_buffer, state, render_system.scene_render_pass, render_system.scene, image_index);
     postProcessingRenderPass(state, app.ppp, command_buffer, render_system.scene, image_index);
     result = command_buffer.end();
@@ -518,7 +518,7 @@ int main()
 
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
     landscape_flat.material = landscape_flat_dune;
-    // landscape_flat.shadow = true;
+    landscape_flat.shadow = true;
 
     auto sky_box = createObject(meshes.meshes.at(sphere_id));
     sky_box.material = sky_box_material;

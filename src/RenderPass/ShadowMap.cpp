@@ -223,7 +223,7 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
 
                 glm::mat4 MV = view * proj;
 
-                writeBuffer(model->buffers[state.current_frame], MV, i);
+                writeBuffer(model->buffers[state.current_frame], light_space_matrix[i], i);
             }
         }
         else if (auto* world = std::get_if<buffer_types::World>(&buffer))
@@ -233,66 +233,75 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
         }
     }
 
-    auto current_framebuffer = shadow_map.framebuffer[state.current_frame];
+    for (int i = 0; i < shadow_map.framebuffer[state.current_frame].size(); ++i)
+    {
+        auto current_framebuffer = shadow_map.framebuffer[state.current_frame][i];
 
-    std::array<vk::ClearValue, 2> clear_values{};
-    clear_values[0].color = vk::ClearColorValue(std::array<float,4>{0.3984,0.695,1});
-    clear_values[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+        std::array<vk::ClearValue, 2> clear_values{};
+        clear_values[0].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
-    vk::Viewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(state.swap_chain.extent.width);
-    viewport.height = static_cast<float>(state.swap_chain.extent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
+        vk::Viewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = static_cast<float>(state.swap_chain.extent.width);
+        viewport.height = static_cast<float>(state.swap_chain.extent.height);
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
 
-    vk::Rect2D scissor{};
-    scissor.offset = vk::Offset2D{0,0};
-    scissor.extent = state.swap_chain.extent;
+        vk::Rect2D scissor{};
+        scissor.offset = vk::Offset2D{0,0};
+        scissor.extent = state.swap_chain.extent;
 
-    command_buffer.setScissor(0,scissor);
-    command_buffer.setViewport(0,viewport);
+        command_buffer.setScissor(0,scissor);
+        command_buffer.setViewport(0,viewport);
 
-    vk::RenderPassBeginInfo render_pass_info{};
-    render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
-    render_pass_info.setRenderPass(shadow_map.render_pass);
-    render_pass_info.setFramebuffer(current_framebuffer.first);
-    render_pass_info.setClearValues(clear_values);
-    render_pass_info.renderArea.offset = vk::Offset2D(0,0);
-    render_pass_info.renderArea.extent = state.swap_chain.extent;
+        vk::RenderPassBeginInfo render_pass_info{};
+        render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
+        render_pass_info.setRenderPass(shadow_map.render_pass);
+        render_pass_info.setFramebuffer(current_framebuffer.first);
+        render_pass_info.setClearValues(clear_values);
+        render_pass_info.renderArea.offset = vk::Offset2D(0,0);
+        render_pass_info.renderArea.extent = state.swap_chain.extent;
 
-    command_buffer.beginRenderPass(render_pass_info,
-                                vk::SubpassContents::eInline);
+        command_buffer.beginRenderPass(render_pass_info,
+                                    vk::SubpassContents::eInline);
 
-    drawShadowMap(command_buffer, 0, scene, shadow_map, state.current_frame, glm::mat4());
+        drawShadowMap(command_buffer, i, scene, shadow_map, state.current_frame, glm::mat4());
 
-    command_buffer.endRenderPass();
+        command_buffer.endRenderPass();
+    }
 }
 
-static std::array<std::pair<vk::Framebuffer, vk::ImageView>, 2> createCascadedShadowmapFramebuffers(RenderingState const& state,
+static std::array<std::vector<std::pair<vk::Framebuffer, vk::ImageView>>, 2> createCascadedShadowmapFramebuffers(RenderingState const& state,
                                                                         vk::RenderPass const& render_pass,
                                                                         unsigned int num_cascades)
 {
-    std::array<std::pair<vk::Framebuffer,vk::ImageView>, 2> framebuffers;
+    std::array<std::vector<std::pair<vk::Framebuffer, vk::ImageView>>, 2> framebuffers;
     for (int i = 0; i < 2; ++i)
     {
-        auto depth_image = createDepth(state, vk::SampleCountFlagBits::e1);
+        auto depth_image = createDepth(state, vk::SampleCountFlagBits::e1, num_cascades);
+        for (int cascade = 0; cascade < num_cascades; ++cascade)
+        {
 
-        std::array<vk::ImageView, 1> attachments = {depth_image.depth_image_view};
-        vk::FramebufferCreateInfo framebuffer_info{};
-        framebuffer_info.sType = vk::StructureType::eFramebufferCreateInfo;
-        framebuffer_info.setRenderPass(render_pass);
-        framebuffer_info.attachmentCount = attachments.size();
-        framebuffer_info.setAttachments(attachments);
-        framebuffer_info.width = state.swap_chain.extent.width;
-        framebuffer_info.height = state.swap_chain.extent.height;
-        framebuffer_info.layers = 1;
+            auto image_view = createImageView(state.device, depth_image.depth_image, getDepthFormat(),
+                                                vk::ImageAspectFlagBits::eDepth, 1, vk::ImageViewType::e2DArray,
+                                                1, cascade);
 
-        auto result = state.device.createFramebuffer(framebuffer_info);
-        checkResult(result.result);
+            std::array<vk::ImageView, 1> attachments = {image_view};
+            vk::FramebufferCreateInfo framebuffer_info{};
+            framebuffer_info.sType = vk::StructureType::eFramebufferCreateInfo;
+            framebuffer_info.setRenderPass(render_pass);
+            framebuffer_info.attachmentCount = attachments.size();
+            framebuffer_info.setAttachments(attachments);
+            framebuffer_info.width = state.swap_chain.extent.width;
+            framebuffer_info.height = state.swap_chain.extent.height;
+            framebuffer_info.layers = 1;
 
-        framebuffers[i] = {result.value, depth_image.depth_image_view};
+            auto result = state.device.createFramebuffer(framebuffer_info);
+            checkResult(result.result);
+
+            framebuffers[i].push_back({result.value, image_view});
+        }
     }
 
     return framebuffers;

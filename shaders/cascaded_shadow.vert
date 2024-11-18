@@ -33,5 +33,5 @@ layout(std430, set = 2, binding = 0) readonly buffer ObjectBuffer{
 void main()
 {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
-    gl_Position = world.proj * world.view * ubo.model* vec4(in_position, 1.0);
+    gl_Position = shadow_map.light_matrix * ubo.model* vec4(in_position, 1.0);
 }
