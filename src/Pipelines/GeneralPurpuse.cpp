@@ -167,7 +167,11 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createPipeline(PipelineData 
 }
 
 
-Pipeline createGeneralPurposePipeline(RenderingState const& state, vk::RenderPass const& render_pass, Textures const& textures)
+Pipeline createGeneralPurposePipeline(RenderingState const& state,
+                                      vk::RenderPass const& render_pass,
+                                      Textures const& textures,
+                                      std::vector<UniformBuffer> const& shadow_map_buffer,
+                                      std::array<vk::ImageView, 2> const& shadow_map_images)
 {
     layer_types::Program program_desc;
     program_desc.fragment_shader = {{"./shaders/triplanar_frag.spv"}};
@@ -226,12 +230,44 @@ Pipeline createGeneralPurposePipeline(RenderingState const& state, vk::RenderPas
         }
     }});
 
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"shadow maps"}},
+        .type = layer_types::BufferType::CascadedShadowMapBufferObject,
+        .size = 5,
+        .buffer = shadow_map_buffer,
+        .binding = layer_types::Binding {
+            .name = {{"binding shadow_map"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .vertex = true,
+            .fragment = true,
+        }
+    }});
+
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"shadow maps"}},
+        .type = layer_types::BufferType::NoBuffer,
+        .size = 1,
+        .binding = layer_types::Binding {
+            .name = {{"binding textures"}},
+            .binding = 0,
+            .type = layer_types::BindingType::TextureSampler,
+            .size = 1, // 2D Array. Set size for the binding to 1
+            .vertex = true,
+            .fragment = true,
+        }
+    }});
     auto const pipeline_data = createPipelineData(state, program_desc);
     auto const [pipeline, pipeline_layout] = createPipeline(pipeline_data, state.swap_chain.extent, state.device, render_pass, state.msaa);
     auto pipeline_finish = bindPipeline(state, pipeline_data, pipeline, pipeline_layout);
 
     updateImageSampler(state.device, textures.textures, {pipeline_finish.descriptor_sets[0].set}, pipeline_finish.descriptor_sets[0].layout_bindings[0]);
     
+    // Update image samplers for the shadow map array
+    auto sampler = createTextureSampler(state, 1);
+    updateImageSampler(state.device, {shadow_map_images[0]}, sampler, {pipeline_finish.descriptor_sets[5].set[0]}, pipeline_finish.descriptor_sets[5].layout_bindings[0]);
+    updateImageSampler(state.device, {shadow_map_images[1]}, sampler, {pipeline_finish.descriptor_sets[5].set[1]}, pipeline_finish.descriptor_sets[5].layout_bindings[0]);
 
     return pipeline_finish;
 }

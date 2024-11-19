@@ -243,7 +243,7 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     return device.createRenderPass2(render_pass_info).value;
 }
 
-SceneRenderPass createSceneRenderPass(RenderingState const& state, Textures const& textures)
+SceneRenderPass createSceneRenderPass(RenderingState const& state, Textures const& textures, CascadedShadowMap const& shadow_map)
 {
     auto render_pass = createRenderPass(state.device, state.swap_chain.swap_chain_image_format, state.msaa);
     auto framebuffers = createFrameBuffers(state, render_pass);
@@ -254,7 +254,7 @@ SceneRenderPass createSceneRenderPass(RenderingState const& state, Textures cons
         .framebuffers = framebuffers,
     };
 
-    scene_render_pass.pipelines.push_back(createGeneralPurposePipeline(state, render_pass, textures));
+    scene_render_pass.pipelines.push_back(createGeneralPurposePipeline(state, render_pass, textures, shadow_map.cascaded_shadow_map_buffer, shadow_map.framebuffer_data.image_views));
     scene_render_pass.pipelines.push_back(createSkyboxPipeline(state, render_pass));
 
     return scene_render_pass;

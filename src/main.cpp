@@ -368,7 +368,8 @@ int main()
     //auto terrain_program_wireframe = terrain_program_fill;
     //terrain_program_wireframe.polygon_mode = layer_types::PolygonMode::Line;
 
-    auto scene_render_pass = createSceneRenderPass(core, textures);
+    auto shadow_map = createCascadedShadowMap(core);
+    auto scene_render_pass = createSceneRenderPass(core, textures, shadow_map);
 
     Material sky_box_material {
         .name = {"Skybox"},
@@ -562,7 +563,7 @@ int main()
         .scene = std::move(scene),
         .scene_render_pass = std::move(scene_render_pass),
         .ppp = std::move(ppp),
-        .shadow_map = createCascadedShadowMap(core)
+        .shadow_map = std::move(shadow_map)
     };
 
     initImgui(core.device, core.physical_device, core.instance, core.graphics_queue, application.ppp.render_pass, core, core.window, core.msaa);

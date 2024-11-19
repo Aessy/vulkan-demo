@@ -1,7 +1,9 @@
 #pragma once
 
+#include "RenderPass/ShadowMap.h"
 #include "VulkanRenderSystem.h"
 
+#include "ShadowMap.h"
 #include "Program.h"
 #include "Scene.h"
 
@@ -29,4 +31,4 @@ void sceneRenderPass(vk::CommandBuffer command_buffer,
                      Scene const& scene_data,
                      uint32_t image_index);
 
-SceneRenderPass createSceneRenderPass(RenderingState const& state, Textures const& textures);
+SceneRenderPass createSceneRenderPass(RenderingState const& state, Textures const& textures, CascadedShadowMap const& shadow_map);

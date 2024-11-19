@@ -219,12 +219,6 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
         {
             for (int i = 0; i < light_space_matrix.size(); ++i)
             {
-                
-                auto const view = glm::lookAt(scene.camera.pos, (scene.camera.pos + scene.camera.camera_front), scene.camera.up);
-                auto const proj = scene.camera.proj;
-
-                glm::mat4 MV = view * proj;
-
                 writeBuffer(model->buffers[state.current_frame], light_space_matrix[i], i);
             }
         }
@@ -235,9 +229,9 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
         }
     }
 
-    for (int i = 0; i < shadow_map.framebuffer[state.current_frame].size(); ++i)
+    for (int i = 0; i < shadow_map.framebuffer_data.framebuffers[state.current_frame].size(); ++i)
     {
-        auto current_framebuffer = shadow_map.framebuffer[state.current_frame][i];
+        auto current_framebuffer = shadow_map.framebuffer_data.framebuffers[state.current_frame][i];
 
         std::array<vk::ClearValue, 2> clear_values{};
         clear_values[0].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
@@ -260,7 +254,7 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
         vk::RenderPassBeginInfo render_pass_info{};
         render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
         render_pass_info.setRenderPass(shadow_map.render_pass);
-        render_pass_info.setFramebuffer(current_framebuffer.first);
+        render_pass_info.setFramebuffer(current_framebuffer);
         render_pass_info.setClearValues(clear_values);
         render_pass_info.renderArea.offset = vk::Offset2D(0,0);
         render_pass_info.renderArea.extent = state.swap_chain.extent;
@@ -274,14 +268,22 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
     }
 }
 
-static std::array<std::vector<std::pair<vk::Framebuffer, vk::ImageView>>, 2> createCascadedShadowmapFramebuffers(RenderingState const& state,
-                                                                        vk::RenderPass const& render_pass,
-                                                                        unsigned int num_cascades)
+static ShadowMapFramebuffer createCascadedShadowmapFramebuffers(RenderingState const& state,
+                                                                vk::RenderPass const& render_pass,
+                                                                unsigned int num_cascades)
 {
-    std::array<std::vector<std::pair<vk::Framebuffer, vk::ImageView>>, 2> framebuffers;
+    ShadowMapFramebuffer data;
+
     for (int i = 0; i < 2; ++i)
     {
-        auto depth_image = createDepth(state, vk::SampleCountFlagBits::e1, num_cascades);
+        auto const depth_image = createDepth(state, vk::SampleCountFlagBits::e1, num_cascades);
+        // Store the image and image view to the array for use in other render pass steps.
+        data.cascade_images[i] = depth_image.depth_image;
+        data.image_views[i] = createImageView(state.device, depth_image.depth_image, getDepthFormat(),
+                                                  vk::ImageAspectFlagBits::eDepth, 1, vk::ImageViewType::e2DArray,
+                                                  num_cascades, 0);
+                                            
+
         for (int cascade = 0; cascade < num_cascades; ++cascade)
         {
 
@@ -302,11 +304,11 @@ static std::array<std::vector<std::pair<vk::Framebuffer, vk::ImageView>>, 2> cre
             auto result = state.device.createFramebuffer(framebuffer_info);
             checkResult(result.result);
 
-            framebuffers[i].push_back({result.value, image_view});
+            data.framebuffers[i].push_back(result.value);
         }
     }
 
-    return framebuffers;
+    return data;
 }
 
 static std::tuple<vk::Pipeline, vk::PipelineLayout> createCascadedShadowMapPipeline(PipelineData const& pipeline_data,
@@ -473,7 +475,7 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core)
     CascadedShadowMap shadow_map;
     constexpr unsigned int n_cascades = shadow_map.n_cascaded_shadow_maps;
     shadow_map.render_pass = createShadowMapRenderPass(core.device);
-    shadow_map.framebuffer = createCascadedShadowmapFramebuffers(core, shadow_map.render_pass, n_cascades);
+    shadow_map.framebuffer_data = createCascadedShadowmapFramebuffers(core, shadow_map.render_pass, n_cascades);
 
     shadow_map.cascaded_shadow_map_buffer = createUniformBuffers<CascadedShadowMapBufferObject>(core, shadow_map.n_cascaded_shadow_maps);
 

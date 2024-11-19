@@ -5,10 +5,23 @@
 #include "Program.h"
 #include "Scene.h"
 
+struct ShadowMapFramebuffer
+{
+    // cascades_n framebuffers per frame
+    std::array<std::vector<vk::Framebuffer>, 2> framebuffers;
+
+    // one cascade image per frame
+    std::array<vk::Image, 2> cascade_images;
+
+    // one image view array per frame.
+    std::array<vk::ImageView, 2> image_views;
+};
+
 struct CascadedShadowMap
 {
     vk::RenderPass render_pass;
-    std::array<std::vector<std::pair<vk::Framebuffer,vk::ImageView>>, 2> framebuffer;
+    
+    ShadowMapFramebuffer framebuffer_data;
 
     Pipeline pipeline;
 
