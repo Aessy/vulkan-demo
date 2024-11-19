@@ -80,6 +80,7 @@ static glm::mat4 getLightProjection(glm::mat4 const& light_view, std::vector<glm
         max_z = std::max(max_z, trf.z);
     }
 
+/*
     constexpr float z_mult = 10.0f;
     if (min_z < 0)
     {
@@ -97,8 +98,9 @@ static glm::mat4 getLightProjection(glm::mat4 const& light_view, std::vector<glm
     {
         max_z *= z_mult;
     }
+*/
 
-    glm::mat4 const light_projection = glm::ortho(min_x, max_x, min_y, max_y, min_z, max_z);
+    glm::mat4 const light_projection = glm::ortho(min_x, max_x, max_y, min_y, min_z, max_z);
 
     return light_projection * light_view;
 }
@@ -473,6 +475,8 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core)
     shadow_map.render_pass = createShadowMapRenderPass(core.device);
     shadow_map.framebuffer = createCascadedShadowmapFramebuffers(core, shadow_map.render_pass, n_cascades);
 
+    shadow_map.cascaded_shadow_map_buffer = createUniformBuffers<CascadedShadowMapBufferObject>(core, shadow_map.n_cascaded_shadow_maps);
+
     // Create pipeline
     layer_types::Program program_desc;
     program_desc.fragment_shader = {{"./shaders/cascaded_shadow_frag.spv"}};
@@ -483,6 +487,7 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core)
         .type = layer_types::BufferType::CascadedShadowMapBufferObject,
         .count = 5,
         .size = 1,
+        .buffer = shadow_map.cascaded_shadow_map_buffer,
         .binding = layer_types::Binding {
             .name = {{"binding matrice"}},
             .binding = 0,

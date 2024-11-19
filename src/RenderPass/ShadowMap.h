@@ -16,6 +16,9 @@ struct CascadedShadowMap
 
     // Just recalculate per render call probably. Don't need to store it
     std::array<glm::mat4, n_cascaded_shadow_maps> light_projection_views;
+
+    // Buffer objects for cascaded shadow map.
+    std::vector<UniformBuffer> cascaded_shadow_map_buffer;
 };
 
 CascadedShadowMap createCascadedShadowMap(RenderingState const& core);

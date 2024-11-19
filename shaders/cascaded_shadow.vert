@@ -34,5 +34,5 @@ void main()
 {
     ObjectData ubo = ubo2.objects[gl_BaseInstance];
     gl_Position = shadow_map.light_matrix * ubo.model * vec4(in_position, 1.0);
-    gl_Position.y = -gl_Position.y;
+    //gl_Position.y = -gl_Position.y;
 }

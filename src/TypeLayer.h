@@ -5,6 +5,8 @@
 #include <array>
 #include <vector>
 
+#include "VulkanRenderSystem.h"
+
 #include <vulkan/vulkan_core.h>
 
 // Types here  work as a translation layer between GUI and rendering enginee
@@ -59,6 +61,7 @@ struct Buffer
 
     int count{1};
     int size{};
+    std::vector<UniformBuffer> buffer;
     Binding binding{};
 };
 

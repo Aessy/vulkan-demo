@@ -1,6 +1,7 @@
 #include "Program.h"
 
 #include "Model.h"
+#include "TypeLayer.h"
 #include "VulkanRenderSystem.h"
 #include "descriptor_set.h"
 #include "utilities.h"
@@ -362,34 +363,55 @@ Pipeline bindPipeline(RenderingState const& core, PipelineData const& pipeline_d
 
     std::vector<buffer_types::ModelType> model_types;
 
+    auto l = [&pipeline_data, &core]<typename BufferType, typename BufferTypeOut>(layer_types::Buffer const& buffer, uint32_t index)
+    {
+        // Use existing buffer from outside
+        if (buffer.buffer.size())
+        {
+            updateUniformBuffer<BufferType>(core.device,
+                                            buffer.buffer,
+                                            pipeline_data.descriptor_sets[index].set,
+                                            pipeline_data.descriptor_sets[index].layout_bindings[0],
+                                            buffer.size);
+
+            return BufferTypeOut{buffer.buffer};
+        }
+        return createModel<BufferType, BufferTypeOut>(core,
+                                                      buffer.binding.type,
+                                                      pipeline_data.descriptor_sets[index],
+                                                      buffer.size,
+                                                      buffer.count);
+    };
+
+
     size_t index = 0;
     for (auto const& buffer : pipeline_data.program_data.buffers)
     {
         switch (buffer.type)
         {
             case lt::BufferType::ModelBufferObject:
-                model_types.push_back(createModel<ModelBufferObject, buffer_types::Model>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
+                model_types.push_back(l.operator()<ModelBufferObject, buffer_types::Model>(buffer, index));
                 break;
             case lt::BufferType::WorldBufferObject:
-                model_types.push_back(createModel<WorldBufferObject, buffer_types::World>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
+                model_types.push_back(l.operator()<WorldBufferObject, buffer_types::World>(buffer, index));
                 break;
             case lt::BufferType::TerrainBufferObject:
-                model_types.push_back(createModel<TerrainBufferObject, buffer_types::Terrain>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
+                model_types.push_back(l.operator()<TerrainBufferObject, buffer_types::Terrain>(buffer, index));
                 break;
             case lt::BufferType::FogVolumeObject:
-                model_types.push_back(createModel<FogVolumeBufferObject, buffer_types::FogVolume>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
+                model_types.push_back(l.operator()<FogVolumeBufferObject, buffer_types::FogVolume>(buffer, index));
                 break;
             case lt::BufferType::PostProcessingDataBufferObject:
-                model_types.push_back(createModel<PostProcessingBufferObject, buffer_types::PostProcessingData>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
+                model_types.push_back(l.operator()<PostProcessingBufferObject, buffer_types::PostProcessingData>(buffer, index));
                 break;
             case lt::BufferType::MaterialShaderData:
-                model_types.push_back(createModel<MaterialShaderData, buffer_types::MaterialShaderData>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
+                model_types.push_back(l.operator()<MaterialShaderData, buffer_types::MaterialShaderData>(buffer, index));
                 break;
             case lt::BufferType::AtmosphereShaderData:
-                model_types.push_back(createModel<Atmosphere, buffer_types::AtmosphereShaderData>(core,  buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
+                model_types.push_back(l.operator()<Atmosphere, buffer_types::AtmosphereShaderData>(buffer, index));
                 break;
             case lt::BufferType::CascadedShadowMapBufferObject:
-                model_types.push_back(createModel<CascadedShadowMapBufferObject, buffer_types::CascadedShadowMapBufferObject>(core, buffer.binding.type, pipeline_data.descriptor_sets[index], buffer.size, buffer.count));
+                model_types.push_back(l.operator()<CascadedShadowMapBufferObject, buffer_types::CascadedShadowMapBufferObject>(buffer, index));
                 break;
             case lt::BufferType::NoBuffer:
                 break;
