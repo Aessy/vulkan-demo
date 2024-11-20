@@ -470,7 +470,7 @@ static vk::RenderPass createShadowMapRenderPass(vk::Device const& device)
     return render_pass.value;
 }
 
-CascadedShadowMap createCascadedShadowMap(RenderingState const& core)
+CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene const& scene)
 {
     CascadedShadowMap shadow_map;
     constexpr unsigned int n_cascades = shadow_map.n_cascaded_shadow_maps;
@@ -503,6 +503,7 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core)
         .name = {{"world_buffer"}},
         .type = layer_types::BufferType::WorldBufferObject,
         .size = 1,
+        .buffer = scene.world_buffer,
         .binding = layer_types::Binding {
             .name = {{"binding world"}},
             .binding = 0,
@@ -513,11 +514,11 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core)
     }});
 
     program_desc.buffers.push_back({layer_types::Buffer{
-        .name = {{"world_buffer"}},
+        .name = {{"model matrices"}},
         .type = layer_types::BufferType::ModelBufferObject,
         .size = 10,
         .binding = layer_types::Binding {
-            .name = {{"binding world"}},
+            .name = {{"model matrices"}},
             .binding = 0,
             .type = layer_types::BindingType::Storage,
             .size = 1,

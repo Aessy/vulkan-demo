@@ -90,18 +90,13 @@ void loop(GLFWwindow* window)
     }
 }
 
-
-void draw(vk::CommandBuffer& command_buffer, Application& app, int frame)
-{
-    renderScene(command_buffer, app.scene, app.programs, frame);
-    //draw(command_buffer, render_system.default_rendering, camera, frame);
-    //draw(command_buffer, render_system.grass, camera, frame);
-    //draw(command_buffer, render_system.terrain, camera, frame);
-}
-
 template<typename RenderingSystem>
 void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingSystem& render_system)
 {
+
+    // Write all buffer data used by the render passes.
+    updateBufferObjects(render_system.scene, state.current_frame);
+
     // Bind the depth buffer to the fog program texture sampler
     Application& app = render_system;
 
@@ -368,8 +363,11 @@ int main()
     //auto terrain_program_wireframe = terrain_program_fill;
     //terrain_program_wireframe.polygon_mode = layer_types::PolygonMode::Line;
 
-    auto shadow_map = createCascadedShadowMap(core);
-    auto scene_render_pass = createSceneRenderPass(core, textures, shadow_map);
+    Scene scene;
+    scene.world_buffer = createUniformBuffers<WorldBufferObject>(core);
+
+    auto shadow_map = createCascadedShadowMap(core, scene);
+    auto scene_render_pass = createSceneRenderPass(core, textures, scene, shadow_map);
 
     Material sky_box_material {
         .name = {"Skybox"},
@@ -485,16 +483,10 @@ int main()
 
     Meshes meshes;
     auto landscape_flat_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
-    // auto cylinder_mesh_id = meshes.loadMesh(core, models.models.at(cylinder_id), "cylinder");
-    //auto landscape_mesh_id = meshes.loadMesh(core, models.models.at(landscape_fbx), "landscape fbx");
     auto sphere_id = meshes.loadMesh(core, models.models.at(sphere_fbx), "sphere fbx");
-    //auto dune_mesh_id = meshes.loadMesh(core, models.models.at(dune_id), "Dune");
-
-    //meshes.loadMesh(core, models.models.at(plain_id), "plain_ground");
 
     auto box_id = meshes.loadMesh(core, box, "box");
 
-    Scene scene;
     scene.camera = camera;
     scene.light.position = glm::vec3(450000,0,0);
     scene.light.light_color = glm::vec3(1,1,1);
@@ -505,9 +497,7 @@ int main()
     sun_sphere.y = scene.atmosphere.sun_distance * glm::sin(0.0) * glm::sin(0.5f);
     sun_sphere.z = scene.atmosphere.sun_distance * glm::sin(0.0) * glm::cos(0.5f);
     scene.light.sun_pos = sun_sphere;
-    
-    // Sun light comes from directly down.
-    //scene.objects[1].push_back(createObject(meshes.meshes.at(mesh_id)));
+
 
     for (int i = 0; i < scene_render_pass.pipelines.size(); ++i)
     {

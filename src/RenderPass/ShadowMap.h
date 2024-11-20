@@ -34,6 +34,6 @@ struct CascadedShadowMap
     std::vector<UniformBuffer> cascaded_shadow_map_buffer;
 };
 
-CascadedShadowMap createCascadedShadowMap(RenderingState const& core);
+CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene const& scene);
 
 void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_map, Scene const& scene, vk::CommandBuffer command_buffer);

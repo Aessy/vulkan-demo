@@ -7,13 +7,6 @@
 #include <vulkan/vulkan_enums.hpp>
 #include <vulkan/vulkan_handles.hpp>
 
-template<typename BufferObject>
-inline void writeBuffer(UniformBuffer& dst, BufferObject const& src, size_t index = 0)
-{
-    void* buffer = (unsigned char*)dst.uniform_buffers_mapped+(sizeof(BufferObject)*index);
-    memcpy(buffer, (unsigned char*)&src, sizeof(BufferObject));
-}
-
 inline void renderScene(vk::CommandBuffer& cmd_buffer, Scene const& scene, std::vector<std::unique_ptr<Program>>& programs, int frame)
 {
     for (auto const& o : scene.programs)

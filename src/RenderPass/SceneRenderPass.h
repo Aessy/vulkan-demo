@@ -31,4 +31,4 @@ void sceneRenderPass(vk::CommandBuffer command_buffer,
                      Scene const& scene_data,
                      uint32_t image_index);
 
-SceneRenderPass createSceneRenderPass(RenderingState const& state, Textures const& textures, CascadedShadowMap const& shadow_map);
+SceneRenderPass createSceneRenderPass(RenderingState const& state, Textures const& textures, Scene const& scene, CascadedShadowMap const& shadow_map);

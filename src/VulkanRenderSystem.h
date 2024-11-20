@@ -249,6 +249,13 @@ auto createStorageBuffers(RenderingState const& state, uint32_t size)
     return ubos;
 }
 
+template<typename BufferObject>
+inline void writeBuffer(UniformBuffer& dst, BufferObject const& src, size_t index = 0)
+{
+    void* buffer = (unsigned char*)dst.uniform_buffers_mapped+(sizeof(BufferObject)*index);
+    memcpy(buffer, (unsigned char*)&src, sizeof(BufferObject));
+}
+
 template<typename Vertex>
 static constexpr vk::VertexInputBindingDescription getBindingDescription()
 {

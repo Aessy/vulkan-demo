@@ -170,6 +170,7 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createPipeline(PipelineData 
 Pipeline createGeneralPurposePipeline(RenderingState const& state,
                                       vk::RenderPass const& render_pass,
                                       Textures const& textures,
+                                      std::vector<UniformBuffer> const& world_buffer,
                                       std::vector<UniformBuffer> const& shadow_map_buffer,
                                       std::array<vk::ImageView, 2> const& shadow_map_images)
 {
@@ -193,6 +194,7 @@ Pipeline createGeneralPurposePipeline(RenderingState const& state,
         .name = {{"world_buffer"}},
         .type = layer_types::BufferType::WorldBufferObject,
         .size = 1,
+        .buffer = world_buffer,
         .binding = layer_types::Binding {
             .name = {{"binding world"}},
             .binding = 0,

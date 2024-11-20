@@ -29,11 +29,11 @@ struct Scene
     std::map<int, std::vector<int>> programs;
 
     LightBufferObject light;
-
     TerrainBufferObject terrain;
-
     FogVolumeBufferObject fog;
     Atmosphere atmosphere;
+
+    std::vector<UniformBuffer> world_buffer;
 };
 
 inline void addObject(Scene& scene, Object o)
@@ -87,4 +87,10 @@ inline ModelBufferObject createModelBufferObject(Object const& object)
     auto scale = glm::scale(glm::mat4(1.0f), glm::vec3(object.scale, object.scale, object.scale));
     model_buffer.model = translation * rotation * scale;
     return model_buffer;
+}
+
+inline void updateBufferObjects(Scene& scene, uint32_t frame)
+{
+    WorldBufferObject ubo = createWorldBufferObject(scene);
+    writeBuffer(scene.world_buffer[frame], ubo);
 }

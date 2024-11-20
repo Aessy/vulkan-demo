@@ -169,7 +169,9 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createPipeline(PipelineData 
     return {p, pipeline_layout.value};
 }
 
-Pipeline createSkyboxPipeline(RenderingState const& state, vk::RenderPass const& render_pass)
+Pipeline createSkyboxPipeline(RenderingState const& state,
+                              vk::RenderPass const& render_pass,
+                              std::vector<UniformBuffer> const& world_buffer)
 {
     layer_types::Program program_desc;
     program_desc.vertex_shader= {{"./shaders/skybox_vert.spv"}};
@@ -179,6 +181,7 @@ Pipeline createSkyboxPipeline(RenderingState const& state, vk::RenderPass const&
         .name = "World",
         .type = layer_types::BufferType::WorldBufferObject,
         .size = 1,
+        .buffer = world_buffer,
         .binding = layer_types::Binding{
             .name = {{"binding world"}},
             .binding = 0,
