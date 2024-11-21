@@ -1,9 +1,6 @@
 #pragma once
 
 #include "Material.h"
-#include "glm/glm.hpp"
-
-#include "Program.h"
 
 #include "Id.h"
 #include "Mesh.h"

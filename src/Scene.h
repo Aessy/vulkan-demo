@@ -3,16 +3,13 @@
 #include "Material.h"
 #include "Model.h"
 #include "Object.h"
-#include "Program.h"
 #include "VulkanRenderSystem.h"
-#include <variant>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include "glm/gtx/string_cast.hpp"
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>

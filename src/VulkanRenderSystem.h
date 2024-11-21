@@ -16,13 +16,10 @@
 #include "GLFW/glfw3native.h"
 
 #define VULKAN_HPP_NO_EXCEPTIONS
+#define VULKAN_HPP_RAII_NO_EXCEPTIONS
 #define VULKAN_HPP_ASSERT_ON_RESULT
-#include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_enums.hpp>
-#include <vulkan/vulkan_handles.hpp>
-#include <vulkan/vulkan_funcs.hpp>
-#include <vulkan/vulkan_structs.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 #include <memory>
 #include <queue>

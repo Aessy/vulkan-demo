@@ -1,22 +1,9 @@
 #pragma once
 
-#include "Material.h"
-#define VULKAN_HPP_NO_EXCEPTIONS
-#define VULKAN_HPP_ASSERT_ON_RESULT
-#include <vulkan/vulkan_core.h>
-#include <vulkan/vulkan.hpp>
-#include <vulkan/vulkan_enums.hpp>
-#include <vulkan/vulkan_handles.hpp>
-#include <vulkan/vulkan_funcs.hpp>
-#include <vulkan/vulkan_structs.hpp>
-
-#include "descriptor_set.h"
 
 #include "VulkanRenderSystem.h"
 #include "TypeLayer.h"
-#include "Model.h"
 #include "Textures.h"
-#include "Material.h"
 
 #include <vector>
 #include <variant>
