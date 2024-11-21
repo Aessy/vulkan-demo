@@ -9,7 +9,7 @@
 
 struct SceneFramebufferState
 {
-    vk::Framebuffer framebuffer;
+    std::unique_ptr<vk::raii::Framebuffer> framebuffer;
 
     DepthResources color_resource;
     DepthResources depth_resource;

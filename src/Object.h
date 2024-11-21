@@ -15,7 +15,7 @@ struct Terrain
 
 struct Object
 {
-    DrawableMesh mesh;
+    int mesh_id;
     glm::vec3 position;
     glm::vec3 rotation;
 
@@ -33,7 +33,11 @@ struct Object
 
 inline auto createObject(DrawableMesh const& mesh, glm::vec3 const& position = glm::vec3(0,0,0))
 {
-    Object draw;
+    Object draw{
+        .mesh = std::move(mesh),
+
+
+    };
     draw.mesh = mesh;
     draw.position = position;
     draw.rotation = glm::vec3(1,1,1);

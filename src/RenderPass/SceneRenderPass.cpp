@@ -151,12 +151,13 @@ static std::vector<SceneFramebufferState> createFrameBuffers(RenderingState cons
         framebuffer_info.layers = 1;
 
         auto framebuffer = state.device.createFramebuffer(framebuffer_info);
-        checkResult(framebuffer.result);
 
-        swap_chain_frame_buffers.push_back({SceneFramebufferState{.framebuffer = framebuffer.value,
+/*
+        swap_chain_frame_buffers.push_back({SceneFramebufferState{.framebuffer = std::move(framebuffer.value),
                                                                     .color_resource = color_resources,
                                                                     .depth_resource = depth_image,
                                                                     .depth_resolve_resource = depth_resolve_image}});
+                                                                    */
     }
 
     return swap_chain_frame_buffers;

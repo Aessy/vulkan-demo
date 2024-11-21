@@ -1,4 +1,6 @@
 #include "VulkanRenderSystem.h"
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_structs.hpp>
 
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_RAII_NO_EXCEPTIONS
@@ -111,7 +113,7 @@ bool checkValidationLayerSupport(std::vector<const char*> const& validation_laye
 }
 
 
-static auto createInstance(bool validation_layers_on)
+static auto createInstance(bool validation_layers_on, vk::raii::Context const& context)
 {
     std::vector<const char*> const validation_layers
     {
@@ -169,15 +171,15 @@ static auto createInstance(bool validation_layers_on)
     auto instance = vk::createInstance(info, nullptr);
     checkResult(instance.result);
 
-    return instance.value;
+    return vk::raii::Instance(context, instance.value);
 }
 
-static vk::SurfaceKHR createSurface(vk::Instance const& instance, GLFWwindow* window)
+static vk::raii::SurfaceKHR createSurface(vk::raii::Instance const& instance, GLFWwindow* window)
 {
     vk::SurfaceKHR surface;
-    glfwCreateWindowSurface(instance, window, nullptr, reinterpret_cast<VkSurfaceKHR_T**>(&surface));
+    glfwCreateWindowSurface(*instance, window, nullptr, reinterpret_cast<VkSurfaceKHR_T**>(&surface));
 
-    return surface;
+    return vk::raii::SurfaceKHR(instance, surface);
 }
 
 static int scoreDevice(vk::PhysicalDevice const& device)
@@ -222,34 +224,39 @@ vk::SampleCountFlagBits getMaxUsableSampleCount(vk::PhysicalDevice device)
 
 DepthResources createColorResources(RenderingState const& state, vk::Format format)
 {
-    auto image = createImage(state, state.swap_chain.extent.width, state.swap_chain.extent.height, 1, 
+    auto [image, device_memory] = createImage(state, state.swap_chain.extent.width, state.swap_chain.extent.height, 1, 
         format, vk::ImageTiling::eOptimal,
                                 vk::ImageUsageFlagBits::eColorAttachment
                                 | vk::ImageUsageFlagBits::eSampled,
         vk::MemoryPropertyFlagBits::eDeviceLocal, state.msaa);
 
-    transitionImageLayout(state, image.first, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal, 1);
+    transitionImageLayout(state, image, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal, 1);
 
-    auto view = createImageView(state.device, image.first, format, vk::ImageAspectFlagBits::eColor, 1);
+    auto view = createImageView(state.device, image, format, vk::ImageAspectFlagBits::eColor, 1);
 
-    return DepthResources{image.first, image.second, view};
+    return DepthResources{std::move(image), std::move(device_memory), std::move(view)};
 }
 
-static vk::PhysicalDevice createPhysicalDevice(vk::Instance const& instance)
+static std::optional<vk::raii::PhysicalDevice> createPhysicalDevice(vk::raii::Instance const& instance)
 {
-    auto devices = instance.enumeratePhysicalDevices();
-    checkResult(devices.result);
-    if (devices.value.empty())
+    auto devices_exp = instance.enumeratePhysicalDevices();
+    if (!devices_exp)
+    {
+        spdlog::error("No devices: {}");
+    }
+
+    auto devices = devices_exp.value();
+
+    if (devices.empty())
     {
         spdlog::info("No GPU with vulkan support");
         return {};
     }
 
-    std::sort(devices.value.begin(), devices.value.end(), [](auto const& lhs, auto const& rhs) {return scoreDevice(lhs) < scoreDevice(rhs);});
+    std::sort(devices.begin(), devices.end(), [](auto const& lhs, auto const& rhs) {return scoreDevice(lhs) < scoreDevice(rhs);});
 
-    spdlog::info("GPU count: {}", devices.value.size());
-    vk::PhysicalDevice physical_device = devices.value.back();
-    return physical_device;
+    spdlog::info("GPU count: {}", devices.size());
+    return devices.back();
 }
 
 static QueueFamilyIndices findQueueFamilies(vk::PhysicalDevice const& physical_device, vk::SurfaceKHR const& surface)
@@ -291,7 +298,7 @@ static bool isDeviceSuitable(vk::PhysicalDevice const& device, vk::SurfaceKHR co
     return true;
 }
 
-static vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device, QueueFamilyIndices const& indices)
+static vk::raii::Device createLogicalDevice(vk::raii::PhysicalDevice const& physical_device, QueueFamilyIndices const& indices)
 {
     //
     // Local devices
@@ -299,7 +306,7 @@ static vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device,
 
 
     auto result = physical_device.enumerateDeviceExtensionProperties();
-    for (auto const& extension : result.value)
+    for (auto const& extension : result)
     {
     }
     float queue_priority = 1.0f;
@@ -358,8 +365,9 @@ static vk::Device createLogicalDevice(vk::PhysicalDevice const& physical_device,
     device_info.pNext = &desc_indexing_features;
 
     auto device = physical_device.createDevice(device_info, nullptr);
-    checkResult(device.result);
-    return device.value;
+    checkResult(device.error());
+
+    return std::move(device.value());
 }
 
 static SwapChainSupportDetails querySwapChainSupport(vk::PhysicalDevice const& device, vk::SurfaceKHR const& surface)
@@ -424,7 +432,7 @@ vk::Extent2D chooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities, GL
 }
 
 
-static SwapChain createSwapchain(vk::PhysicalDevice const& physical_device, vk::Device const& device, vk::SurfaceKHR const& surface, GLFWwindow* window, QueueFamilyIndices const& indices)
+static SwapChain createSwapchain(vk::raii::PhysicalDevice const& physical_device, vk::raii::Device const& device, vk::raii::SurfaceKHR const& surface, GLFWwindow* window, QueueFamilyIndices const& indices)
 {
     auto swap_chain_support = querySwapChainSupport(physical_device, surface);
 
@@ -471,13 +479,14 @@ static SwapChain createSwapchain(vk::PhysicalDevice const& physical_device, vk::
     swap_chain_create_info.setClipped(true);
     // swap_chain_create_info.setOldSwapchain(VK_NULL_HANDLE);
 
-    auto swap_chain = device.createSwapchainKHR(swap_chain_create_info).value;
-    auto swap_chain_images = device.getSwapchainImagesKHR(swap_chain);
+    vk::raii::SwapchainKHR swap_chain = device.createSwapchainKHR(swap_chain_create_info).value();
+    auto swap_chain_images = vk::Device(device).getSwapchainImagesKHR(swap_chain);
+
     auto swap_chain_image_format = surface_format.format;
     auto swap_chain_extent = extent;
 
     SwapChain swap_chain_return {
-        swap_chain,
+        std::move(swap_chain),
         swap_chain_images.value,
         swap_chain_image_format,
         swap_chain_extent
@@ -486,9 +495,9 @@ static SwapChain createSwapchain(vk::PhysicalDevice const& physical_device, vk::
     return swap_chain_return;
 }
 
-static auto createImageViews(SwapChain const& sc, vk::Device const& device)
+static auto createImageViews(SwapChain const& sc, vk::raii::Device const& device)
 {
-    std::vector<vk::ImageView> swap_chain_image_views;
+    std::vector<vk::raii::ImageView> swap_chain_image_views;
 
     for (uint32_t i = 0; i < sc.images.size(); ++i)
     {
@@ -510,7 +519,7 @@ static auto createImageViews(SwapChain const& sc, vk::Device const& device)
         image_view_create_info.subresourceRange.baseArrayLayer = 0;
         image_view_create_info.subresourceRange.layerCount = 1;
 
-        swap_chain_image_views.push_back(device.createImageView(image_view_create_info).value);
+        swap_chain_image_views.push_back(device.createImageView(image_view_create_info).value());
     }
 
     return swap_chain_image_views;
@@ -603,18 +612,18 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     return device.createRenderPass2(render_pass_info).value;
 }
 
-static vk::CommandPool createCommandPool(vk::Device const& device, QueueFamilyIndices const& queue_family_indices)
+static vk::raii::CommandPool createCommandPool(vk::raii::Device const& device, QueueFamilyIndices const& queue_family_indices)
 {
     vk::CommandPoolCreateInfo pool_info;
     pool_info.sType = vk::StructureType::eCommandPoolCreateInfo;
     pool_info.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
     pool_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
 
-    return device.createCommandPool(pool_info).value;
+    return device.createCommandPool(pool_info).value();
 
 }
 
-static std::vector<vk::CommandBuffer> createCommandBuffer(vk::Device const& device, vk::CommandPool const& command_pool)
+static std::vector<vk::raii::CommandBuffer> createCommandBuffer(vk::raii::Device const& device, vk::raii::CommandPool const& command_pool)
 {
     vk::CommandBufferAllocateInfo alloc_info{};
     alloc_info.sType = vk::StructureType::eCommandBufferAllocateInfo;
@@ -622,12 +631,12 @@ static std::vector<vk::CommandBuffer> createCommandBuffer(vk::Device const& devi
     alloc_info.level = vk::CommandBufferLevel::ePrimary;
     alloc_info.commandBufferCount = 2;
 
-    auto command_buffers = device.allocateCommandBuffers(alloc_info);
+    auto command_buffers = device.allocateCommandBuffers(alloc_info).value();
 
-    return command_buffers.value;
+    return command_buffers;
 }
 
-static Semaphores createSemaphores(vk::Device const& device)
+static Semaphores createSemaphores(vk::raii::Device const& device)
 {
     vk::SemaphoreCreateInfo semaphore_info{};
     semaphore_info.sType = vk::StructureType::eSemaphoreCreateInfo;
@@ -639,9 +648,9 @@ static Semaphores createSemaphores(vk::Device const& device)
     Semaphores semaphores{};
     for (int i = 0; i < 2; ++i)
     {
-        semaphores.in_flight_fence.push_back(device.createFence(fence_info).value);
-        semaphores.image_available_semaphore.push_back(device.createSemaphore(semaphore_info).value);
-        semaphores.render_finished_semaphore.push_back(device.createSemaphore(semaphore_info).value);
+        semaphores.in_flight_fence.push_back(std::make_unique<vk::raii::Fence>(std::move(device.createFence(fence_info).value())));
+        semaphores.image_available_semaphore.push_back(std::make_unique<vk::raii::Semaphore>(std::move(device.createSemaphore(semaphore_info).value())));
+        semaphores.render_finished_semaphore.push_back(std::make_unique<vk::raii::Semaphore>(std::move(device.createSemaphore(semaphore_info).value())));
 
     }
 
@@ -652,22 +661,21 @@ DepthResources createDepth(RenderingState const& state, vk::SampleCountFlagBits 
 {
     vk::Format format = getDepthFormat();
 
-    auto depth_image = createImage(state, state.swap_chain.extent.width, state.swap_chain.extent.height, 1, format,
+    auto [depth_image, device_memory] = createImage(state, state.swap_chain.extent.width, state.swap_chain.extent.height, 1, format,
                             vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,
                             vk::MemoryPropertyFlagBits::eDeviceLocal, msaa, layer_count);
 
     
 
-    transitionImageLayout(state, depth_image.first, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal, 1);
+    transitionImageLayout(state, depth_image, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal, 1);
 
-    auto depth_image_view = createImageView(state.device, depth_image.first, format, vk::ImageAspectFlagBits::eDepth, 1);
+    auto depth_image_view = createImageView(state.device, depth_image, format, vk::ImageAspectFlagBits::eDepth, 1);
 
-
-    return {depth_image.first, depth_image.second, depth_image_view};
+    return {std::move(depth_image), std::move(device_memory), std::move(depth_image_view)};
 }
 
 
-std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::SampleCountFlagBits n_samples, unsigned int layer_count)
+std::tuple<vk::raii::Image, vk::raii::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::SampleCountFlagBits n_samples, unsigned int layer_count)
 {
     vk::ImageCreateInfo image_info;
     image_info.sType = vk::StructureType::eImageCreateInfo;
@@ -685,23 +693,22 @@ std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, 
     image_info.samples = n_samples;
     image_info.flags = static_cast<vk::ImageCreateFlagBits>(0);
 
-    auto texture_image = state.device.createImage(image_info);
+    vk::raii::Image texture_image = state.device.createImage(image_info).value();
 
-    auto mem_reqs = state.device.getImageMemoryRequirements(texture_image.value);
+    auto mem_reqs = texture_image.getMemoryRequirements();
 
     vk::MemoryAllocateInfo alloc_info{0};
     alloc_info.sType = vk::StructureType::eMemoryAllocateInfo;
     alloc_info.allocationSize = mem_reqs.size;
     alloc_info.memoryTypeIndex = findMemoryType(state.physical_device, mem_reqs.memoryTypeBits, properties);
 
-    auto texture_image_memory = state.device.allocateMemory(alloc_info);
+    vk::raii::DeviceMemory texture_image_memory = state.device.allocateMemory(alloc_info).value();
+    texture_image.bindMemory(texture_image_memory, 0);
 
-    checkResult(state.device.bindImageMemory(texture_image.value, texture_image_memory.value,0));
-
-    return std::make_pair(texture_image.value, texture_image_memory.value);
+    return {std::move(texture_image), std::move(texture_image_memory)};
 }
 
-vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels, vk::ImageViewType view_type, uint32_t level_count, uint32_t base_level)
+vk::raii::ImageView createImageView(vk::raii::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels, vk::ImageViewType view_type, uint32_t level_count, uint32_t base_level)
 {
     vk::ImageViewCreateInfo view_info;
     view_info.sType = vk::StructureType::eImageViewCreateInfo;
@@ -715,40 +722,11 @@ vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, 
     view_info.subresourceRange.levelCount= mip_levels;
 
     auto texture_image_view = device.createImageView(view_info);
-    checkResult(texture_image_view.result);
-    return texture_image_view.value;
+
+    return std::move(texture_image_view.value());
 }
 
-static std::vector<vk::Framebuffer> createFrameBuffers(RenderingState& state)
-{
-    std::vector<vk::Framebuffer> swap_chain_frame_buffers;
-
-    for (auto const& swap_chain_image_view : state.image_views)
-    {
-        auto color_resources = createColorResources(state, vk::Format::eR16G16B16A16Sfloat);
-        auto depth_image = createDepth(state, state.msaa);
-        auto depth_resolve_image = createDepth(state, vk::SampleCountFlagBits::e1);
-        state.framebuffer_resources.push_back({color_resources, depth_image, depth_resolve_image});
-
-        std::array<vk::ImageView, 3> attachments = {color_resources.depth_image_view, depth_image.depth_image_view,
-                                                        depth_resolve_image.depth_image_view};
-
-        vk::FramebufferCreateInfo framebuffer_info{};
-        framebuffer_info.sType = vk::StructureType::eFramebufferCreateInfo;
-        framebuffer_info.setRenderPass(state.render_pass);
-        framebuffer_info.attachmentCount = attachments.size();
-        framebuffer_info.setAttachments(attachments);
-        framebuffer_info.width = state.swap_chain.extent.width;
-        framebuffer_info.height = state.swap_chain.extent.height;
-        framebuffer_info.layers = 1;
-
-        swap_chain_frame_buffers.push_back(state.device.createFramebuffer(framebuffer_info).value);
-    }
-
-    return swap_chain_frame_buffers;
-}
-
-std::vector<std::pair<vk::Image, vk::ImageView>> createFogBuffer(RenderingState const& state, vk::MemoryPropertyFlags properties)
+std::vector<std::unique_ptr<ImageResource>> createFogBuffer(RenderingState const& state, vk::MemoryPropertyFlags properties)
 {
     vk::ImageCreateInfo create_info;
     create_info.sType = vk::StructureType::eImageCreateInfo;
@@ -765,33 +743,31 @@ std::vector<std::pair<vk::Image, vk::ImageView>> createFogBuffer(RenderingState 
     create_info.sharingMode = vk::SharingMode::eExclusive;
     create_info.initialLayout = vk::ImageLayout::eUndefined;
 
-    std::vector<std::pair<vk::Image, vk::ImageView>> fog;
+    std::vector<std::unique_ptr<ImageResource>> resources;
     for (int i = 0; i < 2; ++i)
     {
-        auto fog_3d_texture = state.device.createImage(create_info);
-        checkResult(fog_3d_texture.result);
+        vk::raii::Image fog_3d_texture = state.device.createImage(create_info).value();
 
-        auto mem_reqs = state.device.getImageMemoryRequirements(fog_3d_texture.value);
+        auto mem_reqs = fog_3d_texture.getMemoryRequirements();
 
         vk::MemoryAllocateInfo alloc_info{};
         alloc_info.sType = vk::StructureType::eMemoryAllocateInfo;
         alloc_info.allocationSize = mem_reqs.size;
         alloc_info.setMemoryTypeIndex(findMemoryType(state.physical_device, mem_reqs.memoryTypeBits, properties));
 
-        auto buffer_memory = state.device.allocateMemory(alloc_info).value;
+        auto buffer_memory = state.device.allocateMemory(alloc_info).value();
 
-        auto result = state.device.bindImageMemory(fog_3d_texture.value, buffer_memory, 0);
-        checkResult(result);
+        fog_3d_texture.bindMemory(buffer_memory, 0);
 
-        auto image_view = createImageView(state.device, fog_3d_texture.value, vk::Format::eR16Sfloat, vk::ImageAspectFlagBits::eColor, 1, vk::ImageViewType::e3D);
+        auto image_view = createImageView(state.device, fog_3d_texture, vk::Format::eR16Sfloat, vk::ImageAspectFlagBits::eColor, 1, vk::ImageViewType::e3D);
 
-        transitionImageLayout(state, fog_3d_texture.value, vk::Format::eR16Sfloat,
+        transitionImageLayout(state, fog_3d_texture, vk::Format::eR16Sfloat,
             vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral, 1);
 
-        fog.push_back({fog_3d_texture.value, image_view});
+        resources.push_back(std::make_unique<ImageResource>(std::move(fog_3d_texture), std::move(buffer_memory), std::move(image_view)));
     }
 
-    return fog;
+    return resources;
 }
 
 void initImgui(vk::Device const& device, vk::PhysicalDevice const& physical, vk::Instance const& instance,
@@ -839,68 +815,69 @@ void initImgui(vk::Device const& device, vk::PhysicalDevice const& physical, vk:
     ImGui_ImplVulkan_Init(&init_info, render_pass);
 
     auto cmd = beginSingleTimeCommands(state);
-    ImGui_ImplVulkan_CreateFontsTexture(cmd);
+
+    ImGui_ImplVulkan_CreateFontsTexture(*cmd);
     endSingleTimeCommands(state, cmd);
 
     ImGui_ImplVulkan_DestroyFontUploadObjects();
 }
 
-RenderingState createVulkanRenderState()
+std::optional<RenderingState> createVulkanRenderState()
 {
     auto app = std::make_unique<App>();
 
+    vk::raii::Context context;
 
     auto window = setupGlfw(*app);
 
     spdlog::info("Creating instance");
-    auto const instance = createInstance(true);
+    auto instance = createInstance(true, context);
 
     spdlog::info("Creating surface");
-    auto const surface = createSurface(instance, window);
+    auto surface = createSurface(instance, window);
 
     spdlog::info("Creating physical device");
-    auto const physical_device = createPhysicalDevice(instance);
-    auto const msaa_samples = getMaxUsableSampleCount(physical_device);
+    auto physical_device = createPhysicalDevice(instance);
+    if (!physical_device)
+    {
+        return {};
+    }
 
-    auto const indices = findQueueFamilies(physical_device, surface);
-    auto const device = createLogicalDevice(physical_device, indices);
+    auto const msaa_samples = getMaxUsableSampleCount(*physical_device);
+    auto const indices = findQueueFamilies(*physical_device, surface);
 
-    auto sc = createSwapchain(physical_device, device, surface, window, indices);
+    auto device = createLogicalDevice(*physical_device, indices);
+
+    auto sc = createSwapchain(*physical_device, device, surface, window, indices);
 
     auto swap_chain_image_views = createImageViews(sc, device);
 
-    auto const render_pass = createRenderPass(device, sc.swap_chain_image_format, msaa_samples);
+    auto command_pool = createCommandPool(device, indices);
+    auto command_buffers = createCommandBuffer(device, command_pool);
 
-    auto const command_pool = createCommandPool(device, indices);
-    auto const command_buffers = createCommandBuffer(device, command_pool);
+    auto semaphores = createSemaphores(device);
 
-    auto const semaphores = createSemaphores(device);
-
-    auto const graphics_queue = device.getQueue(*indices.graphics_family, 0);
-    auto const present_queue = device.getQueue(*indices.present_family, 0);
+    auto graphics_queue = device.getQueue(*indices.graphics_family, 0).value();
+    auto present_queue = device.getQueue(*indices.present_family, 0).value();
 
     RenderingState render_state {
+        .context = std::move(context),
         .app = std::move(app),
         .window = window,
-        .instance = instance,
-        .surface = surface,
-        .device = device,
+        .instance = std::move(instance),
+        .surface = std::move(surface),
+        .device = std::move(device),
         .indices = indices,
-        .physical_device = physical_device,
-        .render_pass = render_pass,
-        .image_views = swap_chain_image_views,
-        .swap_chain = sc,
-        .semaphores = semaphores,
-        .command_pool = command_pool,
-        .command_buffer = command_buffers,
-        .graphics_queue = graphics_queue,
-        .present_queue = present_queue,
+        .physical_device = std::move(*physical_device),
+        .image_views = std::move(swap_chain_image_views),
+        .swap_chain = std::move(sc),
+        .semaphores = std::move(semaphores),
+        .command_pool = std::move(command_pool),
+        .command_buffer = std::move(command_buffers),
+        .graphics_queue = std::move(graphics_queue),
+        .present_queue = std::move(present_queue),
         .msaa = msaa_samples
     };
-
-    auto swap_chain_framebuffers = createFrameBuffers(render_state);
-
-    render_state.framebuffers = swap_chain_framebuffers;
 
     return render_state;
 }
@@ -941,7 +918,7 @@ void resolveMultisampleDepthImage(vk::CommandBuffer& command_buffer, vk::Image m
 }
 
 
-vk::CommandBuffer beginSingleTimeCommands(RenderingState const& state)
+vk::raii::CommandBuffer beginSingleTimeCommands(RenderingState const& state)
 {
     vk::CommandBufferAllocateInfo alloc_info{};
     alloc_info.sType = vk::StructureType::eCommandBufferAllocateInfo;
@@ -949,13 +926,13 @@ vk::CommandBuffer beginSingleTimeCommands(RenderingState const& state)
     alloc_info.commandPool = state.command_pool;
     alloc_info.commandBufferCount = 1;
 
-    auto cmd_buffer = state.device.allocateCommandBuffers(alloc_info).value[0];
+    vk::raii::CommandBuffer cmd_buffer = std::move(state.device.allocateCommandBuffers(alloc_info).value()[0]);
 
     vk::CommandBufferBeginInfo begin_info{};
     begin_info.sType = vk::StructureType::eCommandBufferBeginInfo;
     begin_info.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
 
-    checkResult(cmd_buffer.begin(begin_info));
+    cmd_buffer.begin(begin_info);
 
     return cmd_buffer;
 }
@@ -969,20 +946,17 @@ void endSingleTimeCommands(RenderingState const& state, vk::CommandBuffer const&
     submit_info.commandBufferCount = 1;
     submit_info.setCommandBuffers(cmd_buffer);
 
-    checkResult(state.graphics_queue.submit(submit_info));
-
-    checkResult(state.graphics_queue.waitIdle());
-
-    state.device.freeCommandBuffers(state.command_pool, cmd_buffer);
+    state.graphics_queue.submit(submit_info);
+    state.graphics_queue.waitIdle();
 }
 
-static void copyBuffer(RenderingState const& state, vk::Buffer src_buffer, vk::Buffer dst_buffer, vk::DeviceSize size)
+static void copyBuffer(RenderingState const& state, vk::raii::Buffer const& src_buffer, vk::raii::Buffer const& dst_buffer, vk::DeviceSize size)
 {
     auto cmd_buffer = beginSingleTimeCommands(state);
 
     vk::BufferCopy copy_region{};
     copy_region.size = size;
-    cmd_buffer.copyBuffer(src_buffer, dst_buffer, 1, &copy_region);
+    cmd_buffer.copyBuffer(src_buffer, dst_buffer, copy_region);
 
     endSingleTimeCommands(state, cmd_buffer);
 }
@@ -992,7 +966,7 @@ bool hasStencilComponent(vk::Format format)
     return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
 }
 
-void transitionImageLayout(vk::CommandBuffer& cmd_buffer, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels, uint32_t layer_count)
+void transitionImageLayout(vk::raii::CommandBuffer& cmd_buffer, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels, uint32_t layer_count)
 {
     vk::ImageMemoryBarrier barrier{};
     barrier.sType = vk::StructureType::eImageMemoryBarrier;
@@ -1195,9 +1169,9 @@ void copyBufferToImage(RenderingState const& state, vk::Buffer buffer, vk::Image
     endSingleTimeCommands(state, cmd_buffer);
 }
 
-vk::Buffer createBuffer(RenderingState const& state,
-                        vk::DeviceSize size, vk::BufferUsageFlags usage,
-                        vk::MemoryPropertyFlags properties, vk::DeviceMemory& buffer_memory)
+Buffer createBuffer(RenderingState const& state,
+                    vk::DeviceSize size, vk::BufferUsageFlags usage,
+                    vk::MemoryPropertyFlags properties)
 {
     vk::BufferCreateInfo buffer_info{};
     buffer_info.sType = vk::StructureType::eBufferCreateInfo;
@@ -1205,23 +1179,21 @@ vk::Buffer createBuffer(RenderingState const& state,
     buffer_info.usage = usage;
     buffer_info.sharingMode = vk::SharingMode::eExclusive;
 
-    auto vertex_buffer =  state.device.createBuffer(buffer_info);
-    checkResult(vertex_buffer.result);
+    auto vertex_buffer = state.device.createBuffer(buffer_info);
 
-    auto buffer = vertex_buffer.value;
+    vk::raii::Buffer buffer = std::move(vertex_buffer.value());
 
-    auto mem_reqs = state.device.getBufferMemoryRequirements(buffer);
+    auto mem_reqs = buffer.getMemoryRequirements();
 
     vk::MemoryAllocateInfo alloc_info{};
     alloc_info.sType = vk::StructureType::eMemoryAllocateInfo;
     alloc_info.allocationSize = mem_reqs.size;
     alloc_info.setMemoryTypeIndex(findMemoryType(state.physical_device, mem_reqs.memoryTypeBits, properties));
 
-    buffer_memory = state.device.allocateMemory(alloc_info).value;
+    auto buffer_memory = state.device.allocateMemory(alloc_info).value();
+    buffer.bindMemory(buffer_memory, 0);
 
-    checkResult(state.device.bindBufferMemory(buffer, buffer_memory, 0));
-
-    return buffer;
+    return {std::move(buffer), std::move(buffer_memory)};
 }
 
 vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels, uint32_t level_count)
@@ -1230,7 +1202,7 @@ vk::ImageView createTextureImageView(RenderingState const& state, vk::Image cons
     return texture_image_view;
 }
 
-vk::Sampler createTextureSampler(RenderingState const& state, bool mip_maps)
+vk::raii::Sampler createTextureSampler(RenderingState const& state, bool mip_maps)
 {
     vk::SamplerCreateInfo sampler_info;
     sampler_info.sType = vk::StructureType::eSamplerCreateInfo;
@@ -1265,64 +1237,51 @@ vk::Sampler createTextureSampler(RenderingState const& state, bool mip_maps)
         sampler_info.maxLod = 11.0f;
     }
 
-    auto sampler = state.device.createSampler(sampler_info);
-    checkResult(sampler.result);
-
-    return sampler.value;
+    vk::raii::Sampler sampler = *state.device.createSampler(sampler_info);
+    return sampler;
 }
 
 
-vk::Buffer createVertexBuffer(RenderingState const& state, std::vector<Vertex> const& vertices)
+Buffer createVertexBuffer(RenderingState const& state, std::vector<Vertex> const& vertices)
 {
     vk::DeviceSize buffer_size = sizeof(Vertex) * vertices.size();
-    vk::DeviceMemory staging_buffer_memory;
-    auto staging_buffer = createBuffer(state,
+    auto [staging_buffer, staging_buffer_memory] = createBuffer(state,
                                buffer_size, vk::BufferUsageFlagBits::eTransferSrc,
                                vk::MemoryPropertyFlagBits::eHostVisible
-                             | vk::MemoryPropertyFlagBits::eHostCoherent, staging_buffer_memory);
+                             | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    void* data;
-    checkResult(state.device.mapMemory(staging_buffer_memory, 0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0), &data));
+    void* data = staging_buffer_memory.mapMemory(0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0));
     memcpy(data, vertices.data(), buffer_size);
-    state.device.unmapMemory(staging_buffer_memory);
+    staging_buffer_memory.unmapMemory();
 
-    vk::DeviceMemory vertex_buffer_memory;
-    auto vertex_buffer = createBuffer(state, buffer_size,  vk::BufferUsageFlagBits::eTransferDst
+    auto [vertex_buffer, vertex_buffer_memory] = createBuffer(state, buffer_size,  vk::BufferUsageFlagBits::eTransferDst
                                                   | vk::BufferUsageFlagBits::eVertexBuffer,
-                                      vk::MemoryPropertyFlagBits::eDeviceLocal, vertex_buffer_memory);
+                                      vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     copyBuffer(state, staging_buffer, vertex_buffer, buffer_size);
 
-    state.device.destroyBuffer(staging_buffer);
-    state.device.freeMemory(staging_buffer_memory);
-    return vertex_buffer;
+    return {std::move(vertex_buffer), std::move(vertex_buffer_memory)};
 }
 
-vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> indices)
+Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> indices)
 {
     vk::DeviceSize buffer_size = sizeof(decltype(indices)::value_type) * indices.size();
 
-    vk::DeviceMemory staging_buffer_memory;
-    auto staging_buffer = createBuffer(state,
+    auto [staging_buffer, staging_buffer_memory] = createBuffer(state,
                                buffer_size, vk::BufferUsageFlagBits::eTransferSrc,
                                vk::MemoryPropertyFlagBits::eHostVisible
-                             | vk::MemoryPropertyFlagBits::eHostCoherent, staging_buffer_memory);
+                             | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    void* data;
-    checkResult(state.device.mapMemory(staging_buffer_memory, 0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0), &data));
+    void* data = staging_buffer_memory.mapMemory(0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0));
     memcpy(data, indices.data(), buffer_size);
-    state.device.unmapMemory(staging_buffer_memory);
+    staging_buffer_memory.unmapMemory();
 
-    vk::DeviceMemory indices_buffer_memory;
-    auto index_buffer = createBuffer(state, buffer_size,  vk::BufferUsageFlagBits::eTransferDst
+    auto [index_buffer, indices_buffer_memory] = createBuffer(state, buffer_size,  vk::BufferUsageFlagBits::eTransferDst
                                                   | vk::BufferUsageFlagBits::eIndexBuffer,
-                                      vk::MemoryPropertyFlagBits::eDeviceLocal, indices_buffer_memory);
+                                      vk::MemoryPropertyFlagBits::eDeviceLocal);
 
     copyBuffer(state, staging_buffer, index_buffer, buffer_size);
-
-    state.device.destroyBuffer(staging_buffer);
-    state.device.freeMemory(staging_buffer_memory);
-    return index_buffer;
+    return {std::move(index_buffer), std::move(indices_buffer_memory)};
 }
 
 vk::ShaderModule createShaderModule(std::vector<char> const& code, vk::Device const& device)
@@ -1578,24 +1537,3 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
 
     return std::make_pair(pipelines.value, pipeline_layout.value);
 }
-
-
-void recreateSwapchain(RenderingState& state)
-{
-    auto result = state.device.waitIdle();
-
-    // Destroy the swapchain
-    std::for_each(state.framebuffers.begin(), state.framebuffers.end(), [&](auto const& f) { state.device.destroyFramebuffer(f);});
-    std::for_each(state.image_views.begin(), state.image_views.end(), [&](auto const& f) { state.device.destroyImageView(f);});
-    state.device.destroySwapchainKHR(state.swap_chain.swap_chain);
-
-    // Create new swapchain
-    state.swap_chain = createSwapchain(state.physical_device, state.device, state.surface, state.window, state.indices);
-    state.image_views = createImageViews(state.swap_chain, state.device);
-
-    state.framebuffer_resources.clear();
-    state.framebuffers = createFrameBuffers(state);
-
-}
-
-

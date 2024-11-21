@@ -68,14 +68,14 @@ struct QueueFamilyIndices {
 
 struct Semaphores
 {
-    std::vector<vk::Fence> in_flight_fence;
-    std::vector<vk::Semaphore> image_available_semaphore;
-    std::vector<vk::Semaphore> render_finished_semaphore;
+    std::vector<std::unique_ptr<vk::raii::Fence>> in_flight_fence;
+    std::vector<std::unique_ptr<vk::raii::Semaphore>> image_available_semaphore;
+    std::vector<std::unique_ptr<vk::raii::Semaphore>> render_finished_semaphore;
 };
 
 struct SwapChain
 {
-    vk::SwapchainKHR swap_chain;
+    vk::raii::SwapchainKHR swap_chain;
     std::vector<vk::Image> images;
     vk::Format swap_chain_image_format;
     vk::Extent2D extent;
@@ -83,17 +83,29 @@ struct SwapChain
 
 struct DepthResources
 {
-    vk::Image depth_image;
-    vk::DeviceMemory depth_image_memory;
+    vk::raii::Image depth_image;
+    vk::raii::DeviceMemory device_memory;
+    vk::raii::ImageView depth_image_view;
+};
 
-    vk::ImageView depth_image_view;
+struct ImageResource
+{
+    vk::raii::Image image;
+    vk::raii::DeviceMemory device_memory;
+    vk::raii::ImageView image_view;
 };
 
 struct UniformBuffer
 {
-    vk::Buffer uniform_buffers;
-    vk::DeviceMemory uniform_device_memory;
+    vk::raii::Buffer uniform_buffers;
+    vk::raii::DeviceMemory uniform_device_memory;
     void* uniform_buffers_mapped;
+};
+
+struct Buffer
+{
+    vk::raii::Buffer buffer;
+    vk::raii::DeviceMemory memory;
 };
 
 template<typename T>
@@ -115,29 +127,26 @@ struct FramebufferResources
 
 struct RenderingState
 {
+    vk::raii::Context context;
     std::unique_ptr<App> app;
 
     GLFWwindow* window{nullptr};
 
-    vk::Instance instance;
-    vk::SurfaceKHR surface;
-    vk::Device device;
+    vk::raii::Instance instance;
+    vk::raii::SurfaceKHR surface;
+    vk::raii::Device device;
     QueueFamilyIndices indices;
-    vk::PhysicalDevice physical_device;
-    vk::RenderPass render_pass;
-    std::vector<vk::ImageView> image_views;
+    vk::raii::PhysicalDevice physical_device;
+    std::vector<vk::raii::ImageView> image_views;
 
     SwapChain swap_chain;
     Semaphores semaphores;
 
-    vk::CommandPool command_pool;
-    std::vector<vk::CommandBuffer> command_buffer;
+    vk::raii::CommandPool command_pool;
+    std::vector<vk::raii::CommandBuffer> command_buffer;
     
-    std::vector<FramebufferResources> framebuffer_resources;
-    std::vector<vk::Framebuffer> framebuffers;
-
-    vk::Queue graphics_queue;
-    vk::Queue present_queue;
+    vk::raii::Queue graphics_queue;
+    vk::raii::Queue present_queue;
 
     uint32_t current_frame{};
 
@@ -158,31 +167,33 @@ vk::Format getDepthFormat();
 
 GraphicsPipelineInput createDefaultPipelineInput();
 
-RenderingState createVulkanRenderState();
+std::optional<RenderingState> createVulkanRenderState();
+
 void initImgui(vk::Device const& device, vk::PhysicalDevice const& physical, vk::Instance const& instance,
                vk::Queue const& queue, vk::RenderPass const& render_pass,
                RenderingState& state, GLFWwindow* window, vk::SampleCountFlagBits msaa);
-std::pair<vk::Image, vk::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::SampleCountFlagBits num_samples = vk::SampleCountFlagBits::e1, unsigned int layer_count = 1);
-vk::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels, vk::ImageViewType view_type = vk::ImageViewType::e2D, uint32_t level_count = 1, uint32_t base_level = 0);
+std::tuple<vk::raii::Image, vk::raii::DeviceMemory> createImage(RenderingState const& state, uint32_t width, uint32_t height, uint32_t mip_levels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::SampleCountFlagBits num_samples = vk::SampleCountFlagBits::e1, unsigned int layer_count = 1);
+vk::raii::ImageView createImageView(vk::Device const& device, vk::Image const& image, vk::Format format, vk::ImageAspectFlags aspec_flags, uint32_t mip_levels, vk::ImageViewType view_type = vk::ImageViewType::e2D, uint32_t level_count = 1, uint32_t base_level = 0);
 uint32_t findMemoryType(vk::PhysicalDevice const& physical_device, uint32_t type_filter, vk::MemoryPropertyFlags properties);
 
 vk::ShaderModule createShaderModule(std::vector<char> const& code, vk::Device const& device);
 
 DepthResources createDepth(RenderingState const& state, vk::SampleCountFlagBits msaa, unsigned int layer_count = 1);
-vk::CommandBuffer beginSingleTimeCommands(RenderingState const& state);;
+vk::raii::CommandBuffer beginSingleTimeCommands(RenderingState const& state);
+
 void endSingleTimeCommands(RenderingState const& state, vk::CommandBuffer const& cmd_buffer);
-vk::Buffer createVertexBuffer(RenderingState const& state, std::vector<Vertex> const& vertices);
-vk::Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> indices);
+Buffer createVertexBuffer(RenderingState const& state, std::vector<Vertex> const& vertices);
+Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> indices);
 void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels, uint32_t layer_count = 1);
 void transitionImageLayout(vk::CommandBuffer& cmd_buffer, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels, uint32_t layer_count = 1);
 void copyBufferToImage(RenderingState const& state, vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height);
 vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels, uint32_t level_count = 1);
-vk::Sampler createTextureSampler(RenderingState const& state, bool mip_maps);
-vk::Buffer createBuffer(RenderingState const& state,
-                        vk::DeviceSize size, vk::BufferUsageFlags usage,
-                        vk::MemoryPropertyFlags properties, vk::DeviceMemory& buffer_memory);
+vk::raii::Sampler createTextureSampler(RenderingState const& state, bool mip_maps);
+Buffer createBuffer(RenderingState const& state,
+                    vk::DeviceSize size, vk::BufferUsageFlags usage,
+                    vk::MemoryPropertyFlags properties);
 
-std::vector<std::pair<vk::Image, vk::ImageView>> createFogBuffer(RenderingState const& state, vk::MemoryPropertyFlags properties);
+std::vector<std::unique_ptr<ImageResource>> createFogBuffer(RenderingState const& state, vk::MemoryPropertyFlags properties);
 void resolveMultisampleDepthImage(vk::CommandBuffer& command_buffer, vk::Image multisampledDepthImage, vk::Image singleSampledDepthImage, vk::Extent2D extent);
 
 void dispatchPipeline(RenderingState const& state);
@@ -193,30 +204,20 @@ struct ShaderStage
     vk::ShaderStageFlagBits stage;
 };
 
-std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device, vk::Extent2D const& swap_chain_extent, vk::RenderPass const& render_pass, std::vector<vk::DescriptorSetLayout> const& desc_set_layout, std::vector<ShaderStage> shader_stages, vk::SampleCountFlagBits msaa, vk::PolygonMode polygon_mode, GraphicsPipelineInput const& input);
-
-
-std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout> createComputePipeline(vk::Device const& device, ShaderStage const& compute_stage, std::vector<vk::DescriptorSetLayout> const& desc_set_layouts);
-
-void recreateSwapchain(RenderingState& state);
-
 template<typename BufferObject>
 auto createUniformBuffers(RenderingState const& state, int count = 1)
 {
     vk::DeviceSize buffer_size = sizeof(BufferObject) * count;
 
-    std::vector<UniformBuffer> ubos;
+    std::vector<std::unique_ptr<UniformBuffer>> ubos;
     size_t const max_frames_in_flight = 2;
     for (size_t i = 0; i < max_frames_in_flight; ++i)
     {
-        vk::DeviceMemory uniform_buffer_memory;
-        auto buffer = createBuffer(state, buffer_size, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible
-                                                                                 |vk::MemoryPropertyFlagBits::eHostCoherent,
-                                                                                 uniform_buffer_memory);
-        auto mapped = state.device.mapMemory(uniform_buffer_memory, 0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0));
-        checkResult(mapped.result);
+        auto [buffer, uniform_buffer_memory] = createBuffer(state, buffer_size, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible
+                                                                                 |vk::MemoryPropertyFlagBits::eHostCoherent);
+        auto mapped = uniform_buffer_memory.mapMemory(0, buffer_size);
 
-        ubos.push_back(UniformBuffer{buffer, uniform_buffer_memory, mapped.value});
+        ubos.push_back(std::make_unique<UniformBuffer>(std::move(buffer), std::move(uniform_buffer_memory), mapped));
     }
 
     return ubos;
@@ -229,18 +230,16 @@ auto createStorageBuffers(RenderingState const& state, uint32_t size)
 {
     vk::DeviceSize buffer_size = sizeof(BufferObject) * size;
 
-    std::vector<UniformBuffer> ubos;
+    std::vector<std::unique_ptr<UniformBuffer>> ubos;
     size_t const max_frames_in_flight = 2;
     for (size_t i = 0; i < max_frames_in_flight; ++i)
     {
-        vk::DeviceMemory uniform_buffer_memory;
-        auto buffer = createBuffer(state, buffer_size, vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible
-                                                                                 | vk::MemoryPropertyFlagBits::eHostCoherent,
-                                                                                   uniform_buffer_memory);
-        auto mapped = state.device.mapMemory(uniform_buffer_memory, 0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0));
-        checkResult(mapped.result);
+        auto [buffer, uniform_buffer_memory] = createBuffer(state, buffer_size, vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible
+                                                                                 | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-        ubos.push_back(UniformBuffer{buffer, uniform_buffer_memory, mapped.value});
+        auto mapped = uniform_buffer_memory.mapMemory(0, buffer_size);
+
+        ubos.push_back(std::make_unique<UniformBuffer>(std::move(buffer), std::move(uniform_buffer_memory), mapped));
     }
 
     return ubos;

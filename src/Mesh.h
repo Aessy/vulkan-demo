@@ -16,18 +16,11 @@ struct DrawableMesh
     std::string name;
     int model_id = -1;
 
-    vk::Buffer vertex_buffer;
-    vk::Buffer index_buffer;
+    Buffer vertex_buffer;
+    Buffer index_buffer;
     uint32_t indices_size{};
     int id = Id();
 };
-
-inline void test()
-{
-    DrawableMesh m;
-
-    auto m2 = m;
-}
 
 struct Meshes
 {
@@ -35,29 +28,30 @@ struct Meshes
 
     int loadMesh(RenderingState const& state, Model const& model, std::string const& name = "<noname>")
     {
-        DrawableMesh mesh{};
+        DrawableMesh mesh{
+            .name = name,
+            .model_id = model.id,
+            .vertex_buffer = createVertexBuffer(state, model.vertices),
+            .index_buffer = createIndexBuffer(state, model.indices)
+        };
 
-        mesh.model_id = model.id;
-        mesh.vertex_buffer = createVertexBuffer(state, model.vertices);
-        mesh.index_buffer = createIndexBuffer(state, model.indices);
-        mesh.indices_size = model.indices.size();
-        mesh.name = name;
+        meshes.insert({mesh.id, std::move(mesh)});
 
-        meshes.insert({mesh.id, mesh});
-
-        return mesh.id;
+        return model.id;
     }
 
     bool loadMesh(RenderingState const& state, std::vector<Vertex> const& vertices, std::vector<uint32_t> const& indices, std::string const& name = "<noname>")
     {
-        DrawableMesh mesh{};
-        mesh.vertex_buffer = createVertexBuffer(state, vertices);
-        mesh.index_buffer = createIndexBuffer(state, indices);
-        mesh.indices_size = indices.size();
-        mesh.name = name;
+        DrawableMesh mesh{
+            .name = name,
+            .vertex_buffer = createVertexBuffer(state, vertices),
+            .index_buffer = createIndexBuffer(state, indices)
+        };
 
-        meshes.insert({mesh.id, mesh});
-        return mesh.id;
+        auto id = mesh.id;
+
+        meshes.insert({mesh.id, std::move(mesh)});
+        return id;
 }
 };
 
