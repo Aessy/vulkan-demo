@@ -1,5 +1,7 @@
 #include "Material.h"
 #include "Skybox.h"
+#include <algorithm>
+#include <vulkan/vulkan_raii.hpp>
 #ifdef __linux__
 #include "X11/Xlib.h"
 #endif
@@ -90,30 +92,27 @@ void loop(GLFWwindow* window)
     }
 }
 
-template<typename RenderingSystem>
-void recordCommandBuffer(RenderingState& state, uint32_t image_index, RenderingSystem& render_system)
+void recordCommandBuffer(RenderingState const& state, uint32_t image_index, Application& render_system)
 {
-
     // Write all buffer data used by the render passes.
     updateBufferObjects(render_system.scene, state.current_frame);
 
     // Bind the depth buffer to the fog program texture sampler
     Application& app = render_system;
 
-    auto& command_buffer = state.command_buffer[state.current_frame];
+    auto const& command_buffer = state.command_buffer[state.current_frame];
 
     vk::CommandBufferBeginInfo begin_info{};
     begin_info.sType = vk::StructureType::eCommandBufferBeginInfo;
     begin_info.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
     begin_info.pInheritanceInfo = nullptr;
 
-    auto result = command_buffer.begin(begin_info);
-    checkResult(result);
+    command_buffer.begin(begin_info);
 
     shadowMapRenderPass(state, app.shadow_map, app.scene, command_buffer);
     sceneRenderPass(command_buffer, state, render_system.scene_render_pass, render_system.scene, image_index);
     postProcessingRenderPass(state, app.ppp, command_buffer, render_system.scene, image_index);
-    result = command_buffer.end();
+    command_buffer.end();
 }
 
 enum class DrawResult
@@ -124,52 +123,66 @@ enum class DrawResult
 };
 
 template<typename RenderingSystem>
-DrawResult drawFrame(RenderingState& state, RenderingSystem& render_system)
+DrawResult drawFrame(RenderingState const& state, RenderingSystem& render_system)
 {
-    auto v = state.device.waitForFences(state.semaphores.in_flight_fence[state.current_frame], true, ~0);
+    vk::raii::Device const& device = state.device;
+    auto v = state.device.waitForFences({*state.semaphores.in_flight_fence[state.current_frame]}, true, ~0);
 
     ImGui::Render();
+    vk::AcquireNextImageInfoKHR info{};
+    info.timeout = ~0;
+    info.setSemaphore(*state.semaphores.image_available_semaphore[state.current_frame]);
+    info.setSwapchain(state.swap_chain.swap_chain);
+    auto next_image = device.acquireNextImage2KHR(info);
 
-    auto next_image = state.device.acquireNextImageKHR(state.swap_chain.swap_chain, ~0,
+    /*
+    auto next_image = vk::Device(state.device).acquireNextImageKHR(state.swap_chain.swap_chain, ~0,
             state.semaphores.image_available_semaphore[state.current_frame], VK_NULL_HANDLE);
-    if (   next_image.result == vk::Result::eErrorOutOfDateKHR
-        || next_image.result == vk::Result::eSuboptimalKHR)
+    */
+    if (   next_image.first == vk::Result::eErrorOutOfDateKHR
+        || next_image.first == vk::Result::eSuboptimalKHR)
     {
         return DrawResult::RESIZE;
     }
-    else if (   next_image.result != vk::Result::eSuccess
-             && next_image.result != vk::Result::eSuboptimalKHR)
+    else if (   next_image.first != vk::Result::eSuccess
+             && next_image.first != vk::Result::eSuboptimalKHR)
     {
         spdlog::warn("Failed to acquire swap chain image");
         return DrawResult::EXIT;
     }
 
-    state.device.resetFences(state.semaphores.in_flight_fence[state.current_frame]);
+    state.device.resetFences({*state.semaphores.in_flight_fence[state.current_frame]});
 
     state.command_buffer[state.current_frame].reset(static_cast<vk::CommandBufferResetFlags>(0));
 
-    auto image_index = next_image.value;
+    auto image_index = next_image.second;
     recordCommandBuffer(state, image_index, render_system);
 
     vk::PipelineStageFlags wait_stages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
 
+    vk::Semaphore image_available_semaphore = *state.semaphores.image_available_semaphore[state.current_frame];
+    vk::Semaphore render_finish_sempahore = *state.semaphores.render_finished_semaphore[state.current_frame];
+    vk::CommandBuffer cmd_buffer = state.command_buffer[state.current_frame];
+
     vk::SubmitInfo submit_info{};
     submit_info.sType = vk::StructureType::eSubmitInfo;
-    submit_info.setWaitSemaphores(state.semaphores.image_available_semaphore[state.current_frame]);
+    submit_info.setWaitSemaphores(image_available_semaphore);
     submit_info.setWaitDstStageMask(wait_stages);
     submit_info.commandBufferCount = 1;
-    submit_info.setCommandBuffers(state.command_buffer[state.current_frame]);
-    submit_info.setSignalSemaphores(state.semaphores.render_finished_semaphore[state.current_frame]);
+    submit_info.setCommandBuffers(cmd_buffer);
+    submit_info.setSignalSemaphores(render_finish_sempahore);
 
 
-    auto submit_result = state.graphics_queue.submit(submit_info, state.semaphores.in_flight_fence[state.current_frame]);
+    state.graphics_queue.submit(submit_info, {*state.semaphores.in_flight_fence[state.current_frame]});
+
+    vk::SwapchainKHR swap_chain = state.swap_chain.swap_chain;
 
     vk::PresentInfoKHR present_info{};
     present_info.sType = vk::StructureType::ePresentInfoKHR;
-    present_info.setWaitSemaphores(state.semaphores.render_finished_semaphore[state.current_frame]);
+    present_info.setWaitSemaphores(render_finish_sempahore);
     present_info.setResults(nullptr);
     present_info.swapchainCount = 1;
-    present_info.pSwapchains = &state.swap_chain.swap_chain;
+    present_info.pSwapchains = &swap_chain;
     present_info.setImageIndices(image_index);
 
     auto result = state.present_queue.presentKHR(present_info);
@@ -303,7 +316,15 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
 int main()
 {
     srand (time(NULL));
-    RenderingState core = createVulkanRenderState();
+    auto out = createVulkanRenderState();
+
+    if (!out)
+    {
+        spdlog::warn("Could not create the vulkan render state. Exiting");
+        return 0;
+    }
+
+    RenderingState& core = *out;
 
     spdlog::info("Loading textures");
     Textures textures = createTextures(core,
@@ -365,6 +386,8 @@ int main()
 
     Scene scene;
     scene.world_buffer = createUniformBuffers<WorldBufferObject>(core);
+    scene.model_buffer = createStorageBuffers<ModelBufferObject>(core, 10);
+    scene.material_buffer = createStorageBuffers<MaterialShaderData>(core, 10);
 
     auto shadow_map = createCascadedShadowMap(core, scene);
     auto scene_render_pass = createSceneRenderPass(core, textures, scene, shadow_map);
@@ -544,7 +567,7 @@ int main()
 
     //addObject(scene, box_object);
 
-    auto ppp = createPostProcessing(core, scene_render_pass);
+    auto ppp = createPostProcessing(core, scene_render_pass, scene.world_buffer);
     Application application{
         .textures = std::move(textures),
         .models = std::move(models),
@@ -636,7 +659,8 @@ int main()
         auto result = drawFrame(core, application);
         if (result == DrawResult::RESIZE)
         {
-            recreateSwapchain(core);
+            spdlog::info("Not supporting resize at the moment. Existing");
+            return 0;
         }
         else if (result == DrawResult::EXIT)
         {

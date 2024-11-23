@@ -8,13 +8,13 @@
 struct ShadowMapFramebuffer
 {
     // cascades_n framebuffers per frame
-    std::array<std::vector<vk::Framebuffer>, 2> framebuffers;
+    std::array<std::vector<std::unique_ptr<vk::raii::Framebuffer>>, 2> framebuffers;
 
     // one cascade image per frame
-    std::array<vk::Image, 2> cascade_images;
+    std::vector<std::unique_ptr<vk::raii::Image>> cascade_images;
 
     // one image view array per frame.
-    std::array<vk::ImageView, 2> image_views;
+    std::vector<std::unique_ptr<vk::raii::ImageView>> image_views;
 };
 
 struct CascadedShadowMap
@@ -31,9 +31,9 @@ struct CascadedShadowMap
     std::array<glm::mat4, n_cascaded_shadow_maps> light_projection_views;
 
     // Buffer objects for cascaded shadow map.
-    std::vector<UniformBuffer> cascaded_shadow_map_buffer;
+    std::vector<std::unique_ptr<UniformBuffer>> cascaded_shadow_map_buffer;
 };
 
 CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene const& scene);
 
-void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_map, Scene const& scene, vk::CommandBuffer command_buffer);
+void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_map, Scene const& scene, vk::CommandBuffer const& command_buffer);

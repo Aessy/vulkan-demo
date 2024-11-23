@@ -15,7 +15,11 @@ struct Terrain
 
 struct Object
 {
-    int mesh_id;
+    // Weak handles to the buffer for now. Fix later.
+    vk::Buffer vertex_buffer;
+    vk::Buffer index_buffer;
+    uint32_t indices_size;
+
     glm::vec3 position;
     glm::vec3 rotation;
 
@@ -33,12 +37,12 @@ struct Object
 
 inline auto createObject(DrawableMesh const& mesh, glm::vec3 const& position = glm::vec3(0,0,0))
 {
-    Object draw{
-        .mesh = std::move(mesh),
+    Object draw{};
 
+    draw.vertex_buffer = mesh.vertex_buffer.buffer;
+    draw.index_buffer = mesh.index_buffer.buffer;
+    draw.indices_size = mesh.indices_size;
 
-    };
-    draw.mesh = mesh;
     draw.position = position;
     draw.rotation = glm::vec3(1,1,1);
 

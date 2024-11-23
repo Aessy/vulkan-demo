@@ -98,7 +98,6 @@ struct Pipeline
     std::vector<vk::DescriptorSetLayout> descriptor_set_layouts;
     std::vector<std::vector<vk::DescriptorSetLayoutBinding>> bindings;
     std::vector<DescriptionPoolAndSet> descriptor_sets;
-    std::vector<buffer_types::ModelType> buffers;
 };
 
-Pipeline bindPipeline(RenderingState const& core, PipelineData const& pipeline_data, vk::Pipeline const& pipeline, vk::PipelineLayout const& pipeline_layout);
+Pipeline bindPipeline(PipelineData const& pipeline_data, vk::Pipeline const& pipeline, vk::PipelineLayout const& pipeline_layout);

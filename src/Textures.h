@@ -6,10 +6,10 @@
 
 struct Texture
 {
-    vk::Image image;
-    vk::DeviceMemory memory;
-    vk::ImageView view;
-    vk::Sampler sampler;
+    vk::raii::Image image;
+    vk::raii::DeviceMemory memory;
+    vk::raii::ImageView view;
+    vk::raii::Sampler sampler;
 
     std::string const name;
 

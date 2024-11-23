@@ -8,6 +8,8 @@
 Pipeline createGeneralPurposePipeline(RenderingState const& state,
                                       vk::RenderPass const& render_pass,
                                       Textures const& textures,
-                                      std::vector<UniformBuffer> const& world_buffer = {},
-                                      std::vector<UniformBuffer> const& shadow_map_buffer = {},
-                                      std::array<vk::ImageView, 2> const& shadow_map_images = {{}});
+                                      std::vector<std::unique_ptr<UniformBuffer>> const& world_buffer = {},
+                                      std::vector<std::unique_ptr<UniformBuffer>> const& model_buffer = {},
+                                      std::vector<std::unique_ptr<UniformBuffer>> const& material_buffer = {},
+                                      std::vector<std::unique_ptr<UniformBuffer>> const& shadow_map_buffer = {},
+                                      std::vector<std::unique_ptr<vk::raii::ImageView>> const& shadow_map_images = {});

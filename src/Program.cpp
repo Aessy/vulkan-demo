@@ -116,26 +116,6 @@ GpuProgram createGpuProgram(std::vector<std::vector<vk::DescriptorSetLayoutBindi
     return { graphic_pipeline.first, graphic_pipeline.second, desc_sets};
 };
 
-template<typename BufferType, typename BufferTypeOut>
-auto createModel(RenderingState const& core, layer_types::BindingType binding_type, DescriptionPoolAndSet const& descriptor_set, int size, int count = 1)
-{
-    std::vector<UniformBuffer> buffers;
-    if (binding_type == layer_types::BindingType::Uniform)
-    {
-        buffers = createUniformBuffers<BufferType>(core, count);
-    }
-    else if (binding_type == layer_types::BindingType::Storage)
-    {
-        buffers = createStorageBuffers<BufferType>(core, size);
-    }
-    if (binding_type != layer_types::BindingType::TextureSampler)
-    {
-        updateUniformBuffer<BufferType>(core.device, buffers, descriptor_set.set, descriptor_set.layout_bindings[0], size);
-    }
-
-    return BufferTypeOut{buffers};
-}
-
 std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
                                        RenderingState const& core,
                                        Textures const& textures,
@@ -195,51 +175,6 @@ std::unique_ptr<Program> createProgram(layer_types::Program const& program_data,
     auto program = createGpuProgram(descriptor_set_layout_bindings, core, render_pass, vertex_path, fragment_path, tess_ctrl_path, tess_evu_path, compute_path, polygon_mode, input);
 
     std::vector<buffer_types::ModelType> model_types;
-
-    size_t index = 0;
-    for (auto const& buffer : program_data.buffers)
-    {
-        switch (buffer.type)
-        {
-            case lt::BufferType::ModelBufferObject:
-                model_types.push_back(createModel<ModelBufferObject, buffer_types::Model>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size));
-                break;
-            case lt::BufferType::WorldBufferObject:
-                model_types.push_back(createModel<WorldBufferObject, buffer_types::World>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size));
-                break;
-            case lt::BufferType::TerrainBufferObject:
-                model_types.push_back(createModel<TerrainBufferObject, buffer_types::Terrain>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size));
-                break;
-            case lt::BufferType::FogVolumeObject:
-                model_types.push_back(createModel<FogVolumeBufferObject, buffer_types::FogVolume>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size));
-                break;
-            case lt::BufferType::PostProcessingDataBufferObject:
-                model_types.push_back(createModel<PostProcessingBufferObject, buffer_types::PostProcessingData>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size));
-                break;
-            case lt::BufferType::MaterialShaderData:
-                model_types.push_back(createModel<MaterialShaderData, buffer_types::MaterialShaderData>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size));
-                break;
-            case lt::BufferType::AtmosphereShaderData:
-                model_types.push_back(createModel<Atmosphere, buffer_types::AtmosphereShaderData>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size));
-                break;
-            case lt::BufferType::CascadedShadowMapBufferObject:
-                model_types.push_back(createModel<CascadedShadowMapBufferObject, buffer_types::CascadedShadowMapBufferObject>(core, buffer.binding.type, program.descriptor_sets[index], buffer.size, buffer.count));
-                break;
-            case lt::BufferType::NoBuffer:
-                if (buffer.binding.type == lt::BindingType::TextureSampler)
-                {
-                    updateImageSampler(core.device, textures.textures, program.descriptor_sets[index].set, program.descriptor_sets[index].layout_bindings[0]);
-                }
-                else if (buffer.binding.type == lt::BindingType::StorageImage && buffer.binding.storage_image != vk::ImageView(VK_NULL_HANDLE))
-                {
-                    updateImage(core.device, buffer.binding.storage_image, program.descriptor_sets[index].set, program.descriptor_sets[index].layout_bindings[0]);
-                }
-                break;
-        };
-
-        ++index;
-    }
-
     return std::make_unique<Program>(name, std::move(program),std::move(model_types));
 }
 
@@ -357,75 +292,13 @@ PipelineData createPipelineData(RenderingState const& state, layer_types::Progra
     };
 }
 
-Pipeline bindPipeline(RenderingState const& core, PipelineData const& pipeline_data, vk::Pipeline const& pipeline, vk::PipelineLayout const& pipeline_layout)
+Pipeline bindPipeline(PipelineData const& pipeline_data, vk::Pipeline const& pipeline, vk::PipelineLayout const& pipeline_layout)
 {
-    namespace lt = layer_types;
-
-    std::vector<buffer_types::ModelType> model_types;
-
-    auto l = [&pipeline_data, &core]<typename BufferType, typename BufferTypeOut>(layer_types::Buffer const& buffer, uint32_t index)
-    {
-        // Use existing buffer from outside
-        if (buffer.buffer.size())
-        {
-            updateUniformBuffer<BufferType>(core.device,
-                                            buffer.buffer,
-                                            pipeline_data.descriptor_sets[index].set,
-                                            pipeline_data.descriptor_sets[index].layout_bindings[0],
-                                            buffer.size);
-
-            return BufferTypeOut{buffer.buffer};
-        }
-        return createModel<BufferType, BufferTypeOut>(core,
-                                                      buffer.binding.type,
-                                                      pipeline_data.descriptor_sets[index],
-                                                      buffer.size,
-                                                      buffer.count);
-    };
-
-
-    size_t index = 0;
-    for (auto const& buffer : pipeline_data.program_data.buffers)
-    {
-        switch (buffer.type)
-        {
-            case lt::BufferType::ModelBufferObject:
-                model_types.push_back(l.operator()<ModelBufferObject, buffer_types::Model>(buffer, index));
-                break;
-            case lt::BufferType::WorldBufferObject:
-                model_types.push_back(l.operator()<WorldBufferObject, buffer_types::World>(buffer, index));
-                break;
-            case lt::BufferType::TerrainBufferObject:
-                model_types.push_back(l.operator()<TerrainBufferObject, buffer_types::Terrain>(buffer, index));
-                break;
-            case lt::BufferType::FogVolumeObject:
-                model_types.push_back(l.operator()<FogVolumeBufferObject, buffer_types::FogVolume>(buffer, index));
-                break;
-            case lt::BufferType::PostProcessingDataBufferObject:
-                model_types.push_back(l.operator()<PostProcessingBufferObject, buffer_types::PostProcessingData>(buffer, index));
-                break;
-            case lt::BufferType::MaterialShaderData:
-                model_types.push_back(l.operator()<MaterialShaderData, buffer_types::MaterialShaderData>(buffer, index));
-                break;
-            case lt::BufferType::AtmosphereShaderData:
-                model_types.push_back(l.operator()<Atmosphere, buffer_types::AtmosphereShaderData>(buffer, index));
-                break;
-            case lt::BufferType::CascadedShadowMapBufferObject:
-                model_types.push_back(l.operator()<CascadedShadowMapBufferObject, buffer_types::CascadedShadowMapBufferObject>(buffer, index));
-                break;
-            case lt::BufferType::NoBuffer:
-                break;
-        };
-
-        ++index;
-    }
-
     return Pipeline{
         .pipeline = pipeline,
         .pipeline_layout = pipeline_layout,
         .descriptor_set_layouts = pipeline_data.descriptor_set_layouts,
         .bindings = pipeline_data.descriptor_set_layout_bindings,
         .descriptor_sets = pipeline_data.descriptor_sets,
-        .buffers = model_types
     };
 }

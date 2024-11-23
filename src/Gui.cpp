@@ -213,6 +213,7 @@ void createMaterial(Application& app)
 
 void createObject(Application& app)
 {
+    /*
     if (ImGui::BeginPopup("create_object"))
     {
         ImGui::Text("Create Object");
@@ -259,6 +260,7 @@ void createObject(Application& app)
 
         ImGui::EndPopup();
     }
+    */
 
 }
 
@@ -410,6 +412,7 @@ void showObject(Object& obj, Application& app)
 {
     if (ImGui::BeginPopup("object"))
     {
+        /*
         static int mesh_id = obj.mesh.id;
 
         for (auto const& [key, value] : app.meshes.meshes)
@@ -424,6 +427,7 @@ void showObject(Object& obj, Application& app)
         {
             obj.mesh = app.meshes.meshes[mesh_id];
         }
+        */
 
         ImGui::Text("Position");
         ImGui::DragFloat("Pos x", &obj.position.x, 0.1f, -100.0f, 100.0f);
@@ -585,9 +589,9 @@ void showScene(Application& app, Scene& scene, Models& models)
             ImGui::Text("Pos: x:%f, y:%f, z:%f",obj.position.x, obj.position.y, obj.position.z);
             ImGui::Text("Angle: %f", obj.angel);
             ImGui::Text("Scale: %f", obj.scale);
-            ImGui::Text("Indices: %d", obj.mesh.indices_size);
+            // ImGui::Text("Indices: %d", obj.mesh.indices_size);
             ImGui::Text("Material: %s", obj.material.name.data());
-            showMeshTree(obj.mesh, models, std::string("Mesh: ") + obj.mesh.name + " " + std::to_string(obj.mesh.id));
+            // showMeshTree(obj.mesh, models, std::string("Mesh: ") + obj.mesh.name + " " + std::to_string(obj.mesh.id));
             if (ImGui::Button("Edit"))
             {
                 ImGui::OpenPopup("object");

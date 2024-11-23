@@ -14,7 +14,6 @@ set(SRC src/VulkanRenderSystem.cpp
         src/Program.cpp
         src/Textures.cpp
         src/Id.cpp
-        src/Skybox.cpp
         src/RenderPass/ShadowMap.cpp
         src/RenderPass/SceneRenderPass.cpp
         src/Pipelines/GeneralPurpuse.cpp

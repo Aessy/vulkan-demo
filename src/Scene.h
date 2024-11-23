@@ -30,7 +30,9 @@ struct Scene
     FogVolumeBufferObject fog;
     Atmosphere atmosphere;
 
-    std::vector<UniformBuffer> world_buffer;
+    std::vector<std::unique_ptr<UniformBuffer>> world_buffer;
+    std::vector<std::unique_ptr<UniformBuffer>> model_buffer;
+    std::vector<std::unique_ptr<UniformBuffer>> material_buffer;
 };
 
 inline void addObject(Scene& scene, Object o)
@@ -89,5 +91,5 @@ inline ModelBufferObject createModelBufferObject(Object const& object)
 inline void updateBufferObjects(Scene& scene, uint32_t frame)
 {
     WorldBufferObject ubo = createWorldBufferObject(scene);
-    writeBuffer(scene.world_buffer[frame], ubo);
+    writeBuffer(*scene.world_buffer[frame], ubo);
 }

@@ -2,6 +2,8 @@
 #include "VulkanRenderSystem.h"
 #include "Program.h"
 
+#include "descriptor_set.h"
+
 #include <tuple>
 #include <vulkan/vulkan_enums.hpp>
 
@@ -171,7 +173,9 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createPipeline(PipelineData 
 
 Pipeline createSkyboxPipeline(RenderingState const& state,
                               vk::RenderPass const& render_pass,
-                              std::vector<UniformBuffer> const& world_buffer)
+                              std::vector<std::unique_ptr<UniformBuffer>> const& world_buffer,
+                              std::vector<std::unique_ptr<UniformBuffer>> const& model_buffer,
+                              std::vector<std::unique_ptr<UniformBuffer>> const& atmosphere_data)
 {
     layer_types::Program program_desc;
     program_desc.vertex_shader= {{"./shaders/skybox_vert.spv"}};
@@ -181,7 +185,6 @@ Pipeline createSkyboxPipeline(RenderingState const& state,
         .name = "World",
         .type = layer_types::BufferType::WorldBufferObject,
         .size = 1,
-        .buffer = world_buffer,
         .binding = layer_types::Binding{
             .name = {{"binding world"}},
             .binding = 0,
@@ -192,18 +195,6 @@ Pipeline createSkyboxPipeline(RenderingState const& state,
         }
     }});
 
-    program_desc.buffers.push_back({layer_types::Buffer{
-        .name = "World",
-        .type = layer_types::BufferType::NoBuffer,
-        .size = 1,
-        .binding = layer_types::Binding{
-            .name = {{"Cube Sampler"}},
-            .binding = 0,
-            .type = layer_types::BindingType::TextureSampler,
-            .size = 1,
-            .fragment = true,
-        }
-    }});
     program_desc.buffers.push_back({layer_types::Buffer{
         .name = {{"model_buffer"}},
         .type = layer_types::BufferType::ModelBufferObject,
@@ -234,7 +225,24 @@ Pipeline createSkyboxPipeline(RenderingState const& state,
 
     auto const pipeline_data = createPipelineData(state, program_desc);
     auto const [pipeline, pipeline_layout] = createPipeline(pipeline_data, state.swap_chain.extent, state.device, render_pass, state.msaa);
-    auto pipeline_finish = bindPipeline(state, pipeline_data, pipeline, pipeline_layout);
+    auto pipeline_finish = bindPipeline(pipeline_data, pipeline, pipeline_layout);
 
+    updateUniformBuffer<WorldBufferObject>(state.device,
+                                           world_buffer,
+                                           pipeline_finish.descriptor_sets[0].set,
+                                           pipeline_finish.descriptor_sets[0].layout_bindings[0],
+                                           1);
+
+    updateUniformBuffer<ModelBufferObject>(state.device,
+                                           model_buffer,
+                                           pipeline_finish.descriptor_sets[1].set,
+                                           pipeline_finish.descriptor_sets[1].layout_bindings[0],
+                                           10);
+
+    updateUniformBuffer<ModelBufferObject>(state.device,
+                                           atmosphere_data,
+                                           pipeline_finish.descriptor_sets[2].set,
+                                           pipeline_finish.descriptor_sets[2].layout_bindings[0],
+                                           1);
     return pipeline_finish;
 }

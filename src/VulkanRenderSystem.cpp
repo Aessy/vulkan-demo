@@ -772,7 +772,7 @@ std::vector<std::unique_ptr<ImageResource>> createFogBuffer(RenderingState const
 
 void initImgui(vk::Device const& device, vk::PhysicalDevice const& physical, vk::Instance const& instance,
                vk::Queue const& queue, vk::RenderPass const& render_pass,
-               RenderingState& state, GLFWwindow* window, vk::SampleCountFlagBits msaa)
+               RenderingState const& state, GLFWwindow* window, vk::SampleCountFlagBits msaa)
 {
     std::vector<vk::DescriptorPoolSize> pool_sizes
     {
@@ -882,42 +882,6 @@ std::optional<RenderingState> createVulkanRenderState()
     return render_state;
 }
 
-void resolveMultisampleDepthImage(vk::CommandBuffer& command_buffer, vk::Image multisampledDepthImage, vk::Image singleSampledDepthImage, vk::Extent2D extent) {
-    // Specify the region to resolve
-    vk::ImageResolve resolveRegion{};
-    resolveRegion.srcSubresource.aspectMask = vk::ImageAspectFlagBits::eDepth;
-    resolveRegion.srcSubresource.baseArrayLayer = 0;
-    resolveRegion.srcSubresource.mipLevel = 0;
-    resolveRegion.srcSubresource.layerCount = 1;
-    
-    resolveRegion.dstSubresource.aspectMask = vk::ImageAspectFlagBits::eDepth;
-    resolveRegion.dstSubresource.baseArrayLayer = 0;
-    resolveRegion.dstSubresource.mipLevel = 0;
-    resolveRegion.dstSubresource.layerCount = 1;
-    
-    resolveRegion.extent.width = extent.width;
-    resolveRegion.extent.height = extent.height;
-    resolveRegion.extent.depth = 1;
-
-    auto format = getDepthFormat();
-    // Transition layouts before resolving (this might already be done depending on your case)
-    transitionImageLayout(command_buffer, multisampledDepthImage, format, vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eTransferSrcOptimal, 1);
-    
-    transitionImageLayout(command_buffer, singleSampledDepthImage, format, vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eTransferDstOptimal, 1);
-
-    // Issue the resolve command
-    command_buffer.resolveImage(
-        multisampledDepthImage, vk::ImageLayout::eTransferSrcOptimal,
-        singleSampledDepthImage, vk::ImageLayout::eTransferDstOptimal,
-        resolveRegion
-    );
-
-    // Transition back to layouts after resolving
-    transitionImageLayout(command_buffer, multisampledDepthImage, format, vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eDepthStencilAttachmentOptimal, 1);
-    transitionImageLayout(command_buffer, singleSampledDepthImage, format, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
-}
-
-
 vk::raii::CommandBuffer beginSingleTimeCommands(RenderingState const& state)
 {
     vk::CommandBufferAllocateInfo alloc_info{};
@@ -966,7 +930,7 @@ bool hasStencilComponent(vk::Format format)
     return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
 }
 
-void transitionImageLayout(vk::raii::CommandBuffer& cmd_buffer, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels, uint32_t layer_count)
+void transitionImageLayout(vk::CommandBuffer const& cmd_buffer, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels, uint32_t layer_count)
 {
     vk::ImageMemoryBarrier barrier{};
     barrier.sType = vk::StructureType::eImageMemoryBarrier;

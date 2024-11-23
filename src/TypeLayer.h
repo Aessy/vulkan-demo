@@ -61,7 +61,7 @@ struct Buffer
 
     int count{1};
     int size{};
-    std::vector<UniformBuffer> buffer;
+    std::vector<vk::Buffer> buffer;
     Binding binding{};
 };
 

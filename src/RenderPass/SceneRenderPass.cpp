@@ -24,41 +24,6 @@ static void drawScene(vk::CommandBuffer& cmd_buffer, SceneRenderPass& scene_rend
     {
         auto& program = scene_render_pass.pipelines[o.first];
 
-        // Write buffer data (storage and uniform)
-        // The model buffer has to be bigger than all the buffers it contains.
-        for (auto& buffer : program.buffers)
-        {
-            if (auto* world = std::get_if<buffer_types::World>(&buffer))
-            {
-                auto ubo = createWorldBufferObject(scene);
-                writeBuffer(world->buffers[frame], ubo);
-            }
-            else if (auto* model = std::get_if<buffer_types::Model>(&buffer))
-            {
-                for (size_t i = 0; i < o.second.size(); ++i)
-                {
-                    auto &obj = scene.objs[o.second[i]];
-                    auto ubo = createModelBufferObject(obj);
-                    writeBuffer(model->buffers[frame],ubo,i);
-                }
-            }
-            else if (auto* material= std::get_if<buffer_types::MaterialShaderData>(&buffer))
-            {
-                for (size_t i = 0; i < o.second.size(); ++i)
-                {
-                    auto &obj = scene.objs[o.second[i]];
-                    writeBuffer(material->buffers[frame],obj.material.shader_data, i);
-                }
-            }
-            else if (auto* atmosphere = std::get_if<buffer_types::AtmosphereShaderData>(&buffer))
-            {
-                for (size_t i = 0; i < o.second.size(); ++i)
-                {
-                    writeBuffer(atmosphere->buffers[frame],scene.atmosphere);
-                }
-            }
-        }
-
         cmd_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, program.pipeline);
         for (size_t i = 0; i < program.descriptor_sets.size(); ++i)
         {
@@ -77,10 +42,9 @@ static void drawScene(vk::CommandBuffer& cmd_buffer, SceneRenderPass& scene_rend
         for (size_t i = 0; i < o.second.size(); ++i)
         {
             auto &drawable = scene.objs[o.second[i]];
-            cmd_buffer.bindVertexBuffers(0, drawable.mesh.vertex_buffer, {0});
-            cmd_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
-            
-            cmd_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0,0, i);
+            cmd_buffer.bindVertexBuffers(0, drawable.vertex_buffer, {0});
+            cmd_buffer.bindIndexBuffer(drawable.index_buffer, 0, vk::IndexType::eUint32);
+            cmd_buffer.drawIndexed(drawable.indices_size, 1, 0,0, i);
         }
     }
 }
@@ -91,10 +55,12 @@ void sceneRenderPass(vk::CommandBuffer command_buffer,
                      Scene const& scene_data,
                      uint32_t image_index)
 {
+    vk::Framebuffer framebuffer = scene_render_pass.framebuffers[state.current_frame]->framebuffer;
+
     vk::RenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
     render_pass_info.setRenderPass(scene_render_pass.render_pass);
-    render_pass_info.setFramebuffer(scene_render_pass.framebuffers[state.current_frame].framebuffer);
+    render_pass_info.setFramebuffer(framebuffer);
     render_pass_info.renderArea.offset = vk::Offset2D{0,0};
     render_pass_info.renderArea.extent = state.swap_chain.extent;
 
@@ -125,13 +91,22 @@ void sceneRenderPass(vk::CommandBuffer command_buffer,
                                    vk::SubpassContents::eInline);
     drawScene(command_buffer, scene_render_pass, scene_data, state.current_frame);
 
+    transitionImageLayout(command_buffer, scene_render_pass.framebuffers[state.current_frame]->color_resource.depth_image,
+                                 vk::Format::eR16G16B16A16Sfloat,
+                                 vk::ImageLayout::eColorAttachmentOptimal,
+                                 vk::ImageLayout::eShaderReadOnlyOptimal,
+                                 1);
+
+    transitionImageLayout(command_buffer, scene_render_pass.framebuffers[state.current_frame]->depth_resolve_resource.depth_image, vk::Format::eD32Sfloat,
+        vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
+
     command_buffer.endRenderPass();
 
 }
 
-static std::vector<SceneFramebufferState> createFrameBuffers(RenderingState const& state, vk::RenderPass render_pass)
+static std::vector<std::unique_ptr<SceneFramebufferState>> createFrameBuffers(RenderingState const& state, vk::RenderPass render_pass)
 {
-    std::vector<SceneFramebufferState> swap_chain_frame_buffers;
+    std::vector<std::unique_ptr<SceneFramebufferState>> swap_chain_frame_buffers;
     for (int i = 0; i < 2; ++i)
     {
         auto color_resources = createColorResources(state, vk::Format::eR16G16B16A16Sfloat);
@@ -150,14 +125,12 @@ static std::vector<SceneFramebufferState> createFrameBuffers(RenderingState cons
         framebuffer_info.height = state.swap_chain.extent.height;
         framebuffer_info.layers = 1;
 
-        auto framebuffer = state.device.createFramebuffer(framebuffer_info);
+        auto framebuffer = state.device.createFramebuffer(framebuffer_info).value();
 
-/*
-        swap_chain_frame_buffers.push_back({SceneFramebufferState{.framebuffer = std::move(framebuffer.value),
-                                                                    .color_resource = color_resources,
-                                                                    .depth_resource = depth_image,
-                                                                    .depth_resolve_resource = depth_resolve_image}});
-                                                                    */
+        swap_chain_frame_buffers.push_back({std::make_unique<SceneFramebufferState>(std::move(framebuffer),
+                                                                  std::move(color_resources),
+                                                                  std::move(depth_image),
+                                                                  std::move(depth_resolve_image))});
     }
 
     return swap_chain_frame_buffers;
@@ -244,7 +217,10 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     return device.createRenderPass2(render_pass_info).value;
 }
 
-SceneRenderPass createSceneRenderPass(RenderingState const& state, Textures const& textures, Scene const& scene, CascadedShadowMap const& shadow_map)
+SceneRenderPass createSceneRenderPass(RenderingState const& state,
+                                      Textures const& textures,
+                                      Scene const& scene,
+                                      CascadedShadowMap const& shadow_map)
 {
     auto render_pass = createRenderPass(state.device, state.swap_chain.swap_chain_image_format, state.msaa);
     auto framebuffers = createFrameBuffers(state, render_pass);
@@ -252,10 +228,16 @@ SceneRenderPass createSceneRenderPass(RenderingState const& state, Textures cons
     auto scene_render_pass = SceneRenderPass
     {
         .render_pass = render_pass,
-        .framebuffers = framebuffers,
+        .framebuffers = std::move(framebuffers),
     };
 
-    scene_render_pass.pipelines.push_back(createGeneralPurposePipeline(state, render_pass, textures, scene.world_buffer, shadow_map.cascaded_shadow_map_buffer, shadow_map.framebuffer_data.image_views));
+    scene_render_pass.pipelines.push_back(createGeneralPurposePipeline(state, render_pass, textures,
+                                                                       scene.world_buffer,
+                                                                       scene.model_buffer,
+                                                                       scene.material_buffer,
+                                                                       shadow_map.cascaded_shadow_map_buffer,
+                                                                       shadow_map.framebuffer_data.image_views));
+
     scene_render_pass.pipelines.push_back(createSkyboxPipeline(state, render_pass, scene.world_buffer));
 
     return scene_render_pass;

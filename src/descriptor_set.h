@@ -114,7 +114,7 @@ inline auto createDescriptorSetLayout(Device const& device, std::vector<vk::Desc
 
     auto layout = device.createDescriptorSetLayout(layout_info);
 
-    return layout.value;
+    return std::move(layout.value());
 }
 
 template<typename Device>
@@ -151,7 +151,7 @@ inline auto createSets(Device const& device, vk::DescriptorPool const& pool, vk:
 }
 
 template<typename UniformObject, typename UniformBuffer, typename Device>
-inline void updateUniformBuffer(Device const& device, std::vector<UniformBuffer> const& uniform_buffer,
+inline void updateUniformBuffer(Device const& device, std::vector<std::unique_ptr<UniformBuffer>> const& uniform_buffer,
         std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding,
         uint32_t size)
 {
@@ -159,7 +159,7 @@ inline void updateUniformBuffer(Device const& device, std::vector<UniformBuffer>
     for (auto const& set : sets)
     {
         vk::DescriptorBufferInfo buffer_info{};
-        buffer_info.buffer = uniform_buffer[i].uniform_buffers;
+        buffer_info.buffer = uniform_buffer[i]->uniform_buffers;
         buffer_info.offset = 0;
         buffer_info.range = sizeof(UniformObject) * size;
 

@@ -9,7 +9,7 @@
 
 struct SceneFramebufferState
 {
-    std::unique_ptr<vk::raii::Framebuffer> framebuffer;
+    vk::raii::Framebuffer framebuffer;
 
     DepthResources color_resource;
     DepthResources depth_resource;
@@ -19,7 +19,7 @@ struct SceneFramebufferState
 struct SceneRenderPass
 {
     vk::RenderPass render_pass;
-    std::vector<SceneFramebufferState> framebuffers;
+    std::vector<std::unique_ptr<SceneFramebufferState>> framebuffers;
 
     // A pipeline is bound to a render pass. So it makes sense that all pipelines that can be run is here.
     std::vector<Pipeline> pipelines;

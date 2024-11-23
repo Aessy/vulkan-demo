@@ -79,29 +79,24 @@ void generateMipmaps(RenderingState const& state, vk::Image const& image, int32_
     endSingleTimeCommands(state, cmd_buffer);
 }
 
-static std::tuple<vk::Image, vk::DeviceMemory, uint32_t> createImageMapTexture(RenderingState const& state, void* pixels, std::size_t width, std::size_t height, vk::Format format)
+static std::tuple<vk::raii::Image, vk::raii::DeviceMemory> createImageMapTexture(RenderingState const& state, void* pixels, std::size_t width, std::size_t height, vk::Format format)
 {
     vk::DeviceSize image_size = width*height*4;
-    vk::DeviceMemory staging_buffer_memory;
+    auto [staging_buffer, staging_buffer_memory] = createBuffer(state, image_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    auto data = staging_buffer_memory.mapMemory(0, image_size, static_cast<vk::MemoryMapFlagBits>(0));
+    memcpy(data, pixels, static_cast<size_t>(image_size));
+    staging_buffer_memory.unmapMemory();
 
-    auto staging_buffer = createBuffer(state, image_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, staging_buffer_memory);
-    auto data = state.device.mapMemory(staging_buffer_memory, 0, image_size, static_cast<vk::MemoryMapFlagBits>(0));
-    memcpy(data.value, pixels, static_cast<size_t>(image_size));
-    state.device.unmapMemory(staging_buffer_memory);
+    auto [image, image_device_memory] = createImage(state, width, height, 1, format, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::SampleCountFlagBits::e1);
 
-    auto image = createImage(state, width, height, 1, format, vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled, vk::MemoryPropertyFlagBits::eDeviceLocal, vk::SampleCountFlagBits::e1);
+    transitionImageLayout(state, image, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, 1);
+    copyBufferToImage(state, staging_buffer, image, width, height);
+    transitionImageLayout(state, image, format, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
 
-    transitionImageLayout(state, image.first, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, 1);
-    copyBufferToImage(state, staging_buffer, image.first, width, height);
-    transitionImageLayout(state, image.first, format, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
-
-    state.device.destroyBuffer(staging_buffer);
-    state.device.freeMemory(staging_buffer_memory);
-
-    return {image.first, image.second, 1};
+    return {std::move(image), std::move(image_device_memory)};
 }
 
-static std::tuple<vk::Image, vk::DeviceMemory, uint32_t> createTextureImage(RenderingState const& state, vk::Format format, std::string const& path)
+static std::tuple<vk::raii::Image, vk::raii::DeviceMemory, uint32_t> createTextureImage(RenderingState const& state, vk::Format format, std::string const& path)
 {
     int width, height, channels {};
 
@@ -116,30 +111,26 @@ static std::tuple<vk::Image, vk::DeviceMemory, uint32_t> createTextureImage(Rend
     uint32_t mip_levels = static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;
 
     vk::DeviceSize image_size = width * height * 4;
-    vk::DeviceMemory staging_buffer_memory;
 
-    auto staging_buffer = createBuffer(state, image_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, staging_buffer_memory);
+    auto [staging_buffer, staging_buffer_memory] = createBuffer(state, image_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    auto data = state.device.mapMemory(staging_buffer_memory, 0, image_size, static_cast<vk::MemoryMapFlagBits>(0));
-    memcpy(data.value, pixels, static_cast<size_t>(image_size));
-    state.device.unmapMemory(staging_buffer_memory);
+    auto data = staging_buffer_memory.mapMemory(0, image_size, static_cast<vk::MemoryMapFlagBits>(0));
+    memcpy(data, pixels, static_cast<size_t>(image_size));
+    staging_buffer_memory.unmapMemory();
     stbi_image_free(pixels);
 
-    auto image = createImage(state, width, height, mip_levels, format, vk::ImageTiling::eOptimal,
-                 vk::ImageUsageFlagBits::eTransferDst
-                      | vk::ImageUsageFlagBits::eTransferSrc
-                      | vk::ImageUsageFlagBits::eSampled,
-                        vk::MemoryPropertyFlagBits::eDeviceLocal,
-                        vk::SampleCountFlagBits::e1);
+    auto [image, image_device_memory] = createImage(state, width, height, mip_levels, format, vk::ImageTiling::eOptimal,
+                        vk::ImageUsageFlagBits::eTransferDst
+                            | vk::ImageUsageFlagBits::eTransferSrc
+                            | vk::ImageUsageFlagBits::eSampled,
+                                vk::MemoryPropertyFlagBits::eDeviceLocal,
+                                vk::SampleCountFlagBits::e1);
 
-    transitionImageLayout(state, image.first, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, mip_levels);
-    copyBufferToImage(state, staging_buffer, image.first, width, height);
-    generateMipmaps(state, image.first, width, height, mip_levels);
+    transitionImageLayout(state, image, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, mip_levels);
+    copyBufferToImage(state, staging_buffer, image, width, height);
+    generateMipmaps(state, image, width, height, mip_levels);
 
-    state.device.destroyBuffer(staging_buffer);
-    state.device.freeMemory(staging_buffer_memory);
-
-    return {image.first, image.second, mip_levels};
+    return {std::move(image), std::move(image_device_memory), mip_levels};
 }
 
 Texture createTexture(RenderingState const& state, std::string const& path, TextureType type, vk::Format format, vk::Sampler sampler)
@@ -152,10 +143,10 @@ Texture createTexture(RenderingState const& state, std::string const& path, Text
         auto file_name = std::filesystem::path(path).filename().string();
 
         return Texture {
-            .image = image,
-            .memory = mem,
-            .view = image_view,
-            .sampler = sampler,
+            .image = std::move(image),
+            .memory = std::move(mem),
+            .view = std::move(image_view),
+            .sampler = std::move(sampler),
             .name = file_name
         };
     }
@@ -170,9 +161,9 @@ Texture createTexture(RenderingState const& state, std::string const& path, Text
             return {};
         }
 
-        auto [image, mem, mip_maps] = createImageMapTexture(state, pixels, width,height, format);
+        auto [image, mem] = createImageMapTexture(state, pixels, width,height, format);
         stbi_image_free(pixels);
-        auto image_view = createTextureImageView(state, image, format, mip_maps);
+        auto image_view = createTextureImageView(state, image, format, 1);
 
         auto file_name = std::filesystem::path(path).filename().string();
 

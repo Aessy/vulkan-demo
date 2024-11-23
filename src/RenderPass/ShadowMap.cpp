@@ -8,6 +8,7 @@
 #include "Program.h"
 #include "Scene.h"
 #include "Renderer.h"
+#include "descriptor_set.h"
 
 #include <limits>
 #include <vector>
@@ -142,7 +143,7 @@ std::vector<glm::mat4> getLightSpaceMatrices(vk::Extent2D const& size, Camera co
     return matrices;
 }
 
-void drawShadowMap(vk::CommandBuffer command_buffer,
+void drawShadowMap(vk::CommandBuffer const& command_buffer,
                    unsigned int cascade,
                    Scene const& scene,
                    CascadedShadowMap& shadow_map,
@@ -187,51 +188,22 @@ void drawShadowMap(vk::CommandBuffer command_buffer,
         auto &drawable = scene.objs[i];
         if (drawable.shadow)
         {
-            command_buffer.bindVertexBuffers(0, drawable.mesh.vertex_buffer, {0});
-            command_buffer.bindIndexBuffer(drawable.mesh.index_buffer, 0, vk::IndexType::eUint32);
-            command_buffer.drawIndexed(drawable.mesh.indices_size, 1, 0,0, i);
+            command_buffer.bindVertexBuffers(0, drawable.vertex_buffer, {0});
+            command_buffer.bindIndexBuffer(drawable.index_buffer, 0, vk::IndexType::eUint32);
+            command_buffer.drawIndexed(drawable.indices_size, 1, 0,0, i);
         }
     }
 
 }
 
-void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_map, Scene const& scene, vk::CommandBuffer command_buffer)
+void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_map, Scene const& scene, vk::CommandBuffer const& command_buffer)
 {
     glm::vec3 light_dir = glm::normalize(scene.light.sun_pos);
     auto const light_space_matrix = getLightSpaceMatrices(state.swap_chain.extent, scene.camera, light_dir);
 
-    for (auto& buffer : shadow_map.pipeline.buffers)
-    {
-        // Write all the objects that should be included in the shadow map
-        if (auto* model = std::get_if<buffer_types::Model>(&buffer))
-        {
-            for (size_t i = 0; i < scene.objs.size(); ++i)
-            {
-                auto &obj = scene.objs[i];
-                if (obj.shadow)
-                {
-                    auto ubo = createModelBufferObject(obj);
-                    writeBuffer(model->buffers[state.current_frame],ubo,i);
-                }
-            }
-        }
-        else if (auto* model = std::get_if<buffer_types::CascadedShadowMapBufferObject>(&buffer))
-        {
-            for (int i = 0; i < light_space_matrix.size(); ++i)
-            {
-                writeBuffer(model->buffers[state.current_frame], light_space_matrix[i], i);
-            }
-        }
-        else if (auto* world = std::get_if<buffer_types::World>(&buffer))
-        {
-            auto ubo = createWorldBufferObject(scene);
-            writeBuffer(world->buffers[state.current_frame], ubo);
-        }
-    }
-
     for (int i = 0; i < shadow_map.framebuffer_data.framebuffers[state.current_frame].size(); ++i)
     {
-        auto current_framebuffer = shadow_map.framebuffer_data.framebuffers[state.current_frame][i];
+        vk::Framebuffer current_framebuffer = *shadow_map.framebuffer_data.framebuffers[state.current_frame][i];
 
         std::array<vk::ClearValue, 2> clear_values{};
         clear_values[0].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
@@ -276,14 +248,7 @@ static ShadowMapFramebuffer createCascadedShadowmapFramebuffers(RenderingState c
 
     for (int i = 0; i < 2; ++i)
     {
-        auto const depth_image = createDepth(state, vk::SampleCountFlagBits::e1, num_cascades);
-        // Store the image and image view to the array for use in other render pass steps.
-        data.cascade_images[i] = depth_image.depth_image;
-        data.image_views[i] = createImageView(state.device, depth_image.depth_image, getDepthFormat(),
-                                                  vk::ImageAspectFlagBits::eDepth, 1, vk::ImageViewType::e2DArray,
-                                                  num_cascades, 0);
-                                            
-
+        auto depth_image = createDepth(state, vk::SampleCountFlagBits::e1, num_cascades);
         for (int cascade = 0; cascade < num_cascades; ++cascade)
         {
 
@@ -302,10 +267,17 @@ static ShadowMapFramebuffer createCascadedShadowmapFramebuffers(RenderingState c
             framebuffer_info.layers = 1;
 
             auto result = state.device.createFramebuffer(framebuffer_info);
-            checkResult(result.result);
 
-            data.framebuffers[i].push_back(result.value);
+            data.framebuffers[i].push_back(std::make_unique<vk::raii::Framebuffer>(std::move(result.value())));
         }
+        
+        auto image_view_array = createImageView(state.device, depth_image.depth_image, getDepthFormat(),
+                                                vk::ImageAspectFlagBits::eDepth, 1, vk::ImageViewType::e2DArray,
+                                                num_cascades, 0);
+
+        // Store the image and image view to the array for use in other render pass steps.
+        data.cascade_images.push_back(std::make_unique<vk::raii::Image>(std::move(depth_image.depth_image)));
+        data.image_views.push_back(std::make_unique<vk::raii::ImageView>(std::move(image_view_array)));
     }
 
     return data;
@@ -489,7 +461,6 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene cons
         .type = layer_types::BufferType::CascadedShadowMapBufferObject,
         .count = 5,
         .size = 1,
-        .buffer = shadow_map.cascaded_shadow_map_buffer,
         .binding = layer_types::Binding {
             .name = {{"binding matrice"}},
             .binding = 0,
@@ -503,7 +474,6 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene cons
         .name = {{"world_buffer"}},
         .type = layer_types::BufferType::WorldBufferObject,
         .size = 1,
-        .buffer = scene.world_buffer,
         .binding = layer_types::Binding {
             .name = {{"binding world"}},
             .binding = 0,
@@ -527,8 +497,28 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene cons
     }});
 
     auto const pipeline_data = createPipelineData(core, program_desc);
-    auto const [pipeline, pipeline_layout] = createCascadedShadowMapPipeline(pipeline_data, core.swap_chain.extent, core.device, shadow_map.render_pass);
-    shadow_map.pipeline = bindPipeline(core, pipeline_data, pipeline, pipeline_layout);
+    auto const [pipeline_p, pipeline_layout] = createCascadedShadowMapPipeline(pipeline_data, core.swap_chain.extent, core.device, shadow_map.render_pass);
+    auto const pipeline = bindPipeline(pipeline_data, pipeline_p, pipeline_layout);
+
+    shadow_map.pipeline = pipeline;
+
+    updateUniformBuffer<CascadedShadowMapBufferObject>(core.device,
+                                                       scene.world_buffer,
+                                                       pipeline.descriptor_sets[0].set,
+                                                       pipeline.descriptor_sets[0].layout_bindings[0],
+                                                       1);
+
+    updateUniformBuffer<WorldBufferObject>(core.device,
+                                           scene.world_buffer,
+                                           pipeline.descriptor_sets[1].set,
+                                           pipeline.descriptor_sets[1].layout_bindings[0],
+                                           10);
+
+    updateUniformBuffer<ModelBufferObject>(core.device,
+                                           scene.model_buffer,
+                                           pipeline.descriptor_sets[2].set,
+                                           pipeline.descriptor_sets[2].layout_bindings[0],
+                                           10);
 
     return shadow_map;
 }
