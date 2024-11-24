@@ -22,9 +22,7 @@ layout(set = 0, binding = 0) uniform UniformWorld{
     LightBufferData light;
 } world;
 
-layout(set = 1, binding = 0) uniform samplerCube skybox_sampler;
-
-layout(set = 3, binding = 0) uniform Atmosphere
+layout(set = 2, binding = 0) uniform Atmosphere
 {
     float sun_distance;
     float mie_coefficient;

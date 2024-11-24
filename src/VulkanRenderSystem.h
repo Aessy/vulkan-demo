@@ -187,14 +187,13 @@ Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> indi
 void transitionImageLayout(RenderingState const& state, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels, uint32_t layer_count = 1);
 void transitionImageLayout(vk::CommandBuffer const& cmd_buffer, vk::Image const& image, vk::Format const& format, vk::ImageLayout old_layout, vk::ImageLayout new_layout, uint32_t mip_levels, uint32_t layer_count = 1);
 void copyBufferToImage(RenderingState const& state, vk::Buffer buffer, vk::Image image, uint32_t width, uint32_t height);
-vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels, uint32_t level_count = 1);
+vk::raii::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels, uint32_t level_count = 1);
 vk::raii::Sampler createTextureSampler(RenderingState const& state, bool mip_maps);
 Buffer createBuffer(RenderingState const& state,
                     vk::DeviceSize size, vk::BufferUsageFlags usage,
                     vk::MemoryPropertyFlags properties);
 
 std::vector<std::unique_ptr<ImageResource>> createFogBuffer(RenderingState const& state, vk::MemoryPropertyFlags properties);
-void resolveMultisampleDepthImage(vk::CommandBuffer& command_buffer, vk::Image multisampledDepthImage, vk::Image singleSampledDepthImage, vk::Extent2D extent);
 
 void dispatchPipeline(RenderingState const& state);
 

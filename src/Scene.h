@@ -33,6 +33,7 @@ struct Scene
     std::vector<std::unique_ptr<UniformBuffer>> world_buffer;
     std::vector<std::unique_ptr<UniformBuffer>> model_buffer;
     std::vector<std::unique_ptr<UniformBuffer>> material_buffer;
+    std::vector<std::unique_ptr<UniformBuffer>> atmosphere_data;
 };
 
 inline void addObject(Scene& scene, Object o)
@@ -88,8 +89,26 @@ inline ModelBufferObject createModelBufferObject(Object const& object)
     return model_buffer;
 }
 
-inline void updateBufferObjects(Scene& scene, uint32_t frame)
+inline void sceneWriteBuffers(Scene const& scene, uint32_t frame)
 {
     WorldBufferObject ubo = createWorldBufferObject(scene);
     writeBuffer(*scene.world_buffer[frame], ubo);
+
+    int index = 0;
+    for (auto const& o : scene.programs)
+    {
+        for (int i = 0; i < o.second.size(); ++i)
+        {
+            auto &obj = scene.objs[o.second[i]];
+
+            auto ubo = createModelBufferObject(obj);
+            writeBuffer(*scene.model_buffer[frame], ubo, index);
+            writeBuffer(*scene.material_buffer[frame], obj.material.shader_data, index);
+
+            ++index;
+        }
+    }
+
+
+    writeBuffer(*scene.atmosphere_data[frame], scene.atmosphere);
 }

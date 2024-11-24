@@ -365,7 +365,6 @@ static vk::raii::Device createLogicalDevice(vk::raii::PhysicalDevice const& phys
     device_info.pNext = &desc_indexing_features;
 
     auto device = physical_device.createDevice(device_info, nullptr);
-    checkResult(device.error());
 
     return std::move(device.value());
 }
@@ -1160,7 +1159,7 @@ Buffer createBuffer(RenderingState const& state,
     return {std::move(buffer), std::move(buffer_memory)};
 }
 
-vk::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels, uint32_t level_count)
+vk::raii::ImageView createTextureImageView(RenderingState const& state, vk::Image const& texture_image, vk::Format format, uint32_t mip_levels, uint32_t level_count)
 {
     auto texture_image_view = createImageView(state.device, texture_image, format, vk::ImageAspectFlagBits::eColor, mip_levels, vk::ImageViewType::e2D, level_count, 0);
     return texture_image_view;

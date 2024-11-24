@@ -1,5 +1,6 @@
 #include "SceneRenderPass.h"
 
+#include "Model.h"
 #include "VulkanRenderSystem.h"
 #include <vulkan/vulkan_enums.hpp>
 
@@ -20,6 +21,7 @@ static void drawScene(vk::CommandBuffer& cmd_buffer, SceneRenderPass& scene_rend
     // But it really should only be performed one time, and then change the buffers where
     // it is needed per frame like camera and buffer data. Also it does not have to be a part
     // of the command buffer pipeline like it kind of is now.
+    int index = 0;
     for (auto const& o : scene.programs)
     {
         auto& program = scene_render_pass.pipelines[o.first];
@@ -44,7 +46,8 @@ static void drawScene(vk::CommandBuffer& cmd_buffer, SceneRenderPass& scene_rend
             auto &drawable = scene.objs[o.second[i]];
             cmd_buffer.bindVertexBuffers(0, drawable.vertex_buffer, {0});
             cmd_buffer.bindIndexBuffer(drawable.index_buffer, 0, vk::IndexType::eUint32);
-            cmd_buffer.drawIndexed(drawable.indices_size, 1, 0,0, i);
+            cmd_buffer.drawIndexed(drawable.indices_size, 1, 0,0, index);
+            index++;
         }
     }
 }
@@ -91,6 +94,8 @@ void sceneRenderPass(vk::CommandBuffer command_buffer,
                                    vk::SubpassContents::eInline);
     drawScene(command_buffer, scene_render_pass, scene_data, state.current_frame);
 
+    command_buffer.endRenderPass();
+
     transitionImageLayout(command_buffer, scene_render_pass.framebuffers[state.current_frame]->color_resource.depth_image,
                                  vk::Format::eR16G16B16A16Sfloat,
                                  vk::ImageLayout::eColorAttachmentOptimal,
@@ -99,9 +104,6 @@ void sceneRenderPass(vk::CommandBuffer command_buffer,
 
     transitionImageLayout(command_buffer, scene_render_pass.framebuffers[state.current_frame]->depth_resolve_resource.depth_image, vk::Format::eD32Sfloat,
         vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
-
-    command_buffer.endRenderPass();
-
 }
 
 static std::vector<std::unique_ptr<SceneFramebufferState>> createFrameBuffers(RenderingState const& state, vk::RenderPass render_pass)
@@ -228,7 +230,7 @@ SceneRenderPass createSceneRenderPass(RenderingState const& state,
     auto scene_render_pass = SceneRenderPass
     {
         .render_pass = render_pass,
-        .framebuffers = std::move(framebuffers),
+        .framebuffers = std::move(framebuffers)
     };
 
     scene_render_pass.pipelines.push_back(createGeneralPurposePipeline(state, render_pass, textures,
@@ -238,7 +240,7 @@ SceneRenderPass createSceneRenderPass(RenderingState const& state,
                                                                        shadow_map.cascaded_shadow_map_buffer,
                                                                        shadow_map.framebuffer_data.image_views));
 
-    scene_render_pass.pipelines.push_back(createSkyboxPipeline(state, render_pass, scene.world_buffer));
+    scene_render_pass.pipelines.push_back(createSkyboxPipeline(state, render_pass, scene.world_buffer, scene.model_buffer, scene.atmosphere_data));
 
     return scene_render_pass;
 }

@@ -11,3 +11,6 @@ std::tuple<vk::Pipeline, vk::PipelineLayout> createPipeline(PipelineData const& 
                                                         vk::RenderPass const& render_pass,
                                                         vk::SampleCountFlagBits msaa,
                                                         GraphicsPipelineInput = createDefaultPipelineInput());
+
+std::tuple<vk::Pipeline, vk::PipelineLayout> createComputePipeline2(PipelineData const& pipeline_data,
+                                                               vk::Device const& device);

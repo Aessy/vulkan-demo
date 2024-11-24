@@ -62,8 +62,7 @@ inline auto createStorageImageBinding(int binding, int count, vk::ShaderStageFla
     return createLayoutBinding(binding, vk::DescriptorType::eStorageImage, count, shader_flags);
 }
 
-template<typename Device>
-inline auto createDescriptorPoolInfo(Device const& device, std::vector<vk::DescriptorSetLayoutBinding> const& bindings)
+inline auto createDescriptorPoolInfo(vk::Device const& device, std::vector<vk::DescriptorSetLayoutBinding> const& bindings)
 {
     std::vector<vk::DescriptorPoolSize> pool_sizes;
     std::transform(bindings.begin(), bindings.end(), std::back_inserter(pool_sizes),
@@ -85,8 +84,7 @@ inline auto createDescriptorPoolInfo(Device const& device, std::vector<vk::Descr
     return pool.value;
 }
 
-template<typename Device>
-inline auto createDescriptorSetLayout(Device const& device, std::vector<vk::DescriptorSetLayoutBinding> const& bindings)
+inline vk::DescriptorSetLayout createDescriptorSetLayout(vk::Device const& device, std::vector<vk::DescriptorSetLayoutBinding> const& bindings)
 {
     std::vector<vk::DescriptorBindingFlags> flags;
     std::transform(bindings.begin(), bindings.end(), std::back_inserter(flags),
@@ -114,11 +112,10 @@ inline auto createDescriptorSetLayout(Device const& device, std::vector<vk::Desc
 
     auto layout = device.createDescriptorSetLayout(layout_info);
 
-    return std::move(layout.value());
+    return layout.value;
 }
 
-template<typename Device>
-inline auto createSets(Device const& device, vk::DescriptorPool const& pool, vk::DescriptorSetLayout const& layout,
+inline auto createSets(vk::Device const& device, vk::DescriptorPool const& pool, vk::DescriptorSetLayout const& layout,
                        std::vector<vk::DescriptorSetLayoutBinding> const& layout_bindings)
 {
     std::vector<vk::DescriptorSetLayout> layouts(2, layout);
@@ -150,8 +147,8 @@ inline auto createSets(Device const& device, vk::DescriptorPool const& pool, vk:
     return allocate_sets.value;
 }
 
-template<typename UniformObject, typename UniformBuffer, typename Device>
-inline void updateUniformBuffer(Device const& device, std::vector<std::unique_ptr<UniformBuffer>> const& uniform_buffer,
+template<typename UniformObject, typename UniformBuffer>
+inline void updateUniformBuffer(vk::Device const& device, std::vector<std::unique_ptr<UniformBuffer>> const& uniform_buffer,
         std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding,
         uint32_t size)
 {
@@ -177,8 +174,13 @@ inline void updateUniformBuffer(Device const& device, std::vector<std::unique_pt
     }
 }
 
-template<typename Device>
-inline void updateImageSampler(Device const& device,
+inline void updateImageSampler(vk::Device const& device,
+        std::vector<std::unique_ptr<vk::raii::ImageView>> image_views, vk::raii::Sampler sampler,
+        std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding)
+{
+}
+
+inline void updateImageSampler(vk::Device const& device,
         std::vector<vk::ImageView> image_views, vk::Sampler sampler,
         std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding)
 {
@@ -210,9 +212,8 @@ inline void updateImageSampler(Device const& device,
         device.updateDescriptorSets(desc_writes, nullptr);
     }
 }
-template<typename Device>
-inline void updateImageSampler(Device const& device,
-        std::vector<Texture> const& textures,
+inline void updateImageSampler(vk::Device const& device,
+        std::vector<std::unique_ptr<Texture>> const& textures,
         std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding)
 {
     for (auto const& set : sets)
@@ -221,8 +222,8 @@ inline void updateImageSampler(Device const& device,
         std::transform(textures.begin(), textures.end(), std::back_inserter(image_info), [](auto const& texture) {
                 vk::DescriptorImageInfo image_info{};
                     image_info.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-                    image_info.imageView = texture.view;
-                    image_info.sampler = texture.sampler;
+                    image_info.imageView = texture->view;
+                    image_info.sampler = texture->sampler;
                     return image_info;
                 });
 
@@ -244,8 +245,7 @@ inline void updateImageSampler(Device const& device,
     }
 }
 
-template<typename Device>
-inline void updateImage(Device const& device,
+inline void updateImage(vk::Device const& device,
         vk::ImageView view,
         std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding)
 {

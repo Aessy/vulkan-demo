@@ -94,13 +94,14 @@ void loop(GLFWwindow* window)
 
 void recordCommandBuffer(RenderingState const& state, uint32_t image_index, Application& render_system)
 {
-    // Write all buffer data used by the render passes.
-    updateBufferObjects(render_system.scene, state.current_frame);
-
-    // Bind the depth buffer to the fog program texture sampler
     Application& app = render_system;
 
-    auto const& command_buffer = state.command_buffer[state.current_frame];
+    // Write all buffer data used by the render passes.
+    shadowPassWriteBuffers(render_system.scene, app.shadow_map, state.swap_chain.extent, state.current_frame);
+    sceneWriteBuffers(render_system.scene, state.current_frame);
+    postProcessingWriteBuffers(app.ppp, state.current_frame);
+
+    vk::raii::CommandBuffer const& command_buffer = state.command_buffer[state.current_frame];
 
     vk::CommandBufferBeginInfo begin_info{};
     begin_info.sType = vk::StructureType::eCommandBufferBeginInfo;
@@ -125,27 +126,31 @@ enum class DrawResult
 template<typename RenderingSystem>
 DrawResult drawFrame(RenderingState const& state, RenderingSystem& render_system)
 {
-    vk::raii::Device const& device = state.device;
     auto v = state.device.waitForFences({*state.semaphores.in_flight_fence[state.current_frame]}, true, ~0);
 
     ImGui::Render();
+    /*
     vk::AcquireNextImageInfoKHR info{};
     info.timeout = ~0;
     info.setSemaphore(*state.semaphores.image_available_semaphore[state.current_frame]);
     info.setSwapchain(state.swap_chain.swap_chain);
     auto next_image = device.acquireNextImage2KHR(info);
-
-    /*
-    auto next_image = vk::Device(state.device).acquireNextImageKHR(state.swap_chain.swap_chain, ~0,
-            state.semaphores.image_available_semaphore[state.current_frame], VK_NULL_HANDLE);
     */
-    if (   next_image.first == vk::Result::eErrorOutOfDateKHR
-        || next_image.first == vk::Result::eSuboptimalKHR)
+
+    vk::Device device = state.device;
+    vk::SwapchainKHR swapchain = state.swap_chain.swap_chain;
+    vk::Semaphore image_available_semaphore = *state.semaphores.image_available_semaphore[state.current_frame];
+    vk::Semaphore render_finish_sempahore = *state.semaphores.render_finished_semaphore[state.current_frame];
+
+    auto next_image = device.acquireNextImageKHR(swapchain, ~0, image_available_semaphore, VK_NULL_HANDLE);
+
+    if (   next_image.result == vk::Result::eErrorOutOfDateKHR
+        || next_image.result == vk::Result::eSuboptimalKHR)
     {
         return DrawResult::RESIZE;
     }
-    else if (   next_image.first != vk::Result::eSuccess
-             && next_image.first != vk::Result::eSuboptimalKHR)
+    else if (   next_image.result != vk::Result::eSuccess
+             && next_image.result != vk::Result::eSuboptimalKHR)
     {
         spdlog::warn("Failed to acquire swap chain image");
         return DrawResult::EXIT;
@@ -155,13 +160,11 @@ DrawResult drawFrame(RenderingState const& state, RenderingSystem& render_system
 
     state.command_buffer[state.current_frame].reset(static_cast<vk::CommandBufferResetFlags>(0));
 
-    auto image_index = next_image.second;
+    auto image_index = next_image.value;
     recordCommandBuffer(state, image_index, render_system);
 
     vk::PipelineStageFlags wait_stages[] = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
 
-    vk::Semaphore image_available_semaphore = *state.semaphores.image_available_semaphore[state.current_frame];
-    vk::Semaphore render_finish_sempahore = *state.semaphores.render_finished_semaphore[state.current_frame];
     vk::CommandBuffer cmd_buffer = state.command_buffer[state.current_frame];
 
     vk::SubmitInfo submit_info{};
@@ -388,6 +391,7 @@ int main()
     scene.world_buffer = createUniformBuffers<WorldBufferObject>(core);
     scene.model_buffer = createStorageBuffers<ModelBufferObject>(core, 10);
     scene.material_buffer = createStorageBuffers<MaterialShaderData>(core, 10);
+    scene.atmosphere_data = createUniformBuffers<Atmosphere>(core);
 
     auto shadow_map = createCascadedShadowMap(core, scene);
     auto scene_render_pass = createSceneRenderPass(core, textures, scene, shadow_map);

@@ -8,17 +8,23 @@
 #include "Scene.h"
 #include "RenderPass/SceneRenderPass.h"
 
+struct PostProcessingFramebuffer
+{
+    vk::raii::Framebuffer framebuffer;
+    DepthResources resources;
+};
+
 struct PostProcessing
 {
     vk::RenderPass render_pass;
-    std::vector<vk::Framebuffer> framebuffer;
+    std::vector<std::unique_ptr<PostProcessingFramebuffer>> framebuffer;
 
-    std::unique_ptr<Program> program;
+    Pipeline program;
 
-    vk::Sampler sampler;
+    vk::raii::Sampler sampler;
     
     std::vector<std::unique_ptr<ImageResource>> fog_buffer;
-    std::unique_ptr<Program> fog_compute_program;
+    Pipeline fog_compute_program;
 
     PostProcessingBufferObject buffer_object{};
     FogVolumeBufferObject fog_object{};
@@ -27,12 +33,14 @@ struct PostProcessing
     std::vector<std::unique_ptr<UniformBuffer>> post_processing_buffer;
 };
 
+void postProcessingWriteBuffers(PostProcessing& post_processing, int frame);
+
 PostProcessing createPostProcessing(RenderingState const& state,
                                     SceneRenderPass const& scene_render_pass,
                                     std::vector<std::unique_ptr<UniformBuffer>> const& world_buffer);
 
 void postProcessingRenderPass(RenderingState const& state,
                               PostProcessing& ppp,
-                              vk::CommandBuffer const& command_buffer,
+                              vk::raii::CommandBuffer const& command_buffer,
                               Scene const& scene,
                               size_t image_index);

@@ -7,13 +7,16 @@
 #include "Scene.h"
 #include "Renderer.h"
 
+#include "Pipelines/Pipeline.h"
+
 #include "imgui_impl_vulkan.h"
 
 #include <vulkan/vulkan_enums.hpp>
 #include <imgui.h>
 #include <spdlog/spdlog.h>
+#include <vulkan/vulkan_raii.hpp>
 
-static std::unique_ptr<Program> createPostProcessingProgram(RenderingState const& state, vk::RenderPass const& render_pass)
+static Pipeline createPostProcessingProgram(RenderingState const& state, vk::RenderPass const& render_pass)
 {
     layer_types::Program program_desc;
     program_desc.vertex_shader= {{"./shaders/post_processing_vert.spv"}};
@@ -93,11 +96,16 @@ static std::unique_ptr<Program> createPostProcessingProgram(RenderingState const
 
     // Make the program like this for now. Update the descriptor set each frame
     // with the correct color attachment.
-    auto pipeline_input = createDefaultPipelineInput();
-    return createProgram(program_desc, state, {}, render_pass, "Post Processing", pipeline_input);
+
+    auto pipeline_data = createPipelineData(state, program_desc);
+    auto [pipeline, pipeline_layout] = createPipeline(pipeline_data, state.swap_chain.extent, state.device, render_pass, state.msaa);
+
+    auto pipeline_finish = bindPipeline(pipeline_data, pipeline, pipeline_layout);
+
+    return pipeline_finish;
 }
 
-static std::unique_ptr<Program> createComputeFogProgram(RenderingState const& state, vk::RenderPass const& render_pass)
+static Pipeline createComputeFogProgram(RenderingState const& state, vk::RenderPass const& render_pass)
 {
     layer_types::Program program_desc;
     program_desc.compute_shader = {("./shaders/fog.spv")};
@@ -138,7 +146,10 @@ static std::unique_ptr<Program> createComputeFogProgram(RenderingState const& st
         }
     }});
 
-    return createProgram(program_desc, state, {}, render_pass, "Compute Fog", {});
+    auto pipeline_data = createPipelineData(state, program_desc);
+    auto [pipeline, pipeline_layout] = createComputePipeline2(pipeline_data, state.device);
+
+    return bindPipeline(pipeline_data, pipeline, pipeline_layout);
 }
 
 inline void postProcessingUpdateDescriptorSets(RenderingState const& state,
@@ -154,89 +165,73 @@ static void postProcessingDraw(vk::CommandBuffer const& command_buffer,
     auto& program = ppp.program;
 
     command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
-                                ppp.program->program.pipeline[0]);
+                                ppp.program.pipeline);
 
     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                            program->program.pipeline_layout,
+                            program.pipeline_layout,
                             0,
                             1,
-                            &program->program.descriptor_sets[0].set[frame],
-                            0,
-                            nullptr);
-
-
-    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                            program->program.pipeline_layout,
-                            1,
-                            1,
-                            &program->program.descriptor_sets[1].set[frame],
+                            &program.descriptor_sets[0].set[frame],
                             0,
                             nullptr);
 
+
     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                            program->program.pipeline_layout,
+                            program.pipeline_layout,
+                            1,
+                            1,
+                            &program.descriptor_sets[1].set[frame],
+                            0,
+                            nullptr);
+
+    command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                            program.pipeline_layout,
                             2,
                             1,
-                            &program->program.descriptor_sets[2].set[frame],
+                            &program.descriptor_sets[2].set[frame],
                             0,
                             nullptr);
 
     uint32_t offset{};
     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                            program->program.pipeline_layout,
+                            program.pipeline_layout,
                             3,
                             1,
-                            &program->program.descriptor_sets[3].set[frame],
+                            &program.descriptor_sets[3].set[frame],
                             1,
                             &offset);
 
     offset = 0;
     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                            program->program.pipeline_layout,
+                            program.pipeline_layout,
                             4,
                             1,
-                            &program->program.descriptor_sets[4].set[frame],
+                            &program.descriptor_sets[4].set[frame],
                             1,
                             &offset);
     offset = 0;
     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                            program->program.pipeline_layout,
+                            program.pipeline_layout,
                             5,
                             1,
-                            &program->program.descriptor_sets[5].set[frame],
+                            &program.descriptor_sets[5].set[frame],
                             1,
                             &offset);
-
-    for (auto& buffer : program->buffers)
-    {
-        if (auto* world = std::get_if<buffer_types::World>(&buffer))
-        {
-            auto ubo = createWorldBufferObject(scene);
-            writeBuffer(world->buffers[frame], ubo);
-        }
-        else if (auto* fog = std::get_if<buffer_types::FogVolume>(&buffer))
-        {
-            writeBuffer(fog->buffers[frame], scene.fog);
-        }
-        else if (auto* post_processing_data = std::get_if<buffer_types::PostProcessingData>(&buffer))
-        {
-            writeBuffer(post_processing_data->buffers[frame], ppp.buffer_object);
-        }
-    }
 
     command_buffer.draw(6,1,0,0);
 }
 
 void postProcessingRenderPass(RenderingState const& state,
                               PostProcessing& ppp,
-                              vk::CommandBuffer const& command_buffer,
+                              vk::raii::CommandBuffer const& command_buffer,
                               Scene const& scene,
                               size_t image_index)
 {
+    vk::Framebuffer framebuffer = ppp.framebuffer[image_index]->framebuffer;
     vk::RenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
     render_pass_info.setRenderPass(ppp.render_pass);
-    render_pass_info.setFramebuffer(ppp.framebuffer[image_index]);
+    render_pass_info.setFramebuffer(framebuffer);
     render_pass_info.renderArea.offset = vk::Offset2D(0,0);
     render_pass_info.renderArea.extent = state.swap_chain.extent;
 
@@ -275,16 +270,18 @@ void postProcessingRenderPass(RenderingState const& state,
 
     postProcessingDraw(command_buffer, scene, ppp, state.current_frame);
 
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), command_buffer);
+    vk::CommandBuffer v = command_buffer;
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), v);
     command_buffer.endRenderPass();
 
     transitionImageLayout(command_buffer, ppp.fog_buffer[state.current_frame]->image, vk::Format::eR16Sfloat, vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eGeneral, 1);
 }
 
-static std::vector<vk::Framebuffer> createPostProcessingFramebuffers(RenderingState const& state,
+static std::vector<std::unique_ptr<PostProcessingFramebuffer>> createPostProcessingFramebuffers(RenderingState const& state,
                                                                      vk::RenderPass const& render_pass)
 {
-    std::vector<vk::Framebuffer> framebuffers;
+    std::vector<std::unique_ptr<PostProcessingFramebuffer>> framebuffers;
     for (auto const& swap_chain_image_view : state.image_views)
     {
         auto color_resources = createColorResources(state, state.swap_chain.swap_chain_image_format);
@@ -299,7 +296,13 @@ static std::vector<vk::Framebuffer> createPostProcessingFramebuffers(RenderingSt
         framebuffer_info.layers = 1;
         
         auto result = state.device.createFramebuffer(framebuffer_info);
-        framebuffers.push_back(result.value());
+
+        PostProcessingFramebuffer framebuffer {
+            .framebuffer = std::move(result.value()),
+            .resources = std::move(color_resources)
+        };
+
+        framebuffers.push_back(std::make_unique<PostProcessingFramebuffer>(std::move(framebuffer)));
     }
 
     return framebuffers;
@@ -366,9 +369,9 @@ static vk::RenderPass createPostProcessingRenderPass(vk::Format const swap_chain
     return render_pass.value;
 }
 
-void createNoiseTexture(RenderingState const& state, Program const& program)
+/*
+Texture createNoiseTexture(RenderingState const& state, Pipeline const& program, vk::Sampler sampler)
 {
-    auto sampler = createTextureSampler(state, false);
     auto texture = createTexture(state,
                                  "./textures/blue_noise.png",
                                  TextureType::Map,
@@ -377,10 +380,12 @@ void createNoiseTexture(RenderingState const& state, Program const& program)
 
     for (int i = 0; i < 2; ++i)
     {
-        updateImageSampler(state.device, {texture}, {program.program.descriptor_sets[1].set[i]},
-                                    program.program.descriptor_sets[1].layout_bindings[0]);
+        updateImageSampler(state.device, texture, program.descriptor_sets[1].set[i],
+                                    program.descriptor_sets[1].layout_bindings[0]);
     }
+    return texture;
 }
+*/
 
 PostProcessing createPostProcessing(RenderingState const& state,
                                     SceneRenderPass const& scene_render_pass,
@@ -408,8 +413,8 @@ PostProcessing createPostProcessing(RenderingState const& state,
     for (int i = 0; i < 2; ++i)
     {
         vk::ImageView color_resource = scene_render_pass.framebuffers[i]->color_resource.depth_image_view;
-        auto color_res_set = program->program.descriptor_sets[0].set[i];
-        auto color_res_binding = program->program.descriptor_sets[0].layout_bindings[0];
+        auto color_res_set = program.descriptor_sets[0].set[i];
+        auto color_res_binding = program.descriptor_sets[0].layout_bindings[0];
         updateImageSampler(state.device,
                         {color_resource},
                         sampler,
@@ -417,8 +422,8 @@ PostProcessing createPostProcessing(RenderingState const& state,
                         color_res_binding);
 
         vk::ImageView fog_image_view = fog_buffer[i]->image_view;
-        auto fog_set= program->program.descriptor_sets[1].set[i];
-        auto fog_binding = program->program.descriptor_sets[1].layout_bindings[0];
+        auto fog_set= program.descriptor_sets[1].set[i];
+        auto fog_binding = program.descriptor_sets[1].layout_bindings[0];
         updateImageSampler(state.device,
                         {fog_image_view}, 
                         sampler,
@@ -426,8 +431,8 @@ PostProcessing createPostProcessing(RenderingState const& state,
                         fog_binding);
 
         vk::ImageView depth_resource = scene_render_pass.framebuffers[i]->depth_resolve_resource.depth_image_view;
-        auto depth_res_set = program->program.descriptor_sets[2].set[i];
-        auto depth_res_binding = program->program.descriptor_sets[2].layout_bindings[0];
+        auto depth_res_set = program.descriptor_sets[2].set[i];
+        auto depth_res_binding = program.descriptor_sets[2].layout_bindings[0];
         updateImageSampler(state.device,
                         {depth_resource},
                         sampler,
@@ -437,54 +442,60 @@ PostProcessing createPostProcessing(RenderingState const& state,
 
     updateUniformBuffer<WorldBufferObject>(state.device,
                                            world_buffer,
-                                           program->program.descriptor_sets[3].set,
-                                           program->program.descriptor_sets[3].layout_bindings[0],
+                                           program.descriptor_sets[3].set,
+                                           program.descriptor_sets[3].layout_bindings[0],
                                            1);
 
     updateUniformBuffer<FogVolumeBufferObject>(state.device,
                                            fog_data_buffer,
-                                           program->program.descriptor_sets[4].set,
-                                           program->program.descriptor_sets[4].layout_bindings[0],
+                                           program.descriptor_sets[4].set,
+                                           program.descriptor_sets[4].layout_bindings[0],
                                            1);
 
     updateUniformBuffer<PostProcessingBufferObject>(state.device,
                                                     post_processing_buffer,
-                                                    program->program.descriptor_sets[5].set,
-                                                    program->program.descriptor_sets[5].layout_bindings[0],
+                                                    program.descriptor_sets[5].set,
+                                                    program.descriptor_sets[5].layout_bindings[0],
                                                     1);
 
     for (int i = 0; i < 2; ++i)
     {
         vk::ImageView fog_image_view = fog_buffer[i]->image_view;
         // Update the 3D texture descriptor set
-        auto desc_set = fog_compute_program->program.descriptor_sets[0].set[i];
-        auto desc_binding = fog_compute_program->program.descriptor_sets[0].layout_bindings[0];
+        auto desc_set = fog_compute_program.descriptor_sets[0].set[i];
+        auto desc_binding = fog_compute_program.descriptor_sets[0].layout_bindings[0];
         updateImage(state.device, fog_image_view, {desc_set}, desc_binding);
     }
 
     updateUniformBuffer<WorldBufferObject>(state.device,
                                            world_buffer,
-                                           fog_compute_program->program.descriptor_sets[1].set,
-                                           fog_compute_program->program.descriptor_sets[1].layout_bindings[0],
+                                           fog_compute_program.descriptor_sets[1].set,
+                                           fog_compute_program.descriptor_sets[1].layout_bindings[0],
                                            1);
 
     updateUniformBuffer<FogVolumeBufferObject>(state.device,
                                            fog_data_buffer,
-                                           fog_compute_program->program.descriptor_sets[2].set,
-                                           fog_compute_program->program.descriptor_sets[2].layout_bindings[0],
+                                           fog_compute_program.descriptor_sets[2].set,
+                                           fog_compute_program.descriptor_sets[2].layout_bindings[0],
                                            1);
     
 
     PostProcessing pp {
         .render_pass = std::move(render_pass),
         .framebuffer = std::move(framebuffer),
+        .program = std::move(program),
         .sampler = std::move(sampler),
         .fog_buffer = std::move(fog_buffer),
         .fog_compute_program = std::move(program),
         .fog_data_buffer = std::move(fog_data_buffer),
         .post_processing_buffer = std::move(post_processing_buffer)
     };
-    // createNoiseTexture(state, *pp.fog_compute_program.get());
 
     return pp;
+}
+
+void postProcessingWriteBuffers(PostProcessing& post_processing, int frame)
+{
+    writeBuffer(*post_processing.post_processing_buffer[frame], post_processing.buffer_object);
+    writeBuffer(*post_processing.fog_data_buffer[frame], post_processing.fog_object);
 }

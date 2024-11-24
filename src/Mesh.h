@@ -32,12 +32,13 @@ struct Meshes
             .name = name,
             .model_id = model.id,
             .vertex_buffer = createVertexBuffer(state, model.vertices),
-            .index_buffer = createIndexBuffer(state, model.indices)
+            .index_buffer = createIndexBuffer(state, model.indices),
+            .indices_size = model.indices.size()
         };
 
         meshes.insert({mesh.id, std::move(mesh)});
 
-        return model.id;
+        return mesh.id;
     }
 
     bool loadMesh(RenderingState const& state, std::vector<Vertex> const& vertices, std::vector<uint32_t> const& indices, std::string const& name = "<noname>")
@@ -45,7 +46,8 @@ struct Meshes
         DrawableMesh mesh{
             .name = name,
             .vertex_buffer = createVertexBuffer(state, vertices),
-            .index_buffer = createIndexBuffer(state, indices)
+            .index_buffer = createIndexBuffer(state, indices),
+            .indices_size = indices.size()
         };
 
         auto id = mesh.id;

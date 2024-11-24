@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Model.h"
 #include "RenderPass/ShadowMap.h"
 #include "VulkanRenderSystem.h"
 

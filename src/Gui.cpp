@@ -460,8 +460,8 @@ void showObject(Object& obj, Application& app)
 
         if (has_displacement)
         {
-            ComboBoxName(app.textures.textures, "Displacement texture", i.displacement_map_texture, [](auto& text){return text.name.c_str();});
-            ComboBoxName(app.textures.textures, "Normal map texture", i.normal_map_texture, [](auto& text){return text.name.c_str();});
+            ComboBoxName(app.textures.textures, "Displacement texture", i.displacement_map_texture, [](auto& text){return text->name.c_str();});
+            ComboBoxName(app.textures.textures, "Normal map texture", i.normal_map_texture, [](auto& text){return text->name.c_str();});
             ImGui::InputFloat("Displacement Y", &i.displacement_y, 0.5f, 2.0f);
         }
 
@@ -491,7 +491,7 @@ void showObject(Object& obj, Application& app)
             }
             if (has_roughness)
             {
-                ComboBoxName(app.textures.textures, "Roughness textures", i.roughness_texture, [](auto& text){return text.name.c_str();});
+                ComboBoxName(app.textures.textures, "Roughness textures", i.roughness_texture, [](auto& text){return text->name.c_str();});
             }
             else
             {
@@ -516,7 +516,7 @@ void showObject(Object& obj, Application& app)
             }
             if (has_metalness)
             {
-                ComboBoxName(app.textures.textures, "Metallic textures", i.metallic_texture, [](auto& text){return text.name.c_str();});
+                ComboBoxName(app.textures.textures, "Metallic textures", i.metallic_texture, [](auto& text){return text->name.c_str();});
             }
             else
             {
@@ -540,7 +540,7 @@ void showObject(Object& obj, Application& app)
             }
             if (has_ao)
             {
-                ComboBoxName(app.textures.textures, "AO textures",i.ao_texture, [](auto& text){return text.name.c_str();});
+                ComboBoxName(app.textures.textures, "AO textures",i.ao_texture, [](auto& text){return text->name.c_str();});
             }
             else
             {
@@ -549,8 +549,8 @@ void showObject(Object& obj, Application& app)
             }
         }
 
-        ComboBoxName(app.textures.textures, "Color texture", i.base_color_texture, [](auto& text){return text.name.c_str();});
-        ComboBoxName(app.textures.textures, "Normal texture", i.base_color_normal_texture, [](auto& text){return text.name.c_str();});
+        ComboBoxName(app.textures.textures, "Color texture", i.base_color_texture, [](auto& text){return text->name.c_str();});
+        ComboBoxName(app.textures.textures, "Normal texture", i.base_color_normal_texture, [](auto& text){return text->name.c_str();});
         ImGui::DragFloat("Textures scale", &i.scaling_factor, 0.1, 0.1, 10.0f);
         ImGui::EndPopup();
     }
@@ -688,7 +688,7 @@ void showTextures(Application& application)
 
     for (auto& texture : application.textures.textures)
     {
-        ImGui::Text("%s", texture.name.c_str());
+        ImGui::Text("%s", texture->name.c_str());
     }
 
     ImGui::EndChild();

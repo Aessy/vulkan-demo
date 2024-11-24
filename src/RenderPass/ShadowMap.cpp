@@ -143,6 +143,17 @@ std::vector<glm::mat4> getLightSpaceMatrices(vk::Extent2D const& size, Camera co
     return matrices;
 }
 
+void shadowPassWriteBuffers(Scene const& scene, CascadedShadowMap& shadow_map, vk::Extent2D const& extent, int frame)
+{
+    glm::vec3 light_dir = glm::normalize(scene.light.sun_pos);
+    auto const light_space_matrix = getLightSpaceMatrices(extent, scene.camera, light_dir);
+
+    for (int i = 0; i < light_space_matrix.size(); ++i)
+    {
+        writeBuffer(*shadow_map.cascaded_shadow_map_buffer[frame], light_space_matrix[i], i);
+    }
+}
+
 void drawShadowMap(vk::CommandBuffer const& command_buffer,
                    unsigned int cascade,
                    Scene const& scene,
@@ -196,10 +207,8 @@ void drawShadowMap(vk::CommandBuffer const& command_buffer,
 
 }
 
-void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_map, Scene const& scene, vk::CommandBuffer const& command_buffer)
+void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_map, Scene const& scene, vk::raii::CommandBuffer const& command_buffer)
 {
-    glm::vec3 light_dir = glm::normalize(scene.light.sun_pos);
-    auto const light_space_matrix = getLightSpaceMatrices(state.swap_chain.extent, scene.camera, light_dir);
 
     for (int i = 0; i < shadow_map.framebuffer_data.framebuffers[state.current_frame].size(); ++i)
     {
@@ -269,6 +278,7 @@ static ShadowMapFramebuffer createCascadedShadowmapFramebuffers(RenderingState c
             auto result = state.device.createFramebuffer(framebuffer_info);
 
             data.framebuffers[i].push_back(std::make_unique<vk::raii::Framebuffer>(std::move(result.value())));
+            data.attachment_image_views[i].push_back(std::make_unique<vk::raii::ImageView>(std::move(image_view)));
         }
         
         auto image_view_array = createImageView(state.device, depth_image.depth_image, getDepthFormat(),
@@ -276,7 +286,7 @@ static ShadowMapFramebuffer createCascadedShadowmapFramebuffers(RenderingState c
                                                 num_cascades, 0);
 
         // Store the image and image view to the array for use in other render pass steps.
-        data.cascade_images.push_back(std::make_unique<vk::raii::Image>(std::move(depth_image.depth_image)));
+        data.cascade_images.push_back(std::make_unique<DepthResources>(std::move(depth_image)));
         data.image_views.push_back(std::make_unique<vk::raii::ImageView>(std::move(image_view_array)));
     }
 
@@ -503,7 +513,7 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene cons
     shadow_map.pipeline = pipeline;
 
     updateUniformBuffer<CascadedShadowMapBufferObject>(core.device,
-                                                       scene.world_buffer,
+                                                       shadow_map.cascaded_shadow_map_buffer,
                                                        pipeline.descriptor_sets[0].set,
                                                        pipeline.descriptor_sets[0].layout_bindings[0],
                                                        1);
@@ -512,7 +522,7 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene cons
                                            scene.world_buffer,
                                            pipeline.descriptor_sets[1].set,
                                            pipeline.descriptor_sets[1].layout_bindings[0],
-                                           10);
+                                           1);
 
     updateUniformBuffer<ModelBufferObject>(core.device,
                                            scene.model_buffer,

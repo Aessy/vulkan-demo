@@ -24,7 +24,7 @@ struct ObjectData
     uint texture_index;
 };
 
-layout(std140,set = 2, binding = 0) readonly buffer ObjectBuffer{
+layout(std140,set = 1, binding = 0) readonly buffer ObjectBuffer{
     ObjectData objects[];
 } ubo2;
 

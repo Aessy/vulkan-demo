@@ -18,6 +18,7 @@ set(SRC src/VulkanRenderSystem.cpp
         src/RenderPass/SceneRenderPass.cpp
         src/Pipelines/GeneralPurpuse.cpp
         src/Pipelines/Skybox.cpp
+        src/Pipelines/Pipeline.cpp
         src/imgui_impl_vulkan.cpp
         src/imgui_impl_glfw.cpp
         )

@@ -4,11 +4,41 @@
 
 #include <tuple>
 
+std::tuple<vk::Pipeline, vk::PipelineLayout> createComputePipeline2(PipelineData const& pipeline_data, vk::Device const& device)
+{
+    vk::PipelineLayoutCreateInfo pipeline_layout_create_info;
+
+    pipeline_layout_create_info.sType = vk::StructureType::ePipelineLayoutCreateInfo;
+    pipeline_layout_create_info.setLayoutCount = 1;
+    pipeline_layout_create_info.setSetLayouts(pipeline_data.descriptor_set_layouts);
+    auto result = device.createPipelineLayout(pipeline_layout_create_info);
+    checkResult(result.result);
+    auto pipeline_layout = result.value;
+
+    vk::PipelineShaderStageCreateInfo stage_info;
+    stage_info.sType = vk::StructureType::ePipelineShaderStageCreateInfo;
+    stage_info.stage = pipeline_data.shader_stages[0].stage;
+    stage_info.module = pipeline_data.shader_stages[0].module;
+    stage_info.pName = "main";
+
+    vk::ComputePipelineCreateInfo pipeline_create_info{};
+    pipeline_create_info.sType = vk::StructureType::eComputePipelineCreateInfo;
+    pipeline_create_info.stage = stage_info;
+    pipeline_create_info.setLayout(pipeline_layout);
+
+    auto pipeline_result = device.createComputePipelines(VK_NULL_HANDLE, pipeline_create_info);
+    checkResult(pipeline_result.result);
+
+    auto pipeline = pipeline_result.value;
+
+    return {pipeline[0], pipeline_layout};
+}
 std::tuple<vk::Pipeline, vk::PipelineLayout> createPipeline(PipelineData const& pipeline_data,
                                                         vk::Extent2D const& swap_chain_extent,
                                                         vk::Device const& device,
                                                         vk::RenderPass const& render_pass,
-                                                        vk::SampleCountFlagBits msaa)
+                                                        vk::SampleCountFlagBits msaa,
+                                                        GraphicsPipelineInput input)
 {
     std::string path;
     std::vector<vk::PipelineShaderStageCreateInfo> stages;

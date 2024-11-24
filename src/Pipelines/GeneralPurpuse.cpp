@@ -293,8 +293,8 @@ Pipeline createGeneralPurposePipeline(RenderingState const& state,
                                            5);
     // Update image samplers for the shadow map array
     auto sampler = createTextureSampler(state, 1);
-    updateImageSampler(state.device, {*shadow_map_images[0]}, sampler, {pipeline_finish.descriptor_sets[5].set[0]}, pipeline_finish.descriptor_sets[5].layout_bindings[0]);
-    updateImageSampler(state.device, {*shadow_map_images[1]}, sampler, {pipeline_finish.descriptor_sets[5].set[1]}, pipeline_finish.descriptor_sets[5].layout_bindings[0]);
+    updateImageSampler(state.device, {*shadow_map_images[0]}, textures.sampler_no_mip_map, {pipeline_finish.descriptor_sets[5].set[0]}, pipeline_finish.descriptor_sets[5].layout_bindings[0]);
+    updateImageSampler(state.device, {*shadow_map_images[1]}, textures.sampler_no_mip_map, {pipeline_finish.descriptor_sets[5].set[1]}, pipeline_finish.descriptor_sets[5].layout_bindings[0]);
 
     return pipeline_finish;
 }

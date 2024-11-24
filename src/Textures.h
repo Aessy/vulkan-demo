@@ -9,7 +9,9 @@ struct Texture
     vk::raii::Image image;
     vk::raii::DeviceMemory memory;
     vk::raii::ImageView view;
-    vk::raii::Sampler sampler;
+    
+    // Weak reference to a sampler
+    vk::Sampler sampler;
 
     std::string const name;
 
@@ -18,7 +20,9 @@ struct Texture
 
 struct Textures
 {
-    std::vector<Texture> textures;
+    vk::raii::Sampler sampler_mip_map;
+    vk::raii::Sampler sampler_no_mip_map;
+    std::vector<std::unique_ptr<Texture>> textures;
 };
 
 enum class TextureType
@@ -34,5 +38,10 @@ struct TextureInput
     vk::Format format;
 };
 
-Textures createTextures(RenderingState const& core, std::vector<TextureInput> const& paths);
-Texture createTexture(RenderingState const& state, std::string const& path, TextureType type, vk::Format format, vk::Sampler sampler);
+Textures createTextures(RenderingState const& core,
+                        std::vector<TextureInput> const& paths);
+std::unique_ptr<Texture> createTexture(RenderingState const& state,
+                                       std::string const& path,
+                                       TextureType type,
+                                       vk::Format format,
+                                       vk::Sampler sampler);

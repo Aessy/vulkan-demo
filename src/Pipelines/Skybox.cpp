@@ -1,4 +1,5 @@
 
+#include "Model.h"
 #include "VulkanRenderSystem.h"
 #include "Program.h"
 
@@ -239,10 +240,10 @@ Pipeline createSkyboxPipeline(RenderingState const& state,
                                            pipeline_finish.descriptor_sets[1].layout_bindings[0],
                                            10);
 
-    updateUniformBuffer<ModelBufferObject>(state.device,
-                                           atmosphere_data,
-                                           pipeline_finish.descriptor_sets[2].set,
-                                           pipeline_finish.descriptor_sets[2].layout_bindings[0],
-                                           1);
+    updateUniformBuffer<Atmosphere>(state.device,
+                                    atmosphere_data,
+                                    pipeline_finish.descriptor_sets[2].set,
+                                    pipeline_finish.descriptor_sets[2].layout_bindings[0],
+                                    1);
     return pipeline_finish;
 }

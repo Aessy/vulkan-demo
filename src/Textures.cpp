@@ -12,7 +12,7 @@
 
 void generateMipmaps(RenderingState const& state, vk::Image const& image, int32_t width, int32_t height, uint32_t mip_levels)
 {
-    vk::CommandBuffer cmd_buffer = beginSingleTimeCommands(state);
+    vk::raii::CommandBuffer cmd_buffer = beginSingleTimeCommands(state);
 
     vk::ImageMemoryBarrier barrier{};
     barrier.sType = vk::StructureType::eImageMemoryBarrier;
@@ -133,7 +133,7 @@ static std::tuple<vk::raii::Image, vk::raii::DeviceMemory, uint32_t> createTextu
     return {std::move(image), std::move(image_device_memory), mip_levels};
 }
 
-Texture createTexture(RenderingState const& state, std::string const& path, TextureType type, vk::Format format, vk::Sampler sampler)
+std::unique_ptr<Texture> createTexture(RenderingState const& state, std::string const& path, TextureType type, vk::Format format, vk::Sampler sampler)
 {
     if (type == TextureType::MipMap)
     {
@@ -142,13 +142,13 @@ Texture createTexture(RenderingState const& state, std::string const& path, Text
 
         auto file_name = std::filesystem::path(path).filename().string();
 
-        return Texture {
-            .image = std::move(image),
-            .memory = std::move(mem),
-            .view = std::move(image_view),
-            .sampler = std::move(sampler),
-            .name = file_name
-        };
+        return std::make_unique<Texture>(
+            std::move(image),
+            std::move(mem),
+            std::move(image_view),
+            sampler,
+            file_name);
+        
     }
     else
     {
@@ -167,27 +167,26 @@ Texture createTexture(RenderingState const& state, std::string const& path, Text
 
         auto file_name = std::filesystem::path(path).filename().string();
 
-        return Texture {
-            .image = image,
-            .memory = mem,
-            .view = image_view,
-            .sampler = sampler,
-            .name = file_name
-        };
+        return std::make_unique<Texture>(
+            std::move(image),
+            std::move(mem),
+            std::move(image_view),
+            sampler,
+            file_name);
 
     }
 }
 
 Textures createTextures(RenderingState const& core, std::vector<TextureInput> const& paths)
 {
-    auto mip_map_sampler = createTextureSampler(core, true);
-    auto default_sampler = createTextureSampler(core, false);
+    Textures textures{.sampler_mip_map = createTextureSampler(core, true),
+                      .sampler_no_mip_map = createTextureSampler(core, false)};
 
-    Textures textures {{}};
     for (auto const& path : paths)
     {
+        vk::Sampler sampler = path.texture_type == TextureType::MipMap ? textures.sampler_mip_map: textures.sampler_no_mip_map;
         textures.textures.push_back(createTexture(core, path.path, path.texture_type,
-                                            path.format, path.texture_type == TextureType::MipMap ? mip_map_sampler : default_sampler));
+                                            path.format, sampler));
     }
 
     return textures;
