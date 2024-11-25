@@ -437,7 +437,7 @@ int main()
                                 | MaterialFeatureFlag::AlbedoMap
                                 | MaterialFeatureFlag::NormalMap,
             .sampling_mode = SamplingMode::TriplanarSampling,
-            .shade_mode = ReflectionShadeMode::Pbr,
+            .shade_mode = ReflectionShadeMode::Phong,
             .displacement_map_texture = 10,
             .normal_map_texture = 11,
             .displacement_y = 64.0f,
@@ -462,7 +462,7 @@ int main()
                                 | MaterialFeatureFlag::AlbedoMap
                                 | MaterialFeatureFlag::NormalMap,
             .sampling_mode = SamplingMode::TriplanarSampling,
-            .shade_mode = ReflectionShadeMode::Pbr,
+            .shade_mode = ReflectionShadeMode::Phong,
             .normal_map_texture = 3,
             .base_color_texture = 17,
             .base_color_normal_texture = 18,

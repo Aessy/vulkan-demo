@@ -176,7 +176,8 @@ Pipeline createGeneralPurposePipeline(RenderingState const& state,
                                       std::vector<std::unique_ptr<UniformBuffer>> const& model_buffer,
                                       std::vector<std::unique_ptr<UniformBuffer>> const& material_buffer,
                                       std::vector<std::unique_ptr<UniformBuffer>> const& shadow_map_buffer,
-                                      std::vector<std::unique_ptr<vk::raii::ImageView>> const& shadow_map_images)
+                                      std::vector<std::unique_ptr<vk::raii::ImageView>> const& shadow_map_images,
+                                      std::vector<std::unique_ptr<UniformBuffer>> const& shadow_map_distances)
 {
     layer_types::Program program_desc;
     program_desc.fragment_shader = {{"./shaders/triplanar_frag.spv"}};
@@ -262,6 +263,19 @@ Pipeline createGeneralPurposePipeline(RenderingState const& state,
             .fragment = true,
         }
     }});
+
+    program_desc.buffers.push_back({layer_types::Buffer{
+        .name = {{"cascade distances"}},
+        .size = 4,
+        .binding = layer_types::Binding {
+            .name = {{"model matrices"}},
+            .binding = 0,
+            .type = layer_types::BindingType::Uniform,
+            .size = 1,
+            .fragment = true
+        }
+    }});
+
     auto const pipeline_data = createPipelineData(state, program_desc);
     auto const [pipeline, pipeline_layout] = createPipeline(pipeline_data, state.swap_chain.extent, state.device, render_pass, state.msaa);
     auto pipeline_finish = bindPipeline(pipeline_data, pipeline, pipeline_layout);
@@ -295,6 +309,12 @@ Pipeline createGeneralPurposePipeline(RenderingState const& state,
     auto sampler = createTextureSampler(state, 1);
     updateImageSampler(state.device, {*shadow_map_images[0]}, textures.sampler_no_mip_map, {pipeline_finish.descriptor_sets[5].set[0]}, pipeline_finish.descriptor_sets[5].layout_bindings[0]);
     updateImageSampler(state.device, {*shadow_map_images[1]}, textures.sampler_no_mip_map, {pipeline_finish.descriptor_sets[5].set[1]}, pipeline_finish.descriptor_sets[5].layout_bindings[0]);
+
+    updateUniformBuffer<float>(state.device,
+                               shadow_map_distances,
+                               pipeline_finish.descriptor_sets[6].set,
+                               pipeline_finish.descriptor_sets[6].layout_bindings[0],
+                               4);
 
     return pipeline_finish;
 }

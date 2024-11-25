@@ -93,7 +93,10 @@ inline void sceneWriteBuffers(Scene const& scene, uint32_t frame)
 {
     WorldBufferObject ubo = createWorldBufferObject(scene);
     writeBuffer(*scene.world_buffer[frame], ubo);
+    writeBuffer(*scene.atmosphere_data[frame], scene.atmosphere);
 
+    // Need to add material and model matrix data in the buffers the same order
+    // the objects will be rendered.
     int index = 0;
     for (auto const& o : scene.programs)
     {
@@ -108,7 +111,4 @@ inline void sceneWriteBuffers(Scene const& scene, uint32_t frame)
             ++index;
         }
     }
-
-
-    writeBuffer(*scene.atmosphere_data[frame], scene.atmosphere);
 }

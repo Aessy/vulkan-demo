@@ -71,6 +71,19 @@ layout(std430, set = 3, binding = 0) readonly buffer MaterialBufferObject{
     MaterialData objects[];
 } materials;
 
+layout(set = 4, binding = 0) uniform CascadeMatrices
+{
+    mat4 cascade_matrices[5];
+} cascade_matrices;
+
+layout(set = 5, binding = 0) uniform sampler2D shadow_maps[5];
+
+
+layout(set = 6, binding = 0) uniform CascadeDistances
+{
+    uniform float distance[4];
+} cascade_distances;
+
 layout(location = 0)  in vec3 position_worldspace;
 layout(location = 1)  in vec3 in_normal;
 layout(location = 2)  in mat3 in_TBN;
@@ -81,6 +94,69 @@ layout(location = 10) in flat int instance;
 layout(location = 0) out vec4 out_color;
 
 MaterialData material;
+
+const float distances[4] = float[](20.0, 40.0, 100.0, 500.0);
+
+float shadowCalculation(vec3 normal)
+{
+    vec4 frag_pos_view_space = world.view * vec4(position_worldspace, 1.0);
+    float depth_value = abs(frag_pos_view_space.z);
+
+    int layer = -1;
+    for (int i = 0; i < 4; ++i)
+    {
+        if (depth_value < distances[i])
+        {
+            layer = i;
+            break;
+        }
+    }
+    if (layer == -1)
+    {
+        layer = 4;
+    }
+
+    vec4 frag_pos_light_space = cascade_matrices.cascade_matrices[layer] * vec4(position_worldspace, 1.0);
+
+    vec3 proj_coords = frag_pos_light_space.xyz / frag_pos_light_space.w;
+    proj_coords = proj_coords * 0.5 + 0.5;
+
+    float current_depth = proj_coords.z;
+
+    if (current_depth > 1.0)
+    {
+        return 0.0f;
+    }
+
+    vec3 light_dir = normalize(world.light.sun_pos);
+    float bias = max(0.05 * (1.0 - dot(normal, light_dir)), 0.005);
+    const float bias_modifier = 0.5f;
+
+    if (layer == 4)
+    {
+        bias *= 1 / (1000.0f * bias_modifier);
+    }
+    else
+    {
+        bias *= 1 / (distances[layer] * bias_modifier);
+    }
+
+    // PCF
+    float shadow = 0.0f;
+    vec2 texel_size = 1.0 / vec2(1920, 1080);
+    for (int x = -1; x <= 1; ++x)
+    {
+        for (int y = -1; y <= 1; ++y)
+        {
+            vec2 pos = vec2(proj_coords.xy+vec2(x,y)*texel_size);
+            float pcf_depth = texture(shadow_maps[layer], pos).r;
+            shadow += (current_depth - bias) > pcf_depth ? 1.0 : 0.0;
+        }
+    }
+
+    shadow /= 9.0f;
+    return shadow;
+}
 
 int featureEnabled(int feature)
 {
@@ -127,7 +203,8 @@ vec3 phong(vec3 normal, vec3 color)
     float spec = pow(max(dot(view_dir, reflect_dir), 0.0), shininess);
     vec3 specular_component = specular_strength * spec * light_color;
 
-    vec3 result = (ambient_component + diffuse_component + specular_component) * material_diffuse_color;
+    float shadow = shadowCalculation(normal);
+    vec3 result = (ambient_component + (1.0-shadow) * (diffuse_component + specular_component)) * material_diffuse_color;
 
     return result;
 }

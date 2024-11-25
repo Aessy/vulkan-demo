@@ -238,7 +238,8 @@ SceneRenderPass createSceneRenderPass(RenderingState const& state,
                                                                        scene.model_buffer,
                                                                        scene.material_buffer,
                                                                        shadow_map.cascaded_shadow_map_buffer,
-                                                                       shadow_map.framebuffer_data.image_views));
+                                                                       shadow_map.framebuffer_data.image_views,
+                                                                       shadow_map.cascaded_distances));
 
     scene_render_pass.pipelines.push_back(createSkyboxPipeline(state, render_pass, scene.world_buffer, scene.model_buffer, scene.atmosphere_data));
 

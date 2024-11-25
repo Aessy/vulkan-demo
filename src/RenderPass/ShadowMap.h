@@ -34,6 +34,7 @@ struct CascadedShadowMap
 
     // Buffer objects for cascaded shadow map.
     std::vector<std::unique_ptr<UniformBuffer>> cascaded_shadow_map_buffer;
+    std::vector<std::unique_ptr<UniformBuffer>> cascaded_distances;
 };
 
 CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene const& scene);

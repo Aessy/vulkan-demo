@@ -152,6 +152,20 @@ void shadowPassWriteBuffers(Scene const& scene, CascadedShadowMap& shadow_map, v
     {
         writeBuffer(*shadow_map.cascaded_shadow_map_buffer[frame], light_space_matrix[i], i);
     }
+
+    float const near = 0.5f;
+    float const far = 1000.0f;
+
+    float const level_1 = far/50; // 20
+    float const level_2 = far/25; // 40
+    float const level_3 = far/10; // 100
+    float const level_4 = far/5;  // 500 
+
+    writeBuffer(*shadow_map.cascaded_distances[frame], level_1, 0);
+    writeBuffer(*shadow_map.cascaded_distances[frame], level_2, 1);
+    writeBuffer(*shadow_map.cascaded_distances[frame], level_3, 2);
+    writeBuffer(*shadow_map.cascaded_distances[frame], level_4, 3);
+
 }
 
 void drawShadowMap(vk::CommandBuffer const& command_buffer,
@@ -460,6 +474,7 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene cons
     shadow_map.framebuffer_data = createCascadedShadowmapFramebuffers(core, shadow_map.render_pass, n_cascades);
 
     shadow_map.cascaded_shadow_map_buffer = createUniformBuffers<CascadedShadowMapBufferObject>(core, shadow_map.n_cascaded_shadow_maps);
+    shadow_map.cascaded_distances = createUniformBuffers<float>(core, shadow_map.n_cascaded_shadow_maps-1);
 
     // Create pipeline
     layer_types::Program program_desc;
