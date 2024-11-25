@@ -76,7 +76,7 @@ layout(set = 4, binding = 0) uniform CascadeMatrices
     mat4 cascade_matrices[5];
 } cascade_matrices;
 
-layout(set = 5, binding = 0) uniform sampler2D shadow_maps[5];
+layout(set = 5, binding = 0) uniform sampler2DArray shadow_maps;
 
 
 layout(set = 6, binding = 0) uniform CascadeDistances
@@ -149,7 +149,7 @@ float shadowCalculation(vec3 normal)
         for (int y = -1; y <= 1; ++y)
         {
             vec2 pos = vec2(proj_coords.xy+vec2(x,y)*texel_size);
-            float pcf_depth = texture(shadow_maps[layer], pos).r;
+            float pcf_depth = texture(shadow_maps, vec3(pos, layer)).r;
             shadow += (current_depth - bias) > pcf_depth ? 1.0 : 0.0;
         }
     }

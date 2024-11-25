@@ -95,15 +95,6 @@ void sceneRenderPass(vk::CommandBuffer command_buffer,
     drawScene(command_buffer, scene_render_pass, scene_data, state.current_frame);
 
     command_buffer.endRenderPass();
-
-    transitionImageLayout(command_buffer, scene_render_pass.framebuffers[state.current_frame]->color_resource.depth_image,
-                                 vk::Format::eR16G16B16A16Sfloat,
-                                 vk::ImageLayout::eColorAttachmentOptimal,
-                                 vk::ImageLayout::eShaderReadOnlyOptimal,
-                                 1);
-
-    transitionImageLayout(command_buffer, scene_render_pass.framebuffers[state.current_frame]->depth_resolve_resource.depth_image, vk::Format::eD32Sfloat,
-        vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
 }
 
 static std::vector<std::unique_ptr<SceneFramebufferState>> createFrameBuffers(RenderingState const& state, vk::RenderPass render_pass)
@@ -200,11 +191,19 @@ static vk::RenderPass createRenderPass(vk::Device const& device, vk::Format cons
     dependency.setSrcSubpass(VK_SUBPASS_EXTERNAL);
     dependency.setDstSubpass(0);
 
-    dependency.setSrcStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests);
-    dependency.setSrcAccessMask(static_cast<vk::AccessFlags>(0));
+    // The stage(s) in the source subpass where work must be completed before the dependency is resolved
+    // Wait for shadow pass to finish writing to the shadow map
+    dependency.setSrcStageMask(vk::PipelineStageFlagBits::eLateFragmentTests);
 
-    dependency.setDstStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests);
-    dependency.setDstAccessMask(vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite);
+    // The stage(s) in the destination subpass where work must wait until the dependency is resolved
+    // Scene fragment shader will wait in the fragment shader step untul the shadow map is ready to read
+    dependency.setDstStageMask(vk::PipelineStageFlagBits::eFragmentShader);
+
+    // Access mask is definying the type of memory access that occurs at the source and destination
+    // Source: The type of memory access the source operation performs that the destination operations depends on
+    // Destination: The type of memory access the destination operation requires that depends on the source operation.
+    dependency.setSrcAccessMask(vk::AccessFlagBits::eDepthStencilAttachmentWrite);
+    dependency.setDstAccessMask(vk::AccessFlagBits::eShaderRead);
 
     std::array<vk::AttachmentDescription2, 3> attachments {color_attachment, depth_attachment, depth_attachment_resolve};
 

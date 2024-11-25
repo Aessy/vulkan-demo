@@ -446,10 +446,10 @@ static vk::RenderPass createShadowMapRenderPass(vk::Device const& device)
     vk::SubpassDependency2 dependency{};
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;  // Previous render pass
     dependency.dstSubpass = 0;  // This post-processing subpass
-    dependency.setSrcStageMask(vk::PipelineStageFlagBits::eEarlyFragmentTests);
-    dependency.setSrcAccessMask(vk::AccessFlagBits::eDepthStencilAttachmentRead);
+    dependency.setSrcStageMask(vk::PipelineStageFlagBits::eTopOfPipe);
+    dependency.setSrcAccessMask(vk::AccessFlagBits::eNone);
 
-    dependency.dstStageMask = vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests;
+    dependency.dstStageMask = vk::PipelineStageFlagBits::eEarlyFragmentTests;
     dependency.dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
 
     std::array<vk::AttachmentDescription2, 1> attachments {depth_attachment};
