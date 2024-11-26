@@ -95,6 +95,16 @@ void sceneRenderPass(vk::CommandBuffer command_buffer,
     drawScene(command_buffer, scene_render_pass, scene_data, state.current_frame);
 
     command_buffer.endRenderPass();
+
+    transitionImageLayout(command_buffer, scene_render_pass.framebuffers[state.current_frame]->color_resource.depth_image,
+                                 vk::Format::eR16G16B16A16Sfloat,
+                                 vk::ImageLayout::eColorAttachmentOptimal,
+                                 vk::ImageLayout::eShaderReadOnlyOptimal,
+                                 1);
+
+    transitionImageLayout(command_buffer, scene_render_pass.framebuffers[state.current_frame]->depth_resolve_resource.depth_image, vk::Format::eD32Sfloat,
+                          vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1);
+
 }
 
 static std::vector<std::unique_ptr<SceneFramebufferState>> createFrameBuffers(RenderingState const& state, vk::RenderPass render_pass)

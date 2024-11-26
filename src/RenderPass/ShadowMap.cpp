@@ -261,6 +261,9 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
 
         command_buffer.endRenderPass();
     }
+
+    transitionImageLayout(command_buffer, shadow_map.framebuffer_data.cascade_images[state.current_frame]->depth_image, vk::Format::eD32Sfloat,
+                        vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1, 5);
 }
 
 static ShadowMapFramebuffer createCascadedShadowmapFramebuffers(RenderingState const& state,

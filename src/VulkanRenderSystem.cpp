@@ -77,7 +77,7 @@ GLFWwindow* setupGlfw(App& app)
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 
-    auto window = glfwCreateWindow(300, 200, "Vulkan", nullptr, nullptr);
+    auto window = glfwCreateWindow(1920, 1024, "Vulkan", nullptr, nullptr);
     glfwSetWindowUserPointer(window, &app);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     glfwSetKeyCallback(window, keyPressedCallback);
@@ -1018,8 +1018,8 @@ void transitionImageLayout(vk::CommandBuffer const& cmd_buffer, vk::Image const&
         barrier.srcAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
         barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
 
-        src_stage = vk::PipelineStageFlagBits::eEarlyFragmentTests;
-        dest_stage = vk::PipelineStageFlagBits::eComputeShader;
+        src_stage = vk::PipelineStageFlagBits::eLateFragmentTests;
+        dest_stage = vk::PipelineStageFlagBits::eFragmentShader;
     }
     else if (old_layout == vk::ImageLayout::eTransferDstOptimal && new_layout == vk::ImageLayout::eShaderReadOnlyOptimal)
     {

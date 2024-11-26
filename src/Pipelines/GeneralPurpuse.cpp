@@ -258,7 +258,7 @@ Pipeline createGeneralPurposePipeline(RenderingState const& state,
             .name = {{"binding textures"}},
             .binding = 0,
             .type = layer_types::BindingType::TextureSampler,
-            .size = 1, // 2D Array. Set size for the binding to 1
+            .size = 5, // 2D Array. Set size for the binding to 1
             .vertex = true,
             .fragment = true,
         }
