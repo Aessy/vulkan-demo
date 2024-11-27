@@ -143,7 +143,7 @@ float shadowCalculation(vec3 normal)
 
     // PCF
     float shadow = 0.0f;
-    vec2 texel_size = 1.0 / vec2(1920, 1080);
+    vec2 texel_size = 1.0 / vec2(400, 400);
     for (int x = -1; x <= 1; ++x)
     {
         for (int y = -1; y <= 1; ++y)

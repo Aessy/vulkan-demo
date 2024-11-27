@@ -33,7 +33,8 @@ struct CascadedShadowMap
     std::array<glm::mat4, n_cascaded_shadow_maps> light_projection_views;
 
     // Buffer objects for cascaded shadow map.
-    std::vector<std::unique_ptr<UniformBuffer>> cascaded_shadow_map_buffer;
+    std::vector<std::unique_ptr<UniformBuffer>> cascaded_shadow_map_buffer;        // Aligned version
+    std::vector<std::unique_ptr<UniformBuffer>> cascaded_shadow_map_buffer_packed;  // Packed version
     std::vector<std::unique_ptr<UniformBuffer>> cascaded_distances;
 };
 

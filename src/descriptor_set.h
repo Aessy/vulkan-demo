@@ -166,7 +166,7 @@ inline void updateUniformBuffer(vk::Device const& device, std::vector<std::uniqu
         desc_writes.dstBinding = binding.binding;
         desc_writes.dstArrayElement = 0;
         desc_writes.descriptorType = binding.descriptorType;
-        desc_writes.descriptorCount = size;
+        desc_writes.descriptorCount = 1;
         desc_writes.setBufferInfo(buffer_info);
         ++i;
 
@@ -182,14 +182,15 @@ inline void updateImageSampler(vk::Device const& device,
 
 inline void updateImageSampler(vk::Device const& device,
         std::vector<vk::ImageView> image_views, vk::Sampler sampler,
-        std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding)
+        std::vector<vk::DescriptorSet> const& sets, vk::DescriptorSetLayoutBinding const& binding,
+        vk::ImageLayout layout = vk::ImageLayout::eShaderReadOnlyOptimal)
 {
     for (auto const& set : sets)
     {
         std::vector<vk::DescriptorImageInfo> image_info{};
-        std::transform(image_views.begin(), image_views.end(), std::back_inserter(image_info), [&sampler](auto const& view) {
+        std::transform(image_views.begin(), image_views.end(), std::back_inserter(image_info), [&sampler, layout](auto const& view) {
                 vk::DescriptorImageInfo image_info{};
-                    image_info.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+                    image_info.imageLayout = layout;
                     image_info.imageView = view;
                     image_info.sampler = sampler;
                     return image_info;

@@ -100,6 +100,7 @@ struct UniformBuffer
     vk::raii::Buffer uniform_buffers;
     vk::raii::DeviceMemory uniform_device_memory;
     void* uniform_buffers_mapped;
+    size_t alignment;
 };
 
 struct Buffer
@@ -217,11 +218,11 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
 std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout> createComputePipeline(vk::Device const& device, ShaderStage const& compute_stage, std::vector<vk::DescriptorSetLayout> const& desc_set_layouts);
 
 template<typename BufferObject>
-auto createUniformBuffers(RenderingState const& state, int count = 1)
+auto createUniformBuffers(RenderingState const& state, int count = 1, std::size_t alignment = 1)
 {
 
     vk::DeviceSize object_size = sizeof(BufferObject);
-    vk::DeviceSize element_size = count > 1 ? state.uniform_buffer_alignment_min - ((object_size - 1) % state.uniform_buffer_alignment_min) + (object_size-1)
+    vk::DeviceSize element_size = count > 1 ? alignment - ((object_size - 1) % alignment) + (object_size-1)
                                             : object_size;
 
     vk::DeviceSize buffer_size = element_size * count;
@@ -234,7 +235,7 @@ auto createUniformBuffers(RenderingState const& state, int count = 1)
                                                                                  |vk::MemoryPropertyFlagBits::eHostCoherent);
         auto mapped = uniform_buffer_memory.mapMemory(0, buffer_size);
 
-        ubos.push_back(std::make_unique<UniformBuffer>(std::move(buffer), std::move(uniform_buffer_memory), mapped));
+        ubos.push_back(std::make_unique<UniformBuffer>(std::move(buffer), std::move(uniform_buffer_memory), mapped, alignment));
     }
 
     return ubos;

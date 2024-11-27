@@ -258,7 +258,7 @@ Pipeline createGeneralPurposePipeline(RenderingState const& state,
             .name = {{"binding textures"}},
             .binding = 0,
             .type = layer_types::BindingType::TextureSampler,
-            .size = 5, // 2D Array. Set size for the binding to 1
+            .size = 1, // 2D Array. Set size for the binding to 1
             .vertex = true,
             .fragment = true,
         }
@@ -307,8 +307,8 @@ Pipeline createGeneralPurposePipeline(RenderingState const& state,
                                            5);
     // Update image samplers for the shadow map array
     auto sampler = createTextureSampler(state, 1);
-    updateImageSampler(state.device, {*shadow_map_images[0]}, textures.sampler_no_mip_map, {pipeline_finish.descriptor_sets[5].set[0]}, pipeline_finish.descriptor_sets[5].layout_bindings[0]);
-    updateImageSampler(state.device, {*shadow_map_images[1]}, textures.sampler_no_mip_map, {pipeline_finish.descriptor_sets[5].set[1]}, pipeline_finish.descriptor_sets[5].layout_bindings[0]);
+    updateImageSampler(state.device, {*shadow_map_images[0]}, textures.sampler_no_mip_map, {pipeline_finish.descriptor_sets[5].set[0]}, pipeline_finish.descriptor_sets[5].layout_bindings[0], vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal);
+    updateImageSampler(state.device, {*shadow_map_images[1]}, textures.sampler_no_mip_map, {pipeline_finish.descriptor_sets[5].set[1]}, pipeline_finish.descriptor_sets[5].layout_bindings[0], vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal);
 
     updateUniformBuffer<float>(state.device,
                                shadow_map_distances,

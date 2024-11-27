@@ -151,6 +151,7 @@ void shadowPassWriteBuffers(RenderingState const& state, Scene const& scene, Cas
     for (int i = 0; i < light_space_matrix.size(); ++i)
     {
         writeBuffer(*shadow_map.cascaded_shadow_map_buffer[frame], light_space_matrix[i], i, state.uniform_buffer_alignment_min);
+        writeBuffer(*shadow_map.cascaded_shadow_map_buffer_packed[frame], light_space_matrix[i], i);
     }
 
     float const near = 0.5f;
@@ -161,10 +162,10 @@ void shadowPassWriteBuffers(RenderingState const& state, Scene const& scene, Cas
     float const level_3 = far/10; // 100
     float const level_4 = far/5;  // 500 
 
-    writeBuffer(*shadow_map.cascaded_distances[frame], level_1, 0, state.uniform_buffer_alignment_min);
-    writeBuffer(*shadow_map.cascaded_distances[frame], level_2, 1, state.uniform_buffer_alignment_min);
-    writeBuffer(*shadow_map.cascaded_distances[frame], level_3, 2, state.uniform_buffer_alignment_min);
-    writeBuffer(*shadow_map.cascaded_distances[frame], level_4, 3, state.uniform_buffer_alignment_min);
+    writeBuffer(*shadow_map.cascaded_distances[frame], level_1, 0);
+    writeBuffer(*shadow_map.cascaded_distances[frame], level_2, 1);
+    writeBuffer(*shadow_map.cascaded_distances[frame], level_3, 2);
+    writeBuffer(*shadow_map.cascaded_distances[frame], level_4, 3);
 
 }
 
@@ -273,8 +274,8 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
         command_buffer.endRenderPass();
     }
 
-    transitionImageLayout(command_buffer, shadow_map.framebuffer_data.cascade_images[state.current_frame]->depth_image, vk::Format::eD32Sfloat,
-                        vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1, 5);
+    //transitionImageLayout(command_buffer, shadow_map.framebuffer_data.cascade_images[state.current_frame]->depth_image, vk::Format::eD32Sfloat,
+    //                    vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1, 5);
 }
 
 static ShadowMapFramebuffer createCascadedShadowmapFramebuffers(RenderingState const& state,
@@ -446,11 +447,11 @@ static vk::RenderPass createShadowMapRenderPass(vk::Device const& device)
     depth_attachment.stencilLoadOp =  vk::AttachmentLoadOp::eDontCare;
     depth_attachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
     depth_attachment.initialLayout = vk::ImageLayout::eUndefined;
-    depth_attachment.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+    depth_attachment.finalLayout = vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal;
 
     vk::AttachmentReference2 depth_attachment_ref{};
     depth_attachment_ref.attachment = 0;
-    depth_attachment_ref.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+    depth_attachment_ref.layout = vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal;
 
     vk::SubpassDescription2 subpass {};
     subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
@@ -487,7 +488,10 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene cons
     shadow_map.render_pass = createShadowMapRenderPass(core.device);
     shadow_map.framebuffer_data = createCascadedShadowmapFramebuffers(core, shadow_map.render_pass, n_cascades);
 
-    shadow_map.cascaded_shadow_map_buffer = createUniformBuffers<CascadedShadowMapBufferObject>(core, shadow_map.n_cascaded_shadow_maps);
+    // Needs alignment for when binding the descriptor set
+    shadow_map.cascaded_shadow_map_buffer = createUniformBuffers<CascadedShadowMapBufferObject>(core, shadow_map.n_cascaded_shadow_maps, core.uniform_buffer_alignment_min);
+    shadow_map.cascaded_shadow_map_buffer_packed = createUniformBuffers<CascadedShadowMapBufferObject>(core, shadow_map.n_cascaded_shadow_maps, 1ul);
+
     shadow_map.cascaded_distances = createUniformBuffers<float>(core, shadow_map.n_cascaded_shadow_maps-1);
 
     // Create pipeline
@@ -541,6 +545,7 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene cons
 
     shadow_map.pipeline = pipeline;
 
+    // Update the buffer to only indicate one element. We dynamically bind the correct position in the pipeline.
     updateUniformBuffer<CascadedShadowMapBufferObject>(core.device,
                                                        shadow_map.cascaded_shadow_map_buffer,
                                                        pipeline.descriptor_sets[0].set,
