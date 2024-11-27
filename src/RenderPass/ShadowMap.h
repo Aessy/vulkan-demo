@@ -41,4 +41,4 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene cons
 
 void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_map, Scene const& scene, vk::raii::CommandBuffer const& command_buffer);
 
-void shadowPassWriteBuffers(Scene const& scene, CascadedShadowMap& shadow_map, vk::Extent2D const& extent, int frame);
+void shadowPassWriteBuffers(RenderingState const& state, Scene const& scene, CascadedShadowMap& shadow_map, vk::Extent2D const& extent, int frame);

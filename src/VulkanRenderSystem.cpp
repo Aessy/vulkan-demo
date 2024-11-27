@@ -77,7 +77,7 @@ GLFWwindow* setupGlfw(App& app)
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 
-    auto window = glfwCreateWindow(1920, 1024, "Vulkan", nullptr, nullptr);
+    auto window = glfwCreateWindow(400, 400, "Vulkan", nullptr, nullptr);
     glfwSetWindowUserPointer(window, &app);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     glfwSetKeyCallback(window, keyPressedCallback);
@@ -859,6 +859,11 @@ std::optional<RenderingState> createVulkanRenderState()
     auto graphics_queue = device.getQueue(*indices.graphics_family, 0).value();
     auto present_queue = device.getQueue(*indices.present_family, 0).value();
 
+    auto const& properties = physical_device->getProperties();
+    uint32_t uniform_buffer_alignment_min = properties.limits.minUniformBufferOffsetAlignment;
+
+    spdlog::info("Uniform buffer alignment min size {}", uniform_buffer_alignment_min);
+
     RenderingState render_state {
         .context = std::move(context),
         .app = std::move(app),
@@ -875,7 +880,8 @@ std::optional<RenderingState> createVulkanRenderState()
         .command_buffer = std::move(command_buffers),
         .graphics_queue = std::move(graphics_queue),
         .present_queue = std::move(present_queue),
-        .msaa = msaa_samples
+        .msaa = msaa_samples,
+        .uniform_buffer_alignment_min = uniform_buffer_alignment_min
     };
 
     return render_state;

@@ -143,14 +143,14 @@ std::vector<glm::mat4> getLightSpaceMatrices(vk::Extent2D const& size, Camera co
     return matrices;
 }
 
-void shadowPassWriteBuffers(Scene const& scene, CascadedShadowMap& shadow_map, vk::Extent2D const& extent, int frame)
+void shadowPassWriteBuffers(RenderingState const& state, Scene const& scene, CascadedShadowMap& shadow_map, vk::Extent2D const& extent, int frame)
 {
     glm::vec3 light_dir = glm::normalize(scene.light.sun_pos);
     auto const light_space_matrix = getLightSpaceMatrices(extent, scene.camera, light_dir);
 
     for (int i = 0; i < light_space_matrix.size(); ++i)
     {
-        writeBuffer(*shadow_map.cascaded_shadow_map_buffer[frame], light_space_matrix[i], i);
+        writeBuffer(*shadow_map.cascaded_shadow_map_buffer[frame], light_space_matrix[i], i, state.uniform_buffer_alignment_min);
     }
 
     float const near = 0.5f;
@@ -161,25 +161,30 @@ void shadowPassWriteBuffers(Scene const& scene, CascadedShadowMap& shadow_map, v
     float const level_3 = far/10; // 100
     float const level_4 = far/5;  // 500 
 
-    writeBuffer(*shadow_map.cascaded_distances[frame], level_1, 0);
-    writeBuffer(*shadow_map.cascaded_distances[frame], level_2, 1);
-    writeBuffer(*shadow_map.cascaded_distances[frame], level_3, 2);
-    writeBuffer(*shadow_map.cascaded_distances[frame], level_4, 3);
+    writeBuffer(*shadow_map.cascaded_distances[frame], level_1, 0, state.uniform_buffer_alignment_min);
+    writeBuffer(*shadow_map.cascaded_distances[frame], level_2, 1, state.uniform_buffer_alignment_min);
+    writeBuffer(*shadow_map.cascaded_distances[frame], level_3, 2, state.uniform_buffer_alignment_min);
+    writeBuffer(*shadow_map.cascaded_distances[frame], level_4, 3, state.uniform_buffer_alignment_min);
 
 }
 
-void drawShadowMap(vk::CommandBuffer const& command_buffer,
+static uint32_t getOffset(size_t object_size, size_t alignment, size_t index)
+{
+    vk::DeviceSize element_size = alignment - ((object_size - 1) % alignment) + (object_size-1);
+    std::size_t position = element_size * index;
+    return position;
+}
+
+static void drawShadowMap(vk::CommandBuffer const& command_buffer,
                    unsigned int cascade,
                    Scene const& scene,
                    CascadedShadowMap& shadow_map,
                    unsigned int frame,
-                   glm::mat4 const& light_space_matrix)
+                   glm::mat4 const& light_space_matrix,
+                   size_t min_uniform_alignment)
 {
-    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
-                                shadow_map.pipeline.pipeline);
 
-
-    uint32_t offset = cascade * sizeof(glm::mat4);
+    uint32_t offset = getOffset(sizeof(glm::mat4), min_uniform_alignment, cascade);
     command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                             shadow_map.pipeline.pipeline_layout,
                             0,
@@ -224,6 +229,9 @@ void drawShadowMap(vk::CommandBuffer const& command_buffer,
 void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_map, Scene const& scene, vk::raii::CommandBuffer const& command_buffer)
 {
 
+    command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
+                                shadow_map.pipeline.pipeline);
+
     for (int i = 0; i < shadow_map.framebuffer_data.framebuffers[state.current_frame].size(); ++i)
     {
         vk::Framebuffer current_framebuffer = *shadow_map.framebuffer_data.framebuffers[state.current_frame][i];
@@ -231,6 +239,7 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
         std::array<vk::ClearValue, 2> clear_values{};
         clear_values[0].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
+/*
         vk::Viewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
@@ -246,6 +255,8 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
         command_buffer.setScissor(0,scissor);
         command_buffer.setViewport(0,viewport);
 
+*/
+
         vk::RenderPassBeginInfo render_pass_info{};
         render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
         render_pass_info.setRenderPass(shadow_map.render_pass);
@@ -257,7 +268,7 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
         command_buffer.beginRenderPass(render_pass_info,
                                     vk::SubpassContents::eInline);
 
-        drawShadowMap(command_buffer, i, scene, shadow_map, state.current_frame, glm::mat4());
+        drawShadowMap(command_buffer, i, scene, shadow_map, state.current_frame, glm::mat4(), state.uniform_buffer_alignment_min);
 
         command_buffer.endRenderPass();
     }

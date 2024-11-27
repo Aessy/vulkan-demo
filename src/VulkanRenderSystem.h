@@ -152,6 +152,8 @@ struct RenderingState
 
     Camera camera;
     vk::SampleCountFlagBits msaa;
+
+    uint32_t uniform_buffer_alignment_min{};
 };
 
 struct GraphicsPipelineInput
@@ -217,7 +219,12 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout> createComputePipeline(v
 template<typename BufferObject>
 auto createUniformBuffers(RenderingState const& state, int count = 1)
 {
-    vk::DeviceSize buffer_size = sizeof(BufferObject) * count;
+
+    vk::DeviceSize object_size = sizeof(BufferObject);
+    vk::DeviceSize element_size = count > 1 ? state.uniform_buffer_alignment_min - ((object_size - 1) % state.uniform_buffer_alignment_min) + (object_size-1)
+                                            : object_size;
+
+    vk::DeviceSize buffer_size = element_size * count;
 
     std::vector<std::unique_ptr<UniformBuffer>> ubos;
     size_t const max_frames_in_flight = 2;
@@ -256,9 +263,14 @@ auto createStorageBuffers(RenderingState const& state, uint32_t size)
 }
 
 template<typename BufferObject>
-inline void writeBuffer(UniformBuffer& dst, BufferObject const& src, size_t index = 0)
+inline void writeBuffer(UniformBuffer& dst, BufferObject const& src, size_t index = 0, size_t alignment = 1)
 {
-    void* buffer = (unsigned char*)dst.uniform_buffers_mapped+(sizeof(BufferObject)*index);
+    vk::DeviceSize object_size = sizeof(BufferObject);
+
+    vk::DeviceSize element_size = alignment - ((object_size - 1) % alignment) + (object_size-1);
+    std::size_t position = element_size * index;
+
+    void* buffer = (unsigned char*)dst.uniform_buffers_mapped+position;
     memcpy(buffer, (unsigned char*)&src, sizeof(BufferObject));
 }
 
