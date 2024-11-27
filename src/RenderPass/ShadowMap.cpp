@@ -81,8 +81,7 @@ static glm::mat4 getLightProjection(glm::mat4 const& light_view, std::vector<glm
         max_z = std::max(max_z, trf.z);
     }
 
-/*
-    constexpr float z_mult = 10.0f;
+    constexpr float z_mult = 7.0;
     if (min_z < 0)
     {
         min_z *= z_mult;
@@ -99,7 +98,6 @@ static glm::mat4 getLightProjection(glm::mat4 const& light_view, std::vector<glm
     {
         max_z *= z_mult;
     }
-*/
 
     glm::mat4 const light_projection = glm::ortho(min_x, max_x, max_y, min_y, min_z, max_z);
 
@@ -240,7 +238,6 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
         std::array<vk::ClearValue, 2> clear_values{};
         clear_values[0].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
-/*
         vk::Viewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
@@ -255,8 +252,6 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
 
         command_buffer.setScissor(0,scissor);
         command_buffer.setViewport(0,viewport);
-
-*/
 
         vk::RenderPassBeginInfo render_pass_info{};
         render_pass_info.sType = vk::StructureType::eRenderPassBeginInfo;
@@ -381,22 +376,6 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createCascadedShadowMapPipel
     input_assembly_state.topology = vk::PrimitiveTopology::eTriangleList;
     input_assembly_state.primitiveRestartEnable = VK_FALSE;
 
-    vk::Viewport viewport{};
-    viewport.x = 0;
-    viewport.y = 0;
-    viewport.width = (float)swap_chain_extent.width;
-    viewport.height= (float)swap_chain_extent.height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    vk::Rect2D scissor{};
-    scissor.offset = vk::Offset2D(0,0);
-    scissor.extent = swap_chain_extent;
-
-    vk::PipelineViewportStateCreateInfo viewport_state{};
-    viewport_state.setViewports(viewport);
-    viewport_state.setScissors(scissor);
-
     vk::PipelineLayoutCreateInfo pipeline_layout_info{};
     pipeline_layout_info.sType = vk::StructureType::ePipelineLayoutCreateInfo;
     pipeline_layout_info.setSetLayouts(pipeline_data.descriptor_set_layouts);
@@ -416,15 +395,47 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createCascadedShadowMapPipel
     multisampling.alphaToCoverageEnable = false;
     multisampling.alphaToOneEnable = false;
 
+    std::vector<vk::DynamicState> dynamic_states {
+          vk::DynamicState::eViewport
+        , vk::DynamicState::eScissor
+    };
+
+    vk::PipelineDynamicStateCreateInfo dynamic_state{};
+    dynamic_state.sType = vk::StructureType::ePipelineDynamicStateCreateInfo;
+    dynamic_state.dynamicStateCount = static_cast<uint32_t>(dynamic_states.size());
+    dynamic_state.setDynamicStates(dynamic_states);
+
+    vk::Viewport viewport{};
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = (float)swap_chain_extent.width;
+    viewport.height= (float)swap_chain_extent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    vk::Rect2D scissor{};
+    scissor.offset = vk::Offset2D(0,0);
+    scissor.extent = swap_chain_extent;
+
+
+    vk::PipelineViewportStateCreateInfo viewport_state{};
+    viewport_state.sType = vk::StructureType::ePipelineViewportStateCreateInfo;
+    viewport_state.setViewportCount(1);
+    viewport_state.setViewports(viewport);
+    viewport_state.setScissorCount(1);
+    viewport_state.setScissors(scissor);
+
+
     pipeline_info.setPVertexInputState(&vertex_input_info);
     pipeline_info.setStages(stages);
     pipeline_info.setPInputAssemblyState(&input_assembly_state);
-    pipeline_info.setPViewportState(&viewport_state);
     pipeline_info.setPRasterizationState(&rasterization_state);
     pipeline_info.setPDepthStencilState(&depth_stencil_state);
     pipeline_info.setPMultisampleState(&multisampling);
     pipeline_info.setLayout(pipeline_layout.value);
     pipeline_info.setRenderPass(render_pass);
+    pipeline_info.setPViewportState(&viewport_state);
+    pipeline_info.setPDynamicState(&dynamic_state);
     pipeline_info.setSubpass(0);
     pipeline_info.basePipelineIndex = 0;
     pipeline_info.basePipelineIndex = -1;
