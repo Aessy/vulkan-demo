@@ -444,7 +444,6 @@ void showObject(Object& obj, Application& app)
         auto& i = obj.material.shader_data;
         static const std::vector<std::string> modes{"Phong", "PBR"};
 
-        ComboBoxName(app.programs, "Program", obj.material.program, [](auto& program){return program->name.c_str();});
         bool has_displacement = i.material_features & MaterialFeatureFlag::DisplacementMap;
         if (ImGui::Checkbox("Has Displacement", &has_displacement))
         {

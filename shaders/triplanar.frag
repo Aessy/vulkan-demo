@@ -149,7 +149,7 @@ float shadowCalculation(vec3 normal)
         for (int y = -1; y <= 1; ++y)
         {
             vec2 pos = vec2(proj_coords.xy+vec2(x,y)*texel_size);
-            float pcf_depth = texture(shadow_maps, vec3(pos, layer)).r;
+            float pcf_depth = texture(shadow_maps, vec3(pos.xy, layer)).r;
             shadow += (current_depth - bias) > pcf_depth ? 1.0 : 0.0;
         }
     }

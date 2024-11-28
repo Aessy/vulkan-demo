@@ -81,7 +81,7 @@ static glm::mat4 getLightProjection(glm::mat4 const& light_view, std::vector<glm
         max_z = std::max(max_z, trf.z);
     }
 
-    constexpr float z_mult = 7.0;
+    constexpr float z_mult = 7;
     if (min_z < 0)
     {
         min_z *= z_mult;
@@ -212,17 +212,21 @@ static void drawShadowMap(vk::CommandBuffer const& command_buffer,
                             nullptr);
 
 
-    for (size_t i = 0; i < scene.objs.size(); ++i)
+    int index = 0;
+    for (auto const& o : scene.programs)
     {
-        auto &drawable = scene.objs[i];
-        if (drawable.shadow)
+        for (size_t i = 0; i < o.second.size(); ++i)
         {
-            command_buffer.bindVertexBuffers(0, drawable.vertex_buffer, {0});
-            command_buffer.bindIndexBuffer(drawable.index_buffer, 0, vk::IndexType::eUint32);
-            command_buffer.drawIndexed(drawable.indices_size, 1, 0,0, i);
+            auto &drawable = scene.objs[o.second[i]];
+            if (drawable.shadow)
+            {
+                command_buffer.bindVertexBuffers(0, drawable.vertex_buffer, {0});
+                command_buffer.bindIndexBuffer(drawable.index_buffer, 0, vk::IndexType::eUint32);
+                command_buffer.drawIndexed(drawable.indices_size, 1, 0,0, i);
+            }
+            index++;
         }
     }
-
 }
 
 void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_map, Scene const& scene, vk::raii::CommandBuffer const& command_buffer)
