@@ -77,9 +77,9 @@ void sceneRenderPass(vk::CommandBuffer command_buffer,
 
     vk::Viewport viewport{};
     viewport.x = 0.0f;
-    viewport.y = 0.0f;
+    viewport.y = static_cast<float>(state.swap_chain.extent.height);
     viewport.width = static_cast<float>(state.swap_chain.extent.width);
-    viewport.height = static_cast<float>(state.swap_chain.extent.height);
+    viewport.height = -static_cast<float>(state.swap_chain.extent.height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 

@@ -92,13 +92,12 @@ Model createFlatGround(std::size_t size, float length, size_t texture_size)
             // TODO: Make BTN per triangle. I think we need two more vertices per quad
 
             glm::vec3 normal(0,1,0);
-            model.vertices.push_back(Vertex{.pos=bottom_right,.tex_coord=tex_bottom_right, .normal=normal, .normal_coord=norm_bottom_right, .tangent=btn_2.tangent, .bitangent=btn_2.bitangent});
             model.vertices.push_back(Vertex{.pos=bottom_left,.tex_coord=tex_bottom_left, .normal=normal, .normal_coord=norm_bottom_left, .tangent=btn_2.tangent, .bitangent=btn_2.bitangent});
-            model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=tex_top_left, .normal=normal, .normal_coord=norm_top_left, .tangent=btn_2.tangent, .bitangent=btn_2.bitangent});
-
-            model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=tex_top_left, .normal=normal, .normal_coord=norm_top_left, .tangent=btn.tangent, .bitangent=btn.bitangent});
+            model.vertices.push_back(Vertex{.pos=bottom_right,.tex_coord=tex_bottom_right, .normal=normal, .normal_coord=norm_bottom_right, .tangent=btn_2.tangent, .bitangent=btn_2.bitangent});
             model.vertices.push_back(Vertex{.pos=top_right,.tex_coord=tex_top_right, .normal=normal, .normal_coord=norm_top_right, .tangent=btn.tangent, .bitangent=btn.bitangent});
-            model.vertices.push_back(Vertex{.pos=bottom_right,.tex_coord=tex_bottom_right, .normal=normal, .normal_coord=norm_bottom_right, .tangent=btn.tangent, .bitangent=btn.bitangent});
+            model.vertices.push_back(Vertex{.pos=top_right,.tex_coord=tex_top_right, .normal=normal, .normal_coord=norm_top_right, .tangent=btn.tangent, .bitangent=btn.bitangent});
+            model.vertices.push_back(Vertex{.pos=top_left,.tex_coord=tex_top_left, .normal=normal, .normal_coord=norm_top_left, .tangent=btn_2.tangent, .bitangent=btn_2.bitangent});
+            model.vertices.push_back(Vertex{.pos=bottom_left,.tex_coord=tex_bottom_left, .normal=normal, .normal_coord=norm_bottom_left, .tangent=btn_2.tangent, .bitangent=btn_2.bitangent});
 
 
             model.indices.push_back(count+0);

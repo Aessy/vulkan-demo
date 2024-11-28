@@ -71,7 +71,7 @@ inline WorldBufferObject createWorldBufferObject(Scene const& scene)
 
     ubo.camera_view = glm::lookAt(scene.camera.pos, (scene.camera.pos + scene.camera.camera_front), scene.camera.up);
     ubo.camera_proj = scene.camera.proj;
-    ubo.camera_proj[1][1] *= -1;
+    //ubo.camera_proj[1][1] *= -1;
     ubo.camera_pos = scene.camera.pos;
 
     ubo.light_position = scene.light;

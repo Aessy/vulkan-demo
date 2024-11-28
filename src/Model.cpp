@@ -22,8 +22,7 @@ int Models::loadModelAssimp(std::string const& path)
 {
     Assimp::Importer importer;
     auto *scene = importer.ReadFile(path,  aiProcess_Triangulate
-                                                                 | aiProcess_CalcTangentSpace
-                                                                 | aiProcess_FlipWindingOrder);
+                                                                 | aiProcess_CalcTangentSpace);
 
     if (!scene)
     {

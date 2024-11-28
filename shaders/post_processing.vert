@@ -16,12 +16,12 @@ void main()
     coords[5] = vec3( -1.0,-1.0, 0.0); // bottom left
 
     vec2 uv_frag[6];
-    uv_frag[0] = vec2(0, 0);
-    uv_frag[1] = vec2(1, 0);
-    uv_frag[2] = vec2(1, 1);
-    uv_frag[3] = vec2(1, 1);
-    uv_frag[4] = vec2(0, 1);
-    uv_frag[5] = vec2(0, 0);
+    uv_frag[0] = vec2(0, 1);
+    uv_frag[1] = vec2(1, 1);
+    uv_frag[2] = vec2(1, 0);
+    uv_frag[3] = vec2(1, 0);
+    uv_frag[4] = vec2(0, 0);
+    uv_frag[5] = vec2(0, 1);
 
     gl_Position = vec4(coords[gl_VertexIndex], 1.0);
     uv_out = uv_frag[gl_VertexIndex];
