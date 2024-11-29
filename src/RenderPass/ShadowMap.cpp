@@ -18,6 +18,8 @@
 #include <vulkan/vulkan_handles.hpp>
 #include <vulkan/vulkan_structs.hpp>
 
+static const size_t shadow_map_dim = 1024;
+
 std::vector<glm::vec4> getFrustumCorners(glm::mat4 const& proj_view)
 {
     auto const inv = glm::inverse(proj_view);
@@ -141,8 +143,9 @@ std::vector<glm::mat4> getLightSpaceMatrices(vk::Extent2D const& size, Camera co
     return matrices;
 }
 
-void shadowPassWriteBuffers(RenderingState const& state, Scene const& scene, CascadedShadowMap& shadow_map, vk::Extent2D const& extent, int frame)
+void shadowPassWriteBuffers(RenderingState const& state, Scene const& scene, CascadedShadowMap& shadow_map, int frame)
 {
+    vk::Extent2D extent{shadow_map_dim, shadow_map_dim};
     glm::vec3 light_dir = glm::normalize(scene.light.sun_pos);
     auto const light_space_matrix = getLightSpaceMatrices(extent, scene.camera, light_dir);
 
@@ -245,14 +248,14 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
         vk::Viewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
-        viewport.width = static_cast<float>(state.swap_chain.extent.width);
-        viewport.height = static_cast<float>(state.swap_chain.extent.height);
+        viewport.width = static_cast<float>(shadow_map_dim);
+        viewport.height = static_cast<float>(shadow_map_dim);
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
 
         vk::Rect2D scissor{};
         scissor.offset = vk::Offset2D{0,0};
-        scissor.extent = state.swap_chain.extent;
+        scissor.extent = vk::Extent2D{shadow_map_dim, shadow_map_dim};
 
         command_buffer.setScissor(0,scissor);
         command_buffer.setViewport(0,viewport);
@@ -263,7 +266,7 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
         render_pass_info.setFramebuffer(current_framebuffer);
         render_pass_info.setClearValues(clear_values);
         render_pass_info.renderArea.offset = vk::Offset2D(0,0);
-        render_pass_info.renderArea.extent = state.swap_chain.extent;
+        render_pass_info.renderArea.extent = vk::Extent2D{shadow_map_dim, shadow_map_dim};
 
         command_buffer.beginRenderPass(render_pass_info,
                                     vk::SubpassContents::eInline);
@@ -277,6 +280,23 @@ void shadowMapRenderPass(RenderingState const& state, CascadedShadowMap& shadow_
     //                    vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, 1, 5);
 }
 
+static DepthResources createShadowMapDepthResource(RenderingState const& state, uint32_t n_cascades)
+{
+    vk::Format format = getDepthFormat();
+
+    auto [depth_image, device_memory] = createImage(state, shadow_map_dim, shadow_map_dim, 1, format,
+                            vk::ImageTiling::eOptimal, vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,
+                            vk::MemoryPropertyFlagBits::eDeviceLocal, vk::SampleCountFlagBits::e1, n_cascades);
+
+    
+
+    transitionImageLayout(state, depth_image, format, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthStencilAttachmentOptimal, 1);
+
+    auto depth_image_view = createImageView(state.device, depth_image, format, vk::ImageAspectFlagBits::eDepth, 1);
+
+    return {std::move(depth_image), std::move(device_memory), std::move(depth_image_view)};
+}
+
 static ShadowMapFramebuffer createCascadedShadowmapFramebuffers(RenderingState const& state,
                                                                 vk::RenderPass const& render_pass,
                                                                 unsigned int num_cascades)
@@ -285,7 +305,7 @@ static ShadowMapFramebuffer createCascadedShadowmapFramebuffers(RenderingState c
 
     for (int i = 0; i < 2; ++i)
     {
-        auto depth_image = createDepth(state, vk::SampleCountFlagBits::e1, num_cascades);
+        auto depth_image = createShadowMapDepthResource(state, num_cascades);
         for (int cascade = 0; cascade < num_cascades; ++cascade)
         {
 
@@ -299,8 +319,8 @@ static ShadowMapFramebuffer createCascadedShadowmapFramebuffers(RenderingState c
             framebuffer_info.setRenderPass(render_pass);
             framebuffer_info.attachmentCount = attachments.size();
             framebuffer_info.setAttachments(attachments);
-            framebuffer_info.width = state.swap_chain.extent.width;
-            framebuffer_info.height = state.swap_chain.extent.height;
+            framebuffer_info.width = shadow_map_dim;
+            framebuffer_info.height = shadow_map_dim;
             framebuffer_info.layers = 1;
 
             auto result = state.device.createFramebuffer(framebuffer_info);
@@ -412,14 +432,14 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createCascadedShadowMapPipel
     vk::Viewport viewport{};
     viewport.x = 0;
     viewport.y = 0;
-    viewport.width = (float)swap_chain_extent.width;
-    viewport.height= (float)swap_chain_extent.height;
+    viewport.width = shadow_map_dim;
+    viewport.height= shadow_map_dim;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
     vk::Rect2D scissor{};
     scissor.offset = vk::Offset2D(0,0);
-    scissor.extent = swap_chain_extent;
+    scissor.extent = vk::Extent2D{shadow_map_dim, shadow_map_dim};
 
 
     vk::PipelineViewportStateCreateInfo viewport_state{};

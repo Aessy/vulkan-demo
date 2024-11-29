@@ -98,7 +98,7 @@ void recordCommandBuffer(RenderingState const& state, uint32_t image_index, Appl
     Application& app = render_system;
 
     // Write all buffer data used by the render passes.
-    shadowPassWriteBuffers(state, render_system.scene, app.shadow_map, state.swap_chain.extent, state.current_frame);
+    shadowPassWriteBuffers(state, render_system.scene, app.shadow_map, state.current_frame);
     sceneWriteBuffers(render_system.scene, state.current_frame);
     postProcessingWriteBuffers(app.ppp, state.current_frame);
 
