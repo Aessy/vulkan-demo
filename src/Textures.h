@@ -22,6 +22,7 @@ struct Textures
 {
     vk::raii::Sampler sampler_mip_map;
     vk::raii::Sampler sampler_no_mip_map;
+    vk::raii::Sampler sampler_depth;
     std::vector<std::unique_ptr<Texture>> textures;
 };
 

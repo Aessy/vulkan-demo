@@ -198,6 +198,7 @@ Buffer createBuffer(RenderingState const& state,
 
 std::vector<std::unique_ptr<ImageResource>> createFogBuffer(RenderingState const& state, vk::MemoryPropertyFlags properties);
 
+vk::raii::Sampler createDepthTextureSampler(RenderingState const& state);
 void dispatchPipeline(RenderingState const& state);
 
 struct ShaderStage

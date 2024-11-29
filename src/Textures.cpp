@@ -180,7 +180,8 @@ std::unique_ptr<Texture> createTexture(RenderingState const& state, std::string 
 Textures createTextures(RenderingState const& core, std::vector<TextureInput> const& paths)
 {
     Textures textures{.sampler_mip_map = createTextureSampler(core, true),
-                      .sampler_no_mip_map = createTextureSampler(core, false)};
+                      .sampler_no_mip_map = createTextureSampler(core, false),
+                      .sampler_depth = createDepthTextureSampler(core)};
 
     for (auto const& path : paths)
     {

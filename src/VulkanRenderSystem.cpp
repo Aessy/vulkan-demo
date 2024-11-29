@@ -1164,6 +1164,30 @@ vk::raii::ImageView createTextureImageView(RenderingState const& state, vk::Imag
     return texture_image_view;
 }
 
+vk::raii::Sampler createDepthTextureSampler(RenderingState const& state)
+{
+    vk::SamplerCreateInfo sampler_info;
+    sampler_info.sType = vk::StructureType::eSamplerCreateInfo;
+    sampler_info.magFilter = vk::Filter::eLinear;
+    sampler_info.minFilter = vk::Filter::eLinear;
+    sampler_info.addressModeU = vk::SamplerAddressMode::eClampToBorder;
+    sampler_info.addressModeV = vk::SamplerAddressMode::eClampToBorder;
+    sampler_info.addressModeW = vk::SamplerAddressMode::eClampToBorder;
+    sampler_info.unnormalizedCoordinates = false;
+    sampler_info.compareEnable = true;
+    sampler_info.compareOp = vk::CompareOp::eLess;
+    
+    sampler_info.mipLodBias = 0.0f;                           // No bias for LOD selection
+    sampler_info.anisotropyEnable = VK_FALSE;                 // Disable anisotropic filtering for this sampler
+    sampler_info.minLod = 0.0f;                               // Only sample the base level (level 0)
+    sampler_info.maxLod = 0.0f;                               // Only sample the base level (level 0)
+    sampler_info.borderColor = vk::BorderColor::eIntOpaqueWhite; // Border color if sampler address mode is Border
+    sampler_info.mipmapMode = vk::SamplerMipmapMode::eNearest;
+
+    vk::raii::Sampler sampler = *state.device.createSampler(sampler_info);
+    return sampler;
+}
+
 vk::raii::Sampler createTextureSampler(RenderingState const& state, bool mip_maps)
 {
     vk::SamplerCreateInfo sampler_info;

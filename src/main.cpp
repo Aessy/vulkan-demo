@@ -559,7 +559,7 @@ int main()
 
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
     landscape_flat.material = landscape_flat_dune;
-    landscape_flat.shadow = true;
+    // landscape_flat.shadow = true;
 
     auto sky_box = createObject(meshes.meshes.at(sphere_id));
     sky_box.material = sky_box_material;
