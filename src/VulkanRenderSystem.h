@@ -46,8 +46,8 @@ struct Keyboard
 
 struct CursorPos
 {
-    uint32_t x{};
-    uint32_t y{};
+    double x{};
+    double y{};
 };
 
 struct App

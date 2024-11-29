@@ -1,5 +1,6 @@
 #pragma once
 
+#include "VulkanRenderSystem.h"
 #include <iterator>
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_ASSERT_ON_RESULT
@@ -70,7 +71,7 @@ inline auto createDescriptorPoolInfo(vk::Device const& device, std::vector<vk::D
                  {
                     vk::DescriptorPoolSize pool;
                     pool.type = binding.descriptorType;
-                    pool.setDescriptorCount(2);
+                    pool.setDescriptorCount(binding.descriptorCount*2);
 
                     return pool;
                  });
@@ -81,6 +82,7 @@ inline auto createDescriptorPoolInfo(vk::Device const& device, std::vector<vk::D
     pool_info.maxSets = 2;
 
     auto pool = device.createDescriptorPool(pool_info);
+    checkResult(pool.result);
     return pool.value;
 }
 
@@ -138,7 +140,7 @@ inline auto createSets(vk::Device const& device, vk::DescriptorPool const& pool,
 
         alloc_info.setPNext(&variable_desc_count_alloc_info);
         auto allocate_sets = device.allocateDescriptorSets(alloc_info);
-//        checkResult(allocate_sets.result);
+        checkResult(allocate_sets.result);
         return allocate_sets.value;
     }
 

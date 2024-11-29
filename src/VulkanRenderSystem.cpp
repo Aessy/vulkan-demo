@@ -62,13 +62,6 @@ static void keyPressedCallback(GLFWwindow* window, int key, int scancode, int ac
     app->events.push(Event{.key=key,.scancode=scancode,.action=action,.mods=mods});
 }
 
-static void cursorMovedCallback(GLFWwindow* window, double x_pos, double y_pos)
-{
-    auto app = reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
-
-    app->cursor_pos = CursorPos{uint32_t(x_pos), uint32_t(y_pos)};
-}
-
 GLFWwindow* setupGlfw(App& app)
 {
     glfwInit();
@@ -81,7 +74,7 @@ GLFWwindow* setupGlfw(App& app)
     glfwSetWindowUserPointer(window, &app);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
     glfwSetKeyCallback(window, keyPressedCallback);
-    glfwSetCursorPosCallback(window, cursorMovedCallback);
+    // glfwSetCursorPosCallback(window, cursorMovedCallback);
 
 
     return window;

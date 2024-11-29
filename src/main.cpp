@@ -1,5 +1,6 @@
 #include "Material.h"
 #include "Skybox.h"
+#include <X11/X.h>
 #include <algorithm>
 #include <vulkan/vulkan_raii.hpp>
 #ifdef __linux__
@@ -281,17 +282,42 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
         camera.pos -= camera_speed * glm::normalize(glm::cross(camera.camera_front, camera.up)) * delta;
     }
 
+    static bool first_frame = true;
     static bool shift_was_up = true;
     if (shift_was_up && app.keyboard.shift)
     {
-        app.cursor_pos = CursorPos{uint32_t(extent.width/2), uint32_t(extent.height/2)};
-        glfwSetCursorPos(window, app.cursor_pos.x, app.cursor_pos.y);
+        first_frame = true;
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);  // Hide and disable the cursor
         shift_was_up = false;
     }
-    else if(app.keyboard.shift && (app.cursor_pos.x != uint32_t(extent.width/2) || app.cursor_pos.y != uint32_t(extent.height/2)))
+    else if (!shift_was_up && !app.keyboard.shift)
     {
-        glm::vec2 center = glm::vec2(extent.width/2, extent.height/2);
-        glm::vec2 diff = glm::vec2(app.cursor_pos.x, app.cursor_pos.y) - center;
+        first_frame = false;
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);  // Hide and disable the cursor
+        shift_was_up = true;
+    }
+    else if(app.keyboard.shift)
+    {
+        double xpos, ypos{};
+        glfwGetCursorPos(window, &xpos, &ypos);
+
+        if (first_frame)
+        {
+            app.cursor_pos = CursorPos{xpos, ypos};
+            first_frame = false;
+        }
+
+        
+        double xdiff = xpos - app.cursor_pos.x;
+        double ydiff = ypos - app.cursor_pos.y;
+
+        if (xdiff || ydiff)
+        {
+            app.cursor_pos = CursorPos{xpos, ypos};
+        }
+        
+
+        glm::vec2 diff = glm::vec2(xdiff, ydiff);
         diff.y = -diff.y;
 
         camera.pitch_yawn += diff * camera_speed * delta;
@@ -306,9 +332,6 @@ void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, C
         }
 
         updateCameraFront(camera);
-
-        app.cursor_pos = CursorPos{uint32_t(extent.width/2), uint32_t(extent.height/2)};
-        glfwSetCursorPos(window, app.cursor_pos.x, app.cursor_pos.y);
     }
     else
     {
@@ -594,10 +617,6 @@ int main()
     spdlog::info("Starting rendering loop");
 
     float camera_speed = 20;
-
-    core.app->cursor_pos = {core.swap_chain.extent.width/2, core.swap_chain.extent.height/2};
-    glfwSetCursorPos(core.window, core.app->cursor_pos.x, core.app->cursor_pos.y);
-
 
     while (!glfwWindowShouldClose(core.window))
     {

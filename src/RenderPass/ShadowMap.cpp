@@ -99,7 +99,7 @@ static glm::mat4 getLightProjection(glm::mat4 const& light_view, std::vector<glm
         max_z *= z_mult;
     }
 
-    glm::mat4 const light_projection = glm::ortho(min_x, max_x, max_y, min_y, min_z, max_z);
+    glm::mat4 const light_projection = glm::ortho(min_x, max_x, min_x, max_y, min_z, max_z);
 
     return light_projection * light_view;
 }
@@ -364,7 +364,7 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createCascadedShadowMapPipel
     rasterization_state.rasterizerDiscardEnable = VK_FALSE;
     rasterization_state.polygonMode = vk::PolygonMode::eFill;
     rasterization_state.cullMode = vk::CullModeFlagBits::eBack;  // Cull back faces
-    rasterization_state.frontFace = vk::FrontFace::eClockwise;
+    rasterization_state.frontFace = vk::FrontFace::eCounterClockwise;
     rasterization_state.lineWidth = 1.0f;
 
     vk::PipelineDepthStencilStateCreateInfo depth_stencil_state{};
