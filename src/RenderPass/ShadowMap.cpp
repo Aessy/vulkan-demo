@@ -20,7 +20,7 @@
 #include <vulkan/vulkan_handles.hpp>
 #include <vulkan/vulkan_structs.hpp>
 
-static const size_t shadow_map_dim = 1024;
+static const size_t shadow_map_dim = 2048;
 
 std::vector<glm::vec4> getFrustumCorners(glm::mat4 const& proj_view)
 {
@@ -146,7 +146,7 @@ std::vector<glm::mat4> getLightSpaceMatrices(vk::Extent2D const& size, Camera co
 }
 
 constexpr static size_t n_cascaded_shadow_maps = 4;
-constexpr static float cascadeSplitLambda = 0.95f;
+constexpr static float cascadeSplitLambda = 0.5;
 
 
 std::array<float, n_cascaded_shadow_maps> calculateCascadeSplits()

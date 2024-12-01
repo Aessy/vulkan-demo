@@ -117,10 +117,29 @@ float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
 		}
 	}
 	return shadow;
-
 }
 
-float shadowCalc2()
+float filterPCF(vec4 sc, uint cascadeIndex)
+{
+	ivec2 texDim = ivec2(2048, 2048);
+	float scale = 0.75;
+	float dx = scale * 1.0 / float(texDim.x);
+	float dy = scale * 1.0 / float(texDim.y);
+
+	float shadowFactor = 0.0;
+	int count = 0;
+	int range = 1;
+	
+	for (int x = -range; x <= range; x++) {
+		for (int y = -range; y <= range; y++) {
+			shadowFactor += textureProj(sc, vec2(dx*x, dy*y), cascadeIndex);
+			count++;
+		}
+	}
+	return shadowFactor / count;
+}
+
+float shadowCalc2(vec3 normal, vec3 light_dir)
 {
     vec4 frag_pos_view_space = world.view * vec4(position_worldspace, 1.0);
 
@@ -134,8 +153,19 @@ float shadowCalc2()
     }
 
     vec4 shadow_coord = (biasMat * cascade_matrices.cascade_matrices[cascade_index]) * vec4(position_worldspace, 1.0);
+    float bias = max(0.05 * (1.0 - dot(normal, light_dir)), 0.005);
+    const float bias_modifier = 0.5f;
+    if (cascade_index == 3)
+    {
+        bias *= 1 / (1000.0f * bias_modifier);
+    }
+    else
+    {
+        bias *= 1 / (cascade_distances.distance[cascade_index] * bias_modifier);
+    }
 
-    float shadow = textureProj(shadow_coord / shadow_coord.w, vec2(0.0), cascade_index);
+    float shadow = filterPCF(shadow_coord / shadow_coord.w, cascade_index);
+    // float shadow = textureProj(shadow_coord / shadow_coord.w, vec2(0.0), cascade_index);
 
     return shadow;
 }
@@ -173,8 +203,8 @@ float shadowCalculation(vec3 normal)
 
     vec3 light_dir = normalize(world.light.sun_pos);
     float bias = max(0.05 * (1.0 - dot(normal, light_dir)), 0.005);
+    
     const float bias_modifier = 0.5f;
-
     if (layer == 4)
     {
         bias *= 1 / (1000.0f * bias_modifier);
@@ -238,7 +268,7 @@ vec3 phong(vec3 normal, vec3 color)
     vec3 ambient_component = ambient_strength * light_color;
 
     // Diffuse
-    float cos_theta = clamp(dot(normal,light_dir), 0.1,1);
+    float cos_theta = clamp(dot(normal,light_dir), 0.0,1);
     vec3 diffuse_component = cos_theta * light_color;
 
     // Specular
@@ -246,7 +276,7 @@ vec3 phong(vec3 normal, vec3 color)
     float spec = pow(max(dot(view_dir, reflect_dir), 0.0), shininess);
     vec3 specular_component = specular_strength * spec * light_color;
 
-    float shadow = shadowCalc2();
+    float shadow = shadowCalc2(normal, sun_dir);
     //vec3 result = (ambient_component + diffuse_component + specular_component) * material_diffuse_color;
     //result *= shadow;
 
