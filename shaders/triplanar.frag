@@ -105,10 +105,9 @@ const mat4 biasMat = mat4(
 	0.5, 0.5, 0.0, 1.0 
 );
 
-float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
+float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex, float bias)
 {
 	float shadow = 0.0f;
-	float bias = 0.005;
 
 	if ( shadowCoord.z > -1.0 && shadowCoord.z < 1.0 ) {
 		float dist = texture(shadow_maps, vec3(shadowCoord.st + offset, cascadeIndex)).r;
@@ -119,7 +118,7 @@ float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
 	return shadow;
 }
 
-float filterPCF(vec4 sc, uint cascadeIndex)
+float filterPCF(vec4 sc, uint cascadeIndex, float bias)
 {
 	ivec2 texDim = ivec2(2048, 2048);
 	float scale = 0.75;
@@ -132,7 +131,7 @@ float filterPCF(vec4 sc, uint cascadeIndex)
 	
 	for (int x = -range; x <= range; x++) {
 		for (int y = -range; y <= range; y++) {
-			shadowFactor += textureProj(sc, vec2(dx*x, dy*y), cascadeIndex);
+			shadowFactor += textureProj(sc, vec2(dx*x, dy*y), cascadeIndex, bias);
 			count++;
 		}
 	}
@@ -152,19 +151,11 @@ float shadowCalc2(vec3 normal, vec3 light_dir)
         }
     }
 
-    vec4 shadow_coord = (biasMat * cascade_matrices.cascade_matrices[cascade_index]) * vec4(position_worldspace, 1.0);
-    float bias = max(0.05 * (1.0 - dot(normal, light_dir)), 0.005);
-    const float bias_modifier = 0.5f;
-    if (cascade_index == 3)
-    {
-        bias *= 1 / (1000.0f * bias_modifier);
-    }
-    else
-    {
-        bias *= 1 / (cascade_distances.distance[cascade_index] * bias_modifier);
-    }
+    float bias = max(0.005 * (1.0 - dot(normal, light_dir)), 0.005);
 
-    float shadow = filterPCF(shadow_coord / shadow_coord.w, cascade_index);
+    vec4 shadow_coord = (biasMat * cascade_matrices.cascade_matrices[cascade_index]) * vec4(position_worldspace, 1.0);
+
+    float shadow = filterPCF(shadow_coord / shadow_coord.w, cascade_index, bias);
     // float shadow = textureProj(shadow_coord / shadow_coord.w, vec2(0.0), cascade_index);
 
     return shadow;

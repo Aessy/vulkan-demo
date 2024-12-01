@@ -146,7 +146,7 @@ std::vector<glm::mat4> getLightSpaceMatrices(vk::Extent2D const& size, Camera co
 }
 
 constexpr static size_t n_cascaded_shadow_maps = 4;
-constexpr static float cascadeSplitLambda = 0.95f;
+constexpr static float cascadeSplitLambda = 0.7f;
 
 
 std::array<float, n_cascaded_shadow_maps> calculateCascadeSplits()
