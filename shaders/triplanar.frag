@@ -127,7 +127,7 @@ float filterPCF(vec4 sc, uint cascadeIndex, float bias)
 
 	float shadowFactor = 0.0;
 	int count = 0;
-	int range = 1;
+	int range = 2;
 	
 	for (int x = -range; x <= range; x++) {
 		for (int y = -range; y <= range; y++) {
@@ -135,7 +135,10 @@ float filterPCF(vec4 sc, uint cascadeIndex, float bias)
 			count++;
 		}
 	}
-	return shadowFactor / count;
+	shadowFactor = clamp(shadowFactor / count, 0.0, 1.0);
+
+    return shadowFactor;
+
 }
 
 float shadowCalc2(vec3 normal, vec3 light_dir)
@@ -151,7 +154,8 @@ float shadowCalc2(vec3 normal, vec3 light_dir)
         }
     }
 
-    float bias = max(0.005 * (1.0 - dot(normal, light_dir)), 0.005);
+    float cascade_scale = abs(cascade_distances.distance[cascade_index]) * 0.001;
+    float bias = max(0.005 * (1.0 - dot(normal, light_dir)) * cascade_scale, 0.005);
 
     vec4 shadow_coord = (biasMat * cascade_matrices.cascade_matrices[cascade_index]) * vec4(position_worldspace, 1.0);
 
@@ -354,7 +358,8 @@ vec3 pbr(vec3 normal, vec3 albedo, float roughness, float metalness, float ao)
 
     vec3 reflection = F * albedo * ao * 0.05;
 
-    vec3 color = (ambient + reflection + (kD * diffuse + specular) * max(dot(normal, light_dir), 0.0) * light_color * light_intensity);
+    float shadow = 1.0 - shadowCalc2(normal, light_dir);
+    vec3 color = (ambient + reflection + (kD * diffuse + specular) * max(dot(normal, light_dir), 0.0) * light_color * light_intensity * shadow);
     return color;
 }
 

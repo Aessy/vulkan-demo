@@ -401,7 +401,7 @@ int main()
     
     // int cylinder_id = models.loadModel("./models/cylinder.obj");
 
-    auto height_map_1_model = createFlatGround(4, 1024, 4);
+    auto height_map_1_model = createFlatGround(2047, 1024, 4);
     models.models.insert({height_map_1_model.id, height_map_1_model});
     //auto height_map_1_model = createFlatGround(2047, 500, 4);
 
@@ -430,21 +430,19 @@ int main()
         .program = 0,
         .shader_data = {
             .material_features =  
-                                  MaterialFeatureFlag::RoughnessMap
-                                | MaterialFeatureFlag::AoMap
+                                  MaterialFeatureFlag::AoMap
                                 | MaterialFeatureFlag::AlbedoMap
                                 | MaterialFeatureFlag::NormalMap,
             .sampling_mode = SamplingMode::TriplanarSampling,
             .shade_mode = ReflectionShadeMode::Pbr,
             .displacement_map_texture = 10,
             .normal_map_texture = 11,
-            .base_color_texture = 17,
-            .base_color_normal_texture = 18,
-            .roughness_texture = 19,
-            .ao_texture = 20,
-            .scaling_factor = 10.0f,
-            .roughness = 0,
-            .metallic = 0,
+            .base_color_texture = 12,
+            .base_color_normal_texture = 13,
+            .ao_texture = 14,
+            .scaling_factor = 0.3f,
+            .roughness = 0.402,
+            .metallic = 0.922,
             .ao = 0,
         }
     };
@@ -479,14 +477,17 @@ int main()
         .name = {"Landscape"},
         .program = 0,
         .shader_data = {
-            .material_features =  MaterialFeatureFlag::DisplacementNormalMap
+            .material_features =  MaterialFeatureFlag::DisplacementMap
+                                | MaterialFeatureFlag::DisplacementNormalMap
                                 | MaterialFeatureFlag::RoughnessMap
                                 | MaterialFeatureFlag::AoMap
                                 | MaterialFeatureFlag::AlbedoMap
                                 | MaterialFeatureFlag::NormalMap,
             .sampling_mode = SamplingMode::TriplanarSampling,
-            .shade_mode = ReflectionShadeMode::Phong,
-            .normal_map_texture = 3,
+            .shade_mode = ReflectionShadeMode::Pbr,
+            .displacement_map_texture = 10,
+            .normal_map_texture = 11,
+            .displacement_y = 70.0f,
             .base_color_texture = 17,
             .base_color_normal_texture = 18,
             .roughness_texture = 19,
@@ -525,7 +526,7 @@ int main()
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
     //camera.pos = glm::vec3(0,300,-5);
-    camera.pos = glm::vec3(0,20, 0);
+    camera.pos = glm::vec3(0,70, 0);
 
     updateCameraFront(camera);
 
@@ -580,15 +581,16 @@ int main()
     fbx.shadow = true;
     addObject(scene, fbx);
 
-    fbx.position = glm::vec3(10, 20, 0);
+    fbx.position = glm::vec3(10, 69, 0);
     addObject(scene, fbx);
 
-    fbx.position = glm::vec3(30, 25, 10);
+    fbx.position = glm::vec3(37, 54, 10);
     addObject(scene, fbx);
 
     auto box_fbx = createObject(meshes.meshes.at(box_id));
     box_fbx.material = base_material;
-    box_fbx.position = glm::vec3(25,25,10);
+    box_fbx.position = glm::vec3(25,54,10);
+    box_fbx.angel = 50.0f;
     box_fbx.shadow = true;
     addObject(scene, box_fbx);
 

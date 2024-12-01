@@ -151,7 +151,7 @@ constexpr static float cascadeSplitLambda = 0.7f;
 
 std::array<float, n_cascaded_shadow_maps> calculateCascadeSplits()
 {
-    static constexpr float near_clip = 0.5f;
+    static constexpr float near_clip = 0.7f;
     static constexpr float far_clip = 1000.0f;
     static constexpr float clip_range = far_clip - near_clip;
 
@@ -329,8 +329,12 @@ std::array<Cascade, 4> updateCascadesOriginal(Camera const& camera, glm::vec3 co
         glm::vec3 maxExtents = glm::vec3(radius);
         glm::vec3 minExtents = -maxExtents;
 
-        glm::mat4 lightViewMatrix = glm::lookAt(frustumCenter - light_dir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, -100.0f, maxExtents.z - minExtents.z);
+        float texel_size = 2.0f * radius / shadow_map_dim;
+        glm::vec3 snapped_center = floor(frustumCenter / texel_size) * texel_size;
+        glm::vec3 offset = snapped_center - frustumCenter;
+
+        glm::mat4 lightViewMatrix = glm::lookAt(snapped_center- light_dir * -minExtents.z, snapped_center, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, 0.0f, maxExtents.z - minExtents.z);
 
         // Store split distance and matrix in cascade
         cascades[i].splitDepth = (0.5f + splitDist * clipRange) * -1.0f;
