@@ -107,13 +107,13 @@ const mat4 biasMat = mat4(
 
 float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
 {
-	float shadow = 1.0;
+	float shadow = 0.0f;
 	float bias = 0.005;
 
 	if ( shadowCoord.z > -1.0 && shadowCoord.z < 1.0 ) {
 		float dist = texture(shadow_maps, vec3(shadowCoord.st + offset, cascadeIndex)).r;
 		if (shadowCoord.w > 0 && dist < shadowCoord.z - bias) {
-			shadow = 0.3;
+			shadow = 1.0f;
 		}
 	}
 	return shadow;
@@ -247,10 +247,10 @@ vec3 phong(vec3 normal, vec3 color)
     vec3 specular_component = specular_strength * spec * light_color;
 
     float shadow = shadowCalc2();
-    vec3 result = (ambient_component + diffuse_component + specular_component) * material_diffuse_color;
-    result *= shadow;
-    
-    // vec3 result = (ambient_component + (1.0-shadow) * (diffuse_component + specular_component)) * material_diffuse_color;
+    //vec3 result = (ambient_component + diffuse_component + specular_component) * material_diffuse_color;
+    //result *= shadow;
+
+    vec3 result = (ambient_component + (1.0-shadow) * (diffuse_component + specular_component)) * material_diffuse_color;
 
     return result;
 }
