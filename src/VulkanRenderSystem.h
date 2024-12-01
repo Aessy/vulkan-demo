@@ -101,6 +101,7 @@ struct UniformBuffer
     vk::raii::DeviceMemory uniform_device_memory;
     void* uniform_buffers_mapped;
     size_t alignment;
+    size_t full_size;
 };
 
 struct Buffer
@@ -219,24 +220,27 @@ std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(
 std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout> createComputePipeline(vk::Device const& device, ShaderStage const& compute_stage, std::vector<vk::DescriptorSetLayout> const& desc_set_layouts);
 
 template<typename BufferObject>
-auto createUniformBuffers(RenderingState const& state, int count = 1, std::size_t alignment = 1)
+auto createUniformBuffers(RenderingState const& state, int count = 1, std::size_t element_alignment = 1, std::size_t buffer_alignment = 64)
 {
-
     vk::DeviceSize object_size = sizeof(BufferObject);
-    vk::DeviceSize element_size = count > 1 ? alignment - ((object_size - 1) % alignment) + (object_size-1)
+    // Align elements if required
+    vk::DeviceSize element_size = count > 1 ? element_alignment - ((object_size - 1) % element_alignment) + (object_size-1)
                                             : object_size;
 
     vk::DeviceSize buffer_size = element_size * count;
+
+    // Align the full buffer if required
+    vk::DeviceSize final_buffer_size = buffer_alignment - ((buffer_size-1) % buffer_alignment) + (buffer_size-1);
 
     std::vector<std::unique_ptr<UniformBuffer>> ubos;
     size_t const max_frames_in_flight = 2;
     for (size_t i = 0; i < max_frames_in_flight; ++i)
     {
-        auto [buffer, uniform_buffer_memory] = createBuffer(state, buffer_size, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible
+        auto [buffer, uniform_buffer_memory] = createBuffer(state, final_buffer_size, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible
                                                                                  |vk::MemoryPropertyFlagBits::eHostCoherent);
-        auto mapped = uniform_buffer_memory.mapMemory(0, buffer_size);
+        auto mapped = uniform_buffer_memory.mapMemory(0, final_buffer_size);
 
-        ubos.push_back(std::make_unique<UniformBuffer>(std::move(buffer), std::move(uniform_buffer_memory), mapped, alignment));
+        ubos.push_back(std::make_unique<UniformBuffer>(std::move(buffer), std::move(uniform_buffer_memory), mapped, element_alignment, final_buffer_size));
     }
 
     return ubos;

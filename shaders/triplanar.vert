@@ -68,12 +68,6 @@ layout(std430, set = 3, binding = 0) readonly buffer MaterialBufferObject{
     MaterialData objects[];
 } materials;
 
-layout(set = 4, binding = 0) uniform UniformShadowLightViews{
-    mat4 shadow_light_views[5];
-} shadow_light_views;
-
-layout(set = 5, binding = 0) uniform sampler2D shadow_map_sampler[5];
-
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec2 in_tex_coord;
 layout(location = 2) in vec3 in_normal;

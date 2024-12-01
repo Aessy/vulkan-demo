@@ -1170,9 +1170,9 @@ vk::raii::Sampler createDepthTextureSampler(RenderingState const& state)
     sampler_info.sType = vk::StructureType::eSamplerCreateInfo;
     sampler_info.magFilter = vk::Filter::eLinear;
     sampler_info.minFilter = vk::Filter::eLinear;
-    sampler_info.addressModeU = vk::SamplerAddressMode::eClampToBorder;
-    sampler_info.addressModeV = vk::SamplerAddressMode::eClampToBorder;
-    sampler_info.addressModeW = vk::SamplerAddressMode::eClampToBorder;
+    sampler_info.addressModeU = vk::SamplerAddressMode::eClampToEdge;
+    sampler_info.addressModeV = vk::SamplerAddressMode::eClampToEdge;
+    sampler_info.addressModeW = vk::SamplerAddressMode::eClampToEdge;
     sampler_info.unnormalizedCoordinates = false;
     sampler_info.compareEnable = true;
     sampler_info.compareOp = vk::CompareOp::eLess;

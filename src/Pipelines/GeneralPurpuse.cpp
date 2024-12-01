@@ -239,7 +239,7 @@ Pipeline createGeneralPurposePipeline(RenderingState const& state,
     program_desc.buffers.push_back({layer_types::Buffer{
         .name = {{"shadow maps"}},
         .type = layer_types::BufferType::CascadedShadowMapBufferObject,
-        .size = 5,
+        .size = 4,
         .binding = layer_types::Binding {
             .name = {{"binding shadow_map"}},
             .binding = 0,
@@ -304,7 +304,7 @@ Pipeline createGeneralPurposePipeline(RenderingState const& state,
                                            shadow_map_buffer,
                                            pipeline_finish.descriptor_sets[4].set,
                                            pipeline_finish.descriptor_sets[4].layout_bindings[0],
-                                           5);
+                                           4);
     // Update image samplers for the shadow map array
     updateImageSampler(state.device, {*shadow_map_images[0]}, textures.sampler_no_mip_map, {pipeline_finish.descriptor_sets[5].set[0]}, pipeline_finish.descriptor_sets[5].layout_bindings[0], vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal);
     updateImageSampler(state.device, {*shadow_map_images[1]}, textures.sampler_no_mip_map, {pipeline_finish.descriptor_sets[5].set[1]}, pipeline_finish.descriptor_sets[5].layout_bindings[0], vk::ImageLayout::eDepthAttachmentStencilReadOnlyOptimal);
@@ -313,7 +313,7 @@ Pipeline createGeneralPurposePipeline(RenderingState const& state,
                                shadow_map_distances,
                                pipeline_finish.descriptor_sets[6].set,
                                pipeline_finish.descriptor_sets[6].layout_bindings[0],
-                               4);
+                               16);
 
     return pipeline_finish;
 }

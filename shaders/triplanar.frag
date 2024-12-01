@@ -73,15 +73,14 @@ layout(std430, set = 3, binding = 0) readonly buffer MaterialBufferObject{
 
 layout(set = 4, binding = 0) uniform CascadeMatrices
 {
-    mat4 cascade_matrices[5];
+    mat4 cascade_matrices[4];
 } cascade_matrices;
 
 layout(set = 5, binding = 0) uniform sampler2DArray shadow_maps;
 
-
 layout(set = 6, binding = 0) uniform CascadeDistances
 {
-    uniform float distance[4];
+    float distance[4];
 } cascade_distances;
 
 layout(location = 0)  in vec3 position_worldspace;
@@ -95,7 +94,51 @@ layout(location = 0) out vec4 out_color;
 
 MaterialData material;
 
+#define SHADOW_MAP_CASCADE_COUNT 4
+
 const float distances[4] = float[](20.0, 40.0, 100.0, 500.0);
+
+const mat4 biasMat = mat4( 
+	0.5, 0.0, 0.0, 0.0,
+	0.0, 0.5, 0.0, 0.0,
+	0.0, 0.0, 1.0, 0.0,
+	0.5, 0.5, 0.0, 1.0 
+);
+
+float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex)
+{
+	float shadow = 1.0;
+	float bias = 0.005;
+
+	if ( shadowCoord.z > -1.0 && shadowCoord.z < 1.0 ) {
+		float dist = texture(shadow_maps, vec3(shadowCoord.st + offset, cascadeIndex)).r;
+		if (shadowCoord.w > 0 && dist < shadowCoord.z - bias) {
+			shadow = 0.3;
+		}
+	}
+	return shadow;
+
+}
+
+float shadowCalc2()
+{
+    vec4 frag_pos_view_space = world.view * vec4(position_worldspace, 1.0);
+
+    uint cascade_index = 0;
+    for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT - 1; ++i)
+    {
+        if (frag_pos_view_space.z < cascade_distances.distance[i])
+        {
+            cascade_index = i + 1;
+        }
+    }
+
+    vec4 shadow_coord = (biasMat * cascade_matrices.cascade_matrices[cascade_index]) * vec4(position_worldspace, 1.0);
+
+    float shadow = textureProj(shadow_coord / shadow_coord.w, vec2(0.0), cascade_index);
+
+    return shadow;
+}
 
 float shadowCalculation(vec3 normal)
 {
@@ -203,8 +246,11 @@ vec3 phong(vec3 normal, vec3 color)
     float spec = pow(max(dot(view_dir, reflect_dir), 0.0), shininess);
     vec3 specular_component = specular_strength * spec * light_color;
 
-    float shadow = shadowCalculation(normal);
-    vec3 result = (ambient_component + (1.0-shadow) * (diffuse_component + specular_component)) * material_diffuse_color;
+    float shadow = shadowCalc2();
+    vec3 result = (ambient_component + diffuse_component + specular_component) * material_diffuse_color;
+    result *= shadow;
+    
+    // vec3 result = (ambient_component + (1.0-shadow) * (diffuse_component + specular_component)) * material_diffuse_color;
 
     return result;
 }

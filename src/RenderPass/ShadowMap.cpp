@@ -254,15 +254,15 @@ struct Cascade
     float splitDepth;
 };
 
-std::array<Cascade, 4> updateCascadesOriginal(Camera const& camera, glm::vec3 const& lightPos)
+std::array<Cascade, 4> updateCascadesOriginal(Camera const& camera, glm::vec3 const& light_dir)
 {
     auto const camera_view = glm::lookAt(camera.pos, (camera.pos + camera.camera_front), camera.up);
-    auto const camera_proj = glm::perspective(glm::radians(45.0f), 1920.0f / 1080.0f, 0.5f, 45.0f);
+    auto const camera_proj = glm::perspective(glm::radians(45.0f), 1920.0f / 1080.0f, 0.5f, 1000.0f);
 
     float cascadeSplits[SHADOW_MAP_CASCADE_COUNT];
 
     float nearClip = 0.5f;
-    float farClip = 45.0f;
+    float farClip = 1000.0f;
     float clipRange = farClip - nearClip;
 
     float minZ = nearClip;
@@ -329,8 +329,7 @@ std::array<Cascade, 4> updateCascadesOriginal(Camera const& camera, glm::vec3 co
         glm::vec3 maxExtents = glm::vec3(radius);
         glm::vec3 minExtents = -maxExtents;
 
-        glm::vec3 lightDir = normalize(-lightPos);
-        glm::mat4 lightViewMatrix = glm::lookAt(frustumCenter - lightDir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 lightViewMatrix = glm::lookAt(frustumCenter - light_dir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
         glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, 0.0f, maxExtents.z - minExtents.z);
 
         // Store split distance and matrix in cascade
@@ -351,27 +350,15 @@ void shadowPassWriteBuffers(RenderingState const& state, Scene const& scene, Cas
 
     auto const cascades = updateCascades(scene.camera, glm::normalize(-scene.light.sun_pos));
 
-    auto const cascades_orig = updateCascadesOriginal(scene.camera, scene.light.sun_pos);
+    auto const cascades_orig = updateCascadesOriginal(scene.camera, glm::normalize(-scene.light.sun_pos));
 
     for (int i = 0; i < cascades.size(); ++i)
     {
-        writeBuffer(*shadow_map.cascaded_shadow_map_buffer[frame], cascades[i], i, state.uniform_buffer_alignment_min);
-        writeBuffer(*shadow_map.cascaded_shadow_map_buffer_packed[frame], cascades[i], i);
+        writeBuffer(*shadow_map.cascaded_shadow_map_buffer[frame], cascades_orig[i].viewProjMatrix, i, state.uniform_buffer_alignment_min);
+        writeBuffer(*shadow_map.cascaded_shadow_map_buffer_packed[frame], cascades_orig[i].viewProjMatrix, i);
+
+        writeBuffer(*shadow_map.cascaded_distances[frame], cascades_orig[i].splitDepth, i, 16);
     }
-
-    float const near = 0.5f;
-    float const far = 1000.0f;
-
-    float const level_1 = far/50; // 20
-    float const level_2 = far/25; // 40
-    float const level_3 = far/10; // 100
-    float const level_4 = far/5;  // 500 
-
-    writeBuffer(*shadow_map.cascaded_distances[frame], level_1, 0);
-    writeBuffer(*shadow_map.cascaded_distances[frame], level_2, 1);
-    writeBuffer(*shadow_map.cascaded_distances[frame], level_3, 2);
-    writeBuffer(*shadow_map.cascaded_distances[frame], level_4, 3);
-
 }
 
 static uint32_t getOffset(size_t object_size, size_t alignment, size_t index)
@@ -594,7 +581,7 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createCascadedShadowMapPipel
     vk::PipelineDepthStencilStateCreateInfo depth_stencil_state{};
     depth_stencil_state.depthTestEnable = true;
     depth_stencil_state.depthWriteEnable = true;
-    depth_stencil_state.depthCompareOp = vk::CompareOp::eLess;
+    depth_stencil_state.depthCompareOp = vk::CompareOp::eLessOrEqual;
     depth_stencil_state.depthBoundsTestEnable = false;
     depth_stencil_state.stencilTestEnable = false;
     depth_stencil_state.minDepthBounds = 0.0f;
