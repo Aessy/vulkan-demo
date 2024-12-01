@@ -1177,7 +1177,7 @@ vk::raii::Sampler createDepthTextureSampler(RenderingState const& state)
     sampler_info.compareEnable = true;
     sampler_info.compareOp = vk::CompareOp::eLess;
     
-    ampler_info.mipLodBias = 0.0f;                           // No bias for LOD selection
+    sampler_info.mipLodBias = 0.0f;                           // No bias for LOD selection
     sampler_info.anisotropyEnable = VK_FALSE;                 // Disable anisotropic filtering for this sampler
     sampler_info.minLod = 0.0f;                               // Only sample the base level (level 0)
     sampler_info.maxLod = 0.0f;                               // Only sample the base level (level 0)

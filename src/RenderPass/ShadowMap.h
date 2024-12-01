@@ -27,7 +27,7 @@ struct CascadedShadowMap
 
     Pipeline pipeline;
 
-    static constexpr uint32_t n_cascaded_shadow_maps = 5;
+    static constexpr uint32_t n_cascaded_shadow_maps = 4;
 
     // Just recalculate per render call probably. Don't need to store it
     std::array<glm::mat4, n_cascaded_shadow_maps> light_projection_views;

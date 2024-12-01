@@ -1,6 +1,7 @@
 #include "ShadowMap.h"
 #include "Model.h"
 
+#include <glm/ext/matrix_clip_space.hpp>
 #include <glm/glm.hpp>
 
 #include "TypeLayer.h"
@@ -10,6 +11,7 @@
 #include "Renderer.h"
 #include "descriptor_set.h"
 
+#include <glm/matrix.hpp>
 #include <limits>
 #include <vector>
 
@@ -83,7 +85,7 @@ static glm::mat4 getLightProjection(glm::mat4 const& light_view, std::vector<glm
         max_z = std::max(max_z, trf.z);
     }
 
-    constexpr float z_mult = 2;
+    constexpr float z_mult = 7;
     if (min_z < 0)
     {
         min_z *= z_mult;
@@ -143,16 +145,218 @@ std::vector<glm::mat4> getLightSpaceMatrices(vk::Extent2D const& size, Camera co
     return matrices;
 }
 
+constexpr static size_t n_cascaded_shadow_maps = 4;
+constexpr static float cascadeSplitLambda = 0.95f;
+
+
+std::array<float, n_cascaded_shadow_maps> calculateCascadeSplits()
+{
+    static constexpr float near_clip = 0.5f;
+    static constexpr float far_clip = 1000.0f;
+    static constexpr float clip_range = far_clip - near_clip;
+
+    static constexpr float min_z = near_clip;
+    static constexpr float max_z = near_clip + clip_range;
+
+    static constexpr float range = max_z - min_z;
+    static constexpr float ratio = max_z / min_z;
+
+    std::array<float, n_cascaded_shadow_maps> cascaded_splits;
+
+    for (uint32_t i = 0; i < n_cascaded_shadow_maps; i++) {
+        float p = (i + 1) / static_cast<float>(n_cascaded_shadow_maps);
+        float log = min_z * std::pow(ratio, p);
+        float uniform = min_z + range * p;
+        float d = cascadeSplitLambda * (log - uniform) + uniform;
+        cascaded_splits[i] = (d - near_clip) / clip_range;
+    }
+
+    return cascaded_splits;
+}
+
+std::vector<std::pair<glm::mat4, float>> updateCascades(Camera const& camera, glm::vec3 const& light_dir)
+{
+    std::vector<std::pair<glm::mat4, float>> out;
+
+    auto const cascade_splits = calculateCascadeSplits();
+    auto const camera_view = glm::lookAt(camera.pos, (camera.pos + camera.camera_front), camera.up);
+
+    static constexpr float near_clip = 0.5f;
+    static constexpr float far_clip = 1000.0f;
+    static constexpr float clip_range = far_clip - near_clip;
+
+    float last_split_dist = 0.0f;
+
+    for (uint32_t i = 0; i < n_cascaded_shadow_maps; ++i)
+    {
+        float split_dist = cascade_splits[i];
+        glm::vec3 frustum_corners[8] = {
+            glm::vec3(-1.0f,  1.0f, 0.0f),
+            glm::vec3( 1.0f,  1.0f, 0.0f),
+            glm::vec3( 1.0f, -1.0f, 0.0f),
+            glm::vec3(-1.0f, -1.0f, 0.0f),
+            glm::vec3(-1.0f,  1.0f,  1.0f),
+            glm::vec3( 1.0f,  1.0f,  1.0f),
+            glm::vec3( 1.0f, -1.0f,  1.0f),
+            glm::vec3(-1.0f, -1.0f,  1.0f),
+        };
+
+        glm::mat4 inv_cam = glm::inverse(camera.proj * camera_view);
+        for (uint32_t corner = 0; corner < 8; ++corner)
+        {
+            glm::vec4 inv_corner = inv_cam * glm::vec4(frustum_corners[corner], 1.0f);
+            frustum_corners[corner] = inv_corner / inv_corner.w;
+        }
+
+        for (uint32_t corner = 0; corner < 4; ++corner)
+        {
+            glm::vec3 dist = frustum_corners[corner+4] - frustum_corners[corner];
+            frustum_corners[corner+4] = frustum_corners[corner] + (dist * split_dist);
+            frustum_corners[corner] = frustum_corners[corner] + (dist * last_split_dist);
+        }
+
+        glm::vec3 frustum_center = glm::vec3(0.0f);
+        for (uint32_t corner = 0; corner < 8; ++corner)
+        {
+            frustum_center += frustum_corners[corner];
+        }
+        frustum_center /= 8.0f;
+
+        float radius = 0.0f;
+        for (uint32_t corner = 0; corner < 8; ++corner)
+        {
+            float const distance = glm::length(frustum_corners[corner] - frustum_center);
+            radius = glm::max(radius, distance);
+        }
+        radius = std::ceil(radius * 16.0f) / 16.0f;
+
+        glm::vec3 max_extents = glm::vec3(radius);
+        glm::vec3 min_extents = -max_extents;
+
+        //TODO: Check light dir orientation
+        glm::mat4 light_view_matrix = glm::lookAt(frustum_center - light_dir * -min_extents.z, frustum_center, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 light_ortho_matrix = glm::ortho(min_extents.x, max_extents.x, min_extents.y, max_extents.y, 0.0f, max_extents.z - min_extents.z);
+
+        glm::mat4 out_matrix = light_ortho_matrix * light_view_matrix;
+        float dist = (near_clip + split_dist * clip_range) * -1.0f;
+
+        out.push_back({out_matrix, dist});
+    }
+
+    return out;
+}
+
+static constexpr size_t SHADOW_MAP_CASCADE_COUNT = 4;
+
+struct Cascade
+{
+    glm::mat4 viewProjMatrix;
+    float splitDepth;
+};
+
+std::array<Cascade, 4> updateCascadesOriginal(Camera const& camera, glm::vec3 const& lightPos)
+{
+    auto const camera_view = glm::lookAt(camera.pos, (camera.pos + camera.camera_front), camera.up);
+    auto const camera_proj = glm::perspective(glm::radians(45.0f), 1920.0f / 1080.0f, 0.5f, 45.0f);
+
+    float cascadeSplits[SHADOW_MAP_CASCADE_COUNT];
+
+    float nearClip = 0.5f;
+    float farClip = 45.0f;
+    float clipRange = farClip - nearClip;
+
+    float minZ = nearClip;
+    float maxZ = nearClip + clipRange;
+
+    float range = maxZ - minZ;
+    float ratio = maxZ / minZ;
+
+    // Calculate split depths based on view camera frustum
+    // Based on method presented in https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch10.html
+    for (uint32_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
+        float p = (i + 1) / static_cast<float>(SHADOW_MAP_CASCADE_COUNT);
+        float log = minZ * std::pow(ratio, p);
+        float uniform = minZ + range * p;
+        float d = cascadeSplitLambda * (log - uniform) + uniform;
+        cascadeSplits[i] = (d - nearClip) / clipRange;
+    }
+
+    std::array<Cascade, SHADOW_MAP_CASCADE_COUNT> cascades;
+
+    // Calculate orthographic projection matrix for each cascade
+    float lastSplitDist = 0.0;
+    for (uint32_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
+        float splitDist = cascadeSplits[i];
+
+        glm::vec3 frustumCorners[8] = {
+            glm::vec3(-1.0f,  1.0f, 0.0f),
+            glm::vec3( 1.0f,  1.0f, 0.0f),
+            glm::vec3( 1.0f, -1.0f, 0.0f),
+            glm::vec3(-1.0f, -1.0f, 0.0f),
+            glm::vec3(-1.0f,  1.0f,  1.0f),
+            glm::vec3( 1.0f,  1.0f,  1.0f),
+            glm::vec3( 1.0f, -1.0f,  1.0f),
+            glm::vec3(-1.0f, -1.0f,  1.0f),
+        };
+
+        // Project frustum corners into world space
+        glm::mat4 invCam = glm::inverse(camera_proj * camera_view);
+        for (uint32_t j = 0; j < 8; j++) {
+            glm::vec4 invCorner = invCam * glm::vec4(frustumCorners[j], 1.0f);
+            frustumCorners[j] = invCorner / invCorner.w;
+        }
+
+        for (uint32_t j = 0; j < 4; j++) {
+            glm::vec3 dist = frustumCorners[j + 4] - frustumCorners[j];
+            frustumCorners[j + 4] = frustumCorners[j] + (dist * splitDist);
+            frustumCorners[j] = frustumCorners[j] + (dist * lastSplitDist);
+        }
+
+        // Get frustum center
+        glm::vec3 frustumCenter = glm::vec3(0.0f);
+        for (uint32_t j = 0; j < 8; j++) {
+            frustumCenter += frustumCorners[j];
+        }
+        frustumCenter /= 8.0f;
+
+        float radius = 0.0f;
+        for (uint32_t j = 0; j < 8; j++) {
+            float distance = glm::length(frustumCorners[j] - frustumCenter);
+            radius = glm::max(radius, distance);
+        }
+        radius = std::ceil(radius * 16.0f) / 16.0f;
+
+        glm::vec3 maxExtents = glm::vec3(radius);
+        glm::vec3 minExtents = -maxExtents;
+
+        glm::vec3 lightDir = normalize(-lightPos);
+        glm::mat4 lightViewMatrix = glm::lookAt(frustumCenter - lightDir * -minExtents.z, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, 0.0f, maxExtents.z - minExtents.z);
+
+        // Store split distance and matrix in cascade
+        cascades[i].splitDepth = (0.5f + splitDist * clipRange) * -1.0f;
+        cascades[i].viewProjMatrix = lightOrthoMatrix * lightViewMatrix;
+
+        lastSplitDist = cascadeSplits[i];
+    }
+
+    return cascades;
+}
+
 void shadowPassWriteBuffers(RenderingState const& state, Scene const& scene, CascadedShadowMap& shadow_map, int frame)
 {
     vk::Extent2D extent{shadow_map_dim, shadow_map_dim};
     glm::vec3 light_dir = glm::normalize(scene.light.sun_pos);
     auto const light_space_matrix = getLightSpaceMatrices(extent, scene.camera, light_dir);
 
-    for (int i = 0; i < light_space_matrix.size(); ++i)
+    auto const cascades = updateCascades(scene.camera, glm::normalize(-scene.light.sun_pos));
+
+    auto const cascades_orig = updateCascadesOriginal(scene.camera, scene.light.sun_pos);
+
+    for (int i = 0; i < cascades.size(); ++i)
     {
-        writeBuffer(*shadow_map.cascaded_shadow_map_buffer[frame], light_space_matrix[i], i, state.uniform_buffer_alignment_min);
-        writeBuffer(*shadow_map.cascaded_shadow_map_buffer_packed[frame], light_space_matrix[i], i);
+        writeBuffer(*shadow_map.cascaded_shadow_map_buffer[frame], cascades[i], i, state.uniform_buffer_alignment_min);
+        writeBuffer(*shadow_map.cascaded_shadow_map_buffer_packed[frame], cascades[i], i);
     }
 
     float const near = 0.5f;
@@ -525,9 +729,9 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene cons
 
     // Needs alignment for when binding the descriptor set
     shadow_map.cascaded_shadow_map_buffer = createUniformBuffers<CascadedShadowMapBufferObject>(core, shadow_map.n_cascaded_shadow_maps, core.uniform_buffer_alignment_min);
-    shadow_map.cascaded_shadow_map_buffer_packed = createUniformBuffers<CascadedShadowMapBufferObject>(core, shadow_map.n_cascaded_shadow_maps, 1ul);
+    shadow_map.cascaded_shadow_map_buffer_packed = createUniformBuffers<CascadedShadowMapBufferObject>(core, shadow_map.n_cascaded_shadow_maps);
 
-    shadow_map.cascaded_distances = createUniformBuffers<float>(core, shadow_map.n_cascaded_shadow_maps-1);
+    shadow_map.cascaded_distances = createUniformBuffers<float>(core, shadow_map.n_cascaded_shadow_maps);
 
     // Create pipeline
     layer_types::Program program_desc;
@@ -537,7 +741,7 @@ CascadedShadowMap createCascadedShadowMap(RenderingState const& core, Scene cons
     program_desc.buffers.push_back({layer_types::Buffer{
         .name = {{"shadow map buffer object"}},
         .type = layer_types::BufferType::CascadedShadowMapBufferObject,
-        .count = 5,
+        .count = 4,
         .size = 1,
         .binding = layer_types::Binding {
             .name = {{"binding matrice"}},
