@@ -370,9 +370,9 @@ int main()
           {"./textures/dune3_height.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           {"./textures/dune3_normals.png", TextureType::Map, vk::Format::eR8G8B8A8Unorm},
           //{"./textures/cylinder.png", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/GroundSand005_COL_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/GroundSand005_COL_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb},
           {"./textures/GroundSand005_NRM_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
-          {"./textures/GroundSand005_AO_2K.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
+          {"./textures/GroundSand005_AO_2K.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
           {"./textures/brown_mud_03_diff_1k.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/brown_mud_03_nor_gl_1k.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
 

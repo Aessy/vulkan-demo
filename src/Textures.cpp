@@ -100,8 +100,16 @@ static std::tuple<vk::raii::Image, vk::raii::DeviceMemory, uint32_t> createTextu
 {
     int width, height, channels {};
 
+    int image_channels = 4;
+
+    int stbi_format = STBI_rgb_alpha;
+    if (format == vk::Format::eR8Unorm)
+    {
+        image_channels = 1;
+        stbi_format = STBI_grey;
+    }
     //auto pixels = stbi_load("textures/far.jpg", &width, &height, &channels, STBI_rgb_alpha);
-    auto pixels = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+    auto pixels = stbi_load(path.c_str(), &width, &height, &channels, stbi_format);
 
     if (!pixels)
     {
@@ -110,7 +118,7 @@ static std::tuple<vk::raii::Image, vk::raii::DeviceMemory, uint32_t> createTextu
 
     uint32_t mip_levels = static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;
 
-    vk::DeviceSize image_size = width * height * 4;
+    vk::DeviceSize image_size = width * height * image_channels;
 
     auto [staging_buffer, staging_buffer_memory] = createBuffer(state, image_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 

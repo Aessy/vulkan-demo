@@ -578,7 +578,7 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createCascadedShadowMapPipel
     rasterization_state.depthClampEnable = VK_FALSE;
     rasterization_state.rasterizerDiscardEnable = VK_FALSE;
     rasterization_state.polygonMode = vk::PolygonMode::eFill;
-    rasterization_state.cullMode = vk::CullModeFlagBits::eFront;  // Cull back faces
+    rasterization_state.cullMode = vk::CullModeFlagBits::eBack;  // Cull back faces
     rasterization_state.frontFace = vk::FrontFace::eClockwise;
     rasterization_state.lineWidth = 1.0f;
 
