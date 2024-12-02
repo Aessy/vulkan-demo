@@ -13,6 +13,12 @@ struct Terrain
 };
 */
 
+enum class ObjectType
+{
+    STANDARD,
+    SKYBOX
+};
+
 struct Object
 {
     // Weak handles to the buffer for now. Fix later.
@@ -30,6 +36,8 @@ struct Object
     std::optional<Lod> lod;
 
     bool shadow = false;
+
+    ObjectType object_type = ObjectType::STANDARD;
 
     int id = Id();
 };

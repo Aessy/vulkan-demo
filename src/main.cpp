@@ -407,7 +407,7 @@ int main()
 
     // int cylinder_id = models.loadModel("./models/cylinder.obj");
 
-    auto height_map_1_model = createFlatGround(2047, 1024, 4);
+    auto height_map_1_model = createFlatGround(512, 1024, 4);
     models.models.insert({height_map_1_model.id, height_map_1_model});
     //auto height_map_1_model = createFlatGround(2047, 500, 4);
 
@@ -550,7 +550,7 @@ int main()
     };
 
     Camera camera;
-    camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 1000.0f);
+    camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 500.0f);
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
     //camera.pos = glm::vec3(0,300,-5);
@@ -594,7 +594,8 @@ int main()
 
     auto sky_box = createObject(meshes.meshes.at(sphere_id));
     sky_box.material = sky_box_material;
-    sky_box.scale = 800.0f;
+    sky_box.scale = 500.0f;
+    sky_box.object_type = ObjectType::SKYBOX;
 
     auto tree = createObject(meshes.meshes.at(tree_id));
     tree.material = tree_material;

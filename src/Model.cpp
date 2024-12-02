@@ -51,7 +51,7 @@ int Models::loadModelAssimp(std::string const& path)
             if (mesh->HasTextureCoords(0))
             {
                 auto const tex_coord = mesh->mTextureCoords[0][i];
-                vert.tex_coord = glm::vec2(tex_coord.x, tex_coord.y);
+                vert.tex_coord = glm::vec2(tex_coord.x, 1-tex_coord.y);
             }
 
             if (mesh->HasTangentsAndBitangents())

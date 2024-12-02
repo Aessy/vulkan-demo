@@ -89,7 +89,7 @@ inline ModelBufferObject createModelBufferObject(Object const& object)
     return model_buffer;
 }
 
-inline void sceneWriteBuffers(Scene const& scene, uint32_t frame)
+inline void sceneWriteBuffers(Scene & scene, uint32_t frame)
 {
     WorldBufferObject ubo = createWorldBufferObject(scene);
     writeBuffer(*scene.world_buffer[frame], ubo);
@@ -98,11 +98,16 @@ inline void sceneWriteBuffers(Scene const& scene, uint32_t frame)
     // Need to add material and model matrix data in the buffers the same order
     // the objects will be rendered.
     int index = 0;
-    for (auto const& o : scene.programs)
+    for (auto & o : scene.programs)
     {
         for (int i = 0; i < o.second.size(); ++i)
         {
             auto &obj = scene.objs[o.second[i]];
+
+            if (obj.object_type == ObjectType::SKYBOX)
+            {
+                obj.position = scene.camera.pos;
+            }
 
             auto ubo = createModelBufferObject(obj);
             writeBuffer(*scene.model_buffer[frame], ubo, index);

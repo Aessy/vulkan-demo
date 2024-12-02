@@ -146,13 +146,13 @@ std::vector<glm::mat4> getLightSpaceMatrices(vk::Extent2D const& size, Camera co
 }
 
 constexpr static size_t n_cascaded_shadow_maps = 4;
-constexpr static float cascadeSplitLambda = 0.7f;
+constexpr static float cascadeSplitLambda = 0.6f;
 
 
 std::array<float, n_cascaded_shadow_maps> calculateCascadeSplits()
 {
     static constexpr float near_clip = 0.7f;
-    static constexpr float far_clip = 1000.0f;
+    static constexpr float far_clip = 500.0f;
     static constexpr float clip_range = far_clip - near_clip;
 
     static constexpr float min_z = near_clip;
@@ -257,12 +257,12 @@ struct Cascade
 std::array<Cascade, 4> updateCascadesOriginal(Camera const& camera, glm::vec3 const& light_dir)
 {
     auto const camera_view = glm::lookAt(camera.pos, (camera.pos + camera.camera_front), camera.up);
-    auto const camera_proj = glm::perspective(glm::radians(45.0f), 1920.0f / 1080.0f, 0.5f, 1000.0f);
+    auto const camera_proj = glm::perspective(glm::radians(45.0f), 1920.0f / 1080.0f, 0.5f, 500.0f);
 
     float cascadeSplits[SHADOW_MAP_CASCADE_COUNT];
 
     float nearClip = 0.5f;
-    float farClip = 1000.0f;
+    float farClip = 500.0f;
     float clipRange = farClip - nearClip;
 
     float minZ = nearClip;
@@ -578,7 +578,7 @@ static std::tuple<vk::Pipeline, vk::PipelineLayout> createCascadedShadowMapPipel
     rasterization_state.depthClampEnable = VK_FALSE;
     rasterization_state.rasterizerDiscardEnable = VK_FALSE;
     rasterization_state.polygonMode = vk::PolygonMode::eFill;
-    rasterization_state.cullMode = vk::CullModeFlagBits::eBack;  // Cull back faces
+    rasterization_state.cullMode = vk::CullModeFlagBits::eFront;  // Cull back faces
     rasterization_state.frontFace = vk::FrontFace::eClockwise;
     rasterization_state.lineWidth = 1.0f;
 

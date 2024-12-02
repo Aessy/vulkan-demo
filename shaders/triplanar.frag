@@ -127,7 +127,7 @@ float filterPCF(vec4 sc, uint cascadeIndex, float bias)
 
 	float shadowFactor = 0.0;
 	int count = 0;
-	int range = 2;
+	int range = 1;
 	
 	for (int x = -range; x <= range; x++) {
 		for (int y = -range; y <= range; y++) {
@@ -155,7 +155,15 @@ float shadowCalc2(vec3 normal, vec3 light_dir)
     }
 
     float cascade_scale = abs(cascade_distances.distance[cascade_index]) * 0.001;
-    float bias = max(0.005 * (1.0 - dot(normal, light_dir)) * cascade_scale, 0.005);
+    float bias = max(0.05 * (1.0 - dot(normal, light_dir)), 0.005);
+    if (cascade_index == 3)
+    {
+        bias *= (500.0f *0.0005f);
+    }
+    else
+    {
+        bias *= abs(cascade_distances.distance[cascade_index]) * 0.0005f;
+    }
 
     vec4 shadow_coord = (biasMat * cascade_matrices.cascade_matrices[cascade_index]) * vec4(position_worldspace, 1.0);
 
@@ -202,7 +210,7 @@ float shadowCalculation(vec3 normal)
     const float bias_modifier = 0.5f;
     if (layer == 4)
     {
-        bias *= 1 / (1000.0f * bias_modifier);
+        bias *= 1 / (500.0f * bias_modifier);
     }
     else
     {
