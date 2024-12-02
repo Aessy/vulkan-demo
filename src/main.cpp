@@ -391,6 +391,10 @@ int main()
           {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_Roughness.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
           {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_AO.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
+          {"./textures/tree/Dead_Tree_qlEtl_High_4K_BaseColor.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb},
+          {"./textures/tree/Dead_Tree_qlEtl_High_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
+          {"./textures/tree/Dead_Tree_qlEtl_High_4K_Roughness.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
+          {"./textures/tree/Dead_Tree_qlEtl_High_4K_AO.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
         });
 
     spdlog::info("Loading models");
@@ -399,6 +403,8 @@ int main()
     int sphere_fbx = models.loadModelAssimp("./models/sky_sphere.fbx");
     // int dune_id = models.loadModelAssimp("./models/dune.fbx");
     
+    int tree_fbx = models.loadModelAssimp("./textures/tree/Dead_Tree_qlEtl_High.fbx");
+
     // int cylinder_id = models.loadModel("./models/cylinder.obj");
 
     auto height_map_1_model = createFlatGround(2047, 1024, 4);
@@ -443,6 +449,28 @@ int main()
             .scaling_factor = 0.3f,
             .roughness = 0.402,
             .metallic = 0.922,
+            .ao = 0,
+        }
+    };
+
+    Material tree_material {
+        .name = {"Tree"},
+        .program = 0,
+        .shader_data = {
+            .material_features =  
+                                  MaterialFeatureFlag::AoMap
+                                | MaterialFeatureFlag::AlbedoMap
+                                | MaterialFeatureFlag::NormalMap
+                                | MaterialFeatureFlag::RoughnessMap,
+            .sampling_mode = SamplingMode::UvSampling,
+            .shade_mode = ReflectionShadeMode::Pbr,
+            .base_color_texture = 21,
+            .base_color_normal_texture = 22,
+            .roughness_texture = 23,
+            .ao_texture = 24,
+            .scaling_factor = 1.0f,
+            .roughness = 0.402,
+            .metallic = 0,
             .ao = 0,
         }
     };
@@ -535,6 +563,7 @@ int main()
     Meshes meshes;
     auto landscape_flat_id = meshes.loadMesh(core, models.models.at(height_map_1_model.id), "height_map_1");
     auto sphere_id = meshes.loadMesh(core, models.models.at(sphere_fbx), "sphere fbx");
+    auto tree_id = meshes.loadMesh(core, models.models.at(tree_fbx), "sphere fbx");
 
     auto box_id = meshes.loadMesh(core, box, "box");
 
@@ -560,11 +589,19 @@ int main()
 
     auto landscape_flat = createObject(meshes.meshes.at(landscape_flat_id));
     landscape_flat.material = landscape_flat_dune;
+    landscape_flat.shadow = true;
     // landscape_flat.shadow = true;
 
     auto sky_box = createObject(meshes.meshes.at(sphere_id));
     sky_box.material = sky_box_material;
     sky_box.scale = 800.0f;
+
+    auto tree = createObject(meshes.meshes.at(tree_id));
+    tree.material = tree_material;
+    tree.position = glm::vec3(98.69,43.10,0);
+    tree.shadow = true;
+    tree.scale = 0.04;
+    addObject(scene, tree);
 
 
 
