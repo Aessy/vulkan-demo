@@ -392,7 +392,7 @@ int main()
           {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_Roughness.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
           {"./textures/Rippled_Sand_Dune_vd3mbbus_4K_AO.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
           {"./textures/tree/Dead_Tree_qlEtl_High_4K_BaseColor.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb},
-          {"./textures/tree/Dead_Tree_qlEtl_High_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
+          {"./textures/tree/Dead_Tree_qlEtl_High_4K_Normal.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Unorm},
           {"./textures/tree/Dead_Tree_qlEtl_High_4K_Roughness.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
           {"./textures/tree/Dead_Tree_qlEtl_High_4K_AO.jpg", TextureType::MipMap, vk::Format::eR8Unorm},
         });
