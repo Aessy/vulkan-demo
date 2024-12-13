@@ -120,7 +120,7 @@ float textureProj(vec4 shadowCoord, vec2 offset, uint cascadeIndex, float bias)
 
 float filterPCF(vec4 sc, uint cascadeIndex, float bias)
 {
-	ivec2 texDim = ivec2(2048, 2048);
+	ivec2 texDim = ivec2(4096, 4096);
 	float scale = 0.75;
 	float dx = scale * 1.0 / float(texDim.x);
 	float dy = scale * 1.0 / float(texDim.y);
@@ -141,11 +141,12 @@ float filterPCF(vec4 sc, uint cascadeIndex, float bias)
 
 }
 
+uint cascade_index = 0;
+
 float shadowCalc2(vec3 normal, vec3 light_dir)
 {
     vec4 frag_pos_view_space = world.view * vec4(position_worldspace, 1.0);
 
-    uint cascade_index = 0;
     for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT - 1; ++i)
     {
         if (frag_pos_view_space.z < cascade_distances.distance[i])
@@ -155,20 +156,12 @@ float shadowCalc2(vec3 normal, vec3 light_dir)
     }
 
     float cascade_scale = abs(cascade_distances.distance[cascade_index]) * 0.001;
-    float bias = max(0.05 * (1.0 - dot(normal, light_dir)), 0.005);
-    if (cascade_index == 3)
-    {
-        bias *= (500.0f *0.0005f);
-    }
-    else
-    {
-        bias *= abs(cascade_distances.distance[cascade_index]) * 0.0005f;
-    }
+    float bias = max(0.00005 * (1.0 - dot(normal, light_dir)), 0.0000005);
 
     vec4 shadow_coord = (biasMat * cascade_matrices.cascade_matrices[cascade_index]) * vec4(position_worldspace, 1.0);
 
     float shadow = filterPCF(shadow_coord / shadow_coord.w, cascade_index, bias);
-    // float shadow = textureProj(shadow_coord / shadow_coord.w, vec2(0.0), cascade_index);
+    //float shadow = textureProj(shadow_coord / shadow_coord.w, vec2(0.0), cascade_index, bias);
 
     return shadow;
 }
@@ -518,4 +511,22 @@ void main()
     {
         out_color = vec4(triplanarSampling(), 1);
     }
+
+// Debug cascade layers
+/*
+    switch(cascade_index) {
+			case 0 : 
+				out_color.rgb *= vec3(1.0f, 0.25f, 0.25f);
+				break;
+			case 1 : 
+				out_color.rgb *= vec3(0.25f, 1.0f, 0.25f);
+				break;
+			case 2 : 
+				out_color.rgb *= vec3(0.25f, 0.25f, 1.0f);
+				break;
+			case 3 : 
+				out_color.rgb *= vec3(1.0f, 1.0f, 0.25f);
+				break;
+		}
+*/
 }

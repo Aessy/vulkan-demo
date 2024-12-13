@@ -407,7 +407,7 @@ int main()
 
     // int cylinder_id = models.loadModel("./models/cylinder.obj");
 
-    auto height_map_1_model = createFlatGround(512, 1024, 4);
+    auto height_map_1_model = createFlatGround(512, 100, 4);
     models.models.insert({height_map_1_model.id, height_map_1_model});
     //auto height_map_1_model = createFlatGround(2047, 500, 4);
 
@@ -489,7 +489,7 @@ int main()
             .shade_mode = ReflectionShadeMode::Phong,
             .displacement_map_texture = 10,
             .normal_map_texture = 11,
-            .displacement_y = 64.0f,
+            .displacement_y = 6.4f,
             .base_color_texture = 17,
             .base_color_normal_texture = 18,
             .roughness_texture = 19,
@@ -515,7 +515,7 @@ int main()
             .shade_mode = ReflectionShadeMode::Pbr,
             .displacement_map_texture = 10,
             .normal_map_texture = 11,
-            .displacement_y = 70.0f,
+            .displacement_y = 7.0f,
             .base_color_texture = 17,
             .base_color_normal_texture = 18,
             .roughness_texture = 19,
@@ -550,11 +550,11 @@ int main()
     };
 
     Camera camera;
-    camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.5f, 500.0f);
+    camera.proj = glm::perspective(glm::radians(45.0f), core.swap_chain.extent.width / (float)core.swap_chain.extent.height, 0.05f, 100.0f);
     camera.pitch_yawn = glm::vec2(-90, 0);
     camera.up = glm::vec3(0,1,0);
     //camera.pos = glm::vec3(0,300,-5);
-    camera.pos = glm::vec3(0,70, 0);
+    camera.pos = glm::vec3(0,5, 0);
 
     updateCameraFront(camera);
 
@@ -594,14 +594,14 @@ int main()
 
     auto sky_box = createObject(meshes.meshes.at(sphere_id));
     sky_box.material = sky_box_material;
-    sky_box.scale = 500.0f;
+    sky_box.scale = 45.0f;
     sky_box.object_type = ObjectType::SKYBOX;
 
     auto tree = createObject(meshes.meshes.at(tree_id));
     tree.material = tree_material;
-    tree.position = glm::vec3(98.69,43.10,0);
+    tree.position = glm::vec3(2,3.3,0);
     tree.shadow = true;
-    tree.scale = 0.04;
+    tree.scale = 0.004;
     addObject(scene, tree);
 
 
@@ -617,13 +617,13 @@ int main()
     fbx.material = base_material;
     fbx.position = glm::vec3(0,30,0);
     fbx.shadow = true;
-    addObject(scene, fbx);
+    //addObject(scene, fbx);
 
     fbx.position = glm::vec3(10, 69, 0);
-    addObject(scene, fbx);
+    //addObject(scene, fbx);
 
     fbx.position = glm::vec3(37, 54, 10);
-    addObject(scene, fbx);
+    //addObject(scene, fbx);
 
     auto box_fbx = createObject(meshes.meshes.at(box_id));
     box_fbx.material = base_material;
@@ -656,7 +656,7 @@ int main()
 
     spdlog::info("Starting rendering loop");
 
-    float camera_speed = 20;
+    float camera_speed = 2;
 
     while (!glfwWindowShouldClose(core.window))
     {

@@ -1172,17 +1172,16 @@ vk::raii::Sampler createDepthTextureSampler(RenderingState const& state)
     sampler_info.minFilter = vk::Filter::eLinear;
     sampler_info.addressModeU = vk::SamplerAddressMode::eClampToEdge;
     sampler_info.addressModeV = vk::SamplerAddressMode::eClampToEdge;
-    sampler_info.addressModeW = vk::SamplerAddressMode::eClampToEdge;
-    sampler_info.unnormalizedCoordinates = false;
-    sampler_info.compareEnable = true;
-    sampler_info.compareOp = vk::CompareOp::eLess;
-    
+    sampler_info.addressModeW = vk::SamplerAddressMode::eClampToEdge;    
+    sampler_info.anisotropyEnable = true;
+    sampler_info.mipmapMode = vk::SamplerMipmapMode::eLinear;
     sampler_info.mipLodBias = 0.0f;                           // No bias for LOD selection
-    sampler_info.anisotropyEnable = VK_FALSE;                 // Disable anisotropic filtering for this sampler
+    sampler_info.maxAnisotropy = 1.0f;
     sampler_info.minLod = 0.0f;                               // Only sample the base level (level 0)
     sampler_info.maxLod = 0.0f;                               // Only sample the base level (level 0)
     sampler_info.borderColor = vk::BorderColor::eIntOpaqueWhite; // Border color if sampler address mode is Border
-    sampler_info.mipmapMode = vk::SamplerMipmapMode::eNearest;
+    // sampler_info.compareEnable = true;
+    // sampler_info.compareOp = vk::CompareOp::eLess;
 
     vk::raii::Sampler sampler = *state.device.createSampler(sampler_info);
     return sampler;

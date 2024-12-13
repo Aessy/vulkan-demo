@@ -20,7 +20,7 @@
 #include <vulkan/vulkan_handles.hpp>
 #include <vulkan/vulkan_structs.hpp>
 
-static const size_t shadow_map_dim = 2048;
+static const size_t shadow_map_dim = 4096;
 
 std::vector<glm::vec4> getFrustumCorners(glm::mat4 const& proj_view)
 {
@@ -146,13 +146,13 @@ std::vector<glm::mat4> getLightSpaceMatrices(vk::Extent2D const& size, Camera co
 }
 
 constexpr static size_t n_cascaded_shadow_maps = 4;
-constexpr static float cascadeSplitLambda = 0.6f;
+constexpr static float cascadeSplitLambda = 0.95f;
 
 
 std::array<float, n_cascaded_shadow_maps> calculateCascadeSplits()
 {
-    static constexpr float near_clip = 0.7f;
-    static constexpr float far_clip = 500.0f;
+    static constexpr float near_clip = 0.5f;
+    static constexpr float far_clip = 45.0f;
     static constexpr float clip_range = far_clip - near_clip;
 
     static constexpr float min_z = near_clip;
@@ -182,7 +182,7 @@ std::vector<std::pair<glm::mat4, float>> updateCascades(Camera const& camera, gl
     auto const camera_view = glm::lookAt(camera.pos, (camera.pos + camera.camera_front), camera.up);
 
     static constexpr float near_clip = 0.5f;
-    static constexpr float far_clip = 1000.0f;
+    static constexpr float far_clip = 45.0f;
     static constexpr float clip_range = far_clip - near_clip;
 
     float last_split_dist = 0.0f;
@@ -257,12 +257,12 @@ struct Cascade
 std::array<Cascade, 4> updateCascadesOriginal(Camera const& camera, glm::vec3 const& light_dir)
 {
     auto const camera_view = glm::lookAt(camera.pos, (camera.pos + camera.camera_front), camera.up);
-    auto const camera_proj = glm::perspective(glm::radians(45.0f), 1920.0f / 1080.0f, 0.5f, 500.0f);
+    auto const camera_proj = glm::perspective(glm::radians(45.0f), 1920.0f / 1080.0f, 0.5f, 45.0f);
 
     float cascadeSplits[SHADOW_MAP_CASCADE_COUNT];
 
-    float nearClip = 0.5f;
-    float farClip = 500.0f;
+    float nearClip = 0.05f;
+    float farClip = 45.0f;
     float clipRange = farClip - nearClip;
 
     float minZ = nearClip;
@@ -330,14 +330,73 @@ std::array<Cascade, 4> updateCascadesOriginal(Camera const& camera, glm::vec3 co
         glm::vec3 minExtents = -maxExtents;
 
         float texel_size = 2.0f * radius / shadow_map_dim;
-        glm::vec3 snapped_center = floor(frustumCenter / texel_size) * texel_size;
-        glm::vec3 offset = snapped_center - frustumCenter;
 
-        glm::mat4 lightViewMatrix = glm::lookAt(snapped_center- light_dir * -minExtents.z, snapped_center, glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, 0.0f, maxExtents.z - minExtents.z);
+        minExtents = floor(minExtents / texel_size) * texel_size;
+        maxExtents = floor(maxExtents / texel_size) * texel_size;
+
+        // Set camera at frustum center and look along the light dir
+        glm::mat4 tmp_light_view = glm::lookAt(frustumCenter, frustumCenter+light_dir, glm::vec3(0,1,0));
+
+        // Transform furstum center into light view space
+        glm::vec3 frustum_center_light_space = glm::vec3(tmp_light_view * glm::vec4(frustumCenter, 1.0f));
+        
+        // Snap the furstum center to texel size
+        glm::vec3 snapped_center_in_light_space = glm::floor(frustum_center_light_space / texel_size) * texel_size;
+
+        // Not necessary. Can fix later
+        // glm::vec3 offset_lightspace = floor(glm::vec3(0.0f, 0.0f, -minExtents.z) / texel_size) * texel_size;
+
+        // Calculate the final camera position in lightspace
+        // glm ::vec3 camera_position_in_lightspace = snapped_center_in_light_space + offset_lightspace;
+
+        // Transform the smapped position back
+        // glm::vec3 camera_position = glm::inverse(tmp_light_view) * glm::vec4(camera_position_in_lightspace, 1.0f);
+        // glm::vec3 snapped_center = glm::inverse(tmp_light_view) * glm::vec4(snapped_center_in_light_space, 1.0f);
+
+
+        glm::vec3 snapped_center = floor(frustumCenter / texel_size) * texel_size;
+
+
+        glm::vec3 offset = floor((-light_dir * -minExtents.z) / texel_size) * texel_size;
+
+        // glm::vec3 const camera_position = snapped_center + offset;
+        glm::mat4 lightViewMatrix = glm::lookAt(snapped_center+offset, snapped_center, glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, minExtents.z*3, maxExtents.z - minExtents.z);
+
+        if (i == 3)
+        {
+            spdlog::info("Texel size: {}", texel_size);
+            spdlog::info("Min Extents: {}", glm::to_string(minExtents));
+            spdlog::info("Max Extents: {}", glm::to_string(maxExtents));
+            spdlog::info("Snapped Center: {}", glm::to_string(snapped_center));
+            //spdlog::info("Camera position: {}", glm::to_string(camera_position));
+        }
+
+
+/*
+        assert(glm::mod(snapped_center.x, texel_size) == 0.0f);
+        assert(glm::mod(snapped_center.y, texel_size) == 0.0f);
+        assert(glm::mod(snapped_center.z, texel_size) == 0.0f);
+
+        assert(glm::mod(offset.x, texel_size) == 0.0f);
+        assert(glm::mod(offset.y, texel_size) == 0.0f);
+        assert(glm::mod(offset.z, texel_size) == 0.0f);
+
+        assert(glm::mod(minExtents.x, texel_size) == 0.0f);
+        assert(glm::mod(minExtents.y, texel_size) == 0.0f);
+        assert(glm::mod(minExtents.z, texel_size) == 0.0f);
+
+        assert(glm::mod(maxExtents.x, texel_size) == 0.0f);
+        assert(glm::mod(maxExtents.y, texel_size) == 0.0f);
+        assert(glm::mod(maxExtents.z, texel_size) == 0.0f);
+
+        assert(glm::mod(camera_position.x, texel_size) == 0.0f);
+        assert(glm::mod(camera_position.y, texel_size) == 0.0f);
+        assert(glm::mod(camera_position.z, texel_size) == 0.0f);
+*/
 
         // Store split distance and matrix in cascade
-        cascades[i].splitDepth = (0.5f + splitDist * clipRange) * -1.0f;
+        cascades[i].splitDepth = (0.05f + splitDist * clipRange) * -1.0f;
         cascades[i].viewProjMatrix = lightOrthoMatrix * lightViewMatrix;
 
         lastSplitDist = cascadeSplits[i];
