@@ -320,6 +320,7 @@ float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 
 vec3 pbr(vec3 normal, vec3 albedo, float roughness, float metalness, float ao)
 {
+
     vec3 view_dir = normalize(world.pos - position_worldspace);
     vec3 sun_dir = normalize(world.light.sun_pos);
     vec3 light_dir = sun_dir;
@@ -483,6 +484,15 @@ vec3 triplanarSampling()
             normal_y.xzy * blending.y +
             normal_z.xyz * blending.z
         );
+
+        // If the normal indicates that the fragment is not visible, fallback to the geometry normal.
+        // Not sure if this is a good idea.
+        vec3 view_dir = normalize(world.pos - position_worldspace);
+        float dot_normal = dot(final_normal, view_dir);
+        if (dot_normal < 0)
+        {
+            final_normal = normal;
+        }
     }
     if (material.shade_mode == Phong)
     {
