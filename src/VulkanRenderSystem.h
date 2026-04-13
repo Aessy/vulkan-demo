@@ -238,7 +238,7 @@ auto createUniformBuffers(RenderingState const& state, int count = 1, std::size_
     {
         auto [buffer, uniform_buffer_memory] = createBuffer(state, final_buffer_size, vk::BufferUsageFlagBits::eUniformBuffer, vk::MemoryPropertyFlagBits::eHostVisible
                                                                                  |vk::MemoryPropertyFlagBits::eHostCoherent);
-        auto mapped = uniform_buffer_memory.mapMemory(0, final_buffer_size);
+        auto mapped = uniform_buffer_memory.mapMemory(0, final_buffer_size).value;
 
         ubos.push_back(std::make_unique<UniformBuffer>(std::move(buffer), std::move(uniform_buffer_memory), mapped, element_alignment, final_buffer_size));
     }
@@ -260,7 +260,7 @@ auto createStorageBuffers(RenderingState const& state, uint32_t size)
         auto [buffer, uniform_buffer_memory] = createBuffer(state, buffer_size, vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible
                                                                                  | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-        auto mapped = uniform_buffer_memory.mapMemory(0, buffer_size);
+        auto mapped = uniform_buffer_memory.mapMemory(0, buffer_size).value;
 
         ubos.push_back(std::make_unique<UniformBuffer>(std::move(buffer), std::move(uniform_buffer_memory), mapped));
     }

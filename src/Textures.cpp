@@ -83,7 +83,7 @@ static std::tuple<vk::raii::Image, vk::raii::DeviceMemory> createImageMapTexture
 {
     vk::DeviceSize image_size = width*height*4;
     auto [staging_buffer, staging_buffer_memory] = createBuffer(state, image_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-    auto data = staging_buffer_memory.mapMemory(0, image_size, static_cast<vk::MemoryMapFlagBits>(0));
+    auto data = staging_buffer_memory.mapMemory(0, image_size, static_cast<vk::MemoryMapFlagBits>(0)).value;
     memcpy(data, pixels, static_cast<size_t>(image_size));
     staging_buffer_memory.unmapMemory();
 
@@ -122,7 +122,7 @@ static std::tuple<vk::raii::Image, vk::raii::DeviceMemory, uint32_t> createTextu
 
     auto [staging_buffer, staging_buffer_memory] = createBuffer(state, image_size, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    auto data = staging_buffer_memory.mapMemory(0, image_size, static_cast<vk::MemoryMapFlagBits>(0));
+    auto data = staging_buffer_memory.mapMemory(0, image_size, static_cast<vk::MemoryMapFlagBits>(0)).value;
     memcpy(data, pixels, static_cast<size_t>(image_size));
     staging_buffer_memory.unmapMemory();
     stbi_image_free(pixels);

@@ -579,7 +579,7 @@ static ShadowMapFramebuffer createCascadedShadowmapFramebuffers(RenderingState c
 
             auto result = state.device.createFramebuffer(framebuffer_info);
 
-            data.framebuffers[i].push_back(std::make_unique<vk::raii::Framebuffer>(std::move(result.value())));
+            data.framebuffers[i].push_back(std::make_unique<vk::raii::Framebuffer>(std::move(result.value)));
             data.attachment_image_views[i].push_back(std::make_unique<vk::raii::ImageView>(std::move(image_view)));
         }
         

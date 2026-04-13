@@ -233,12 +233,12 @@ DepthResources createColorResources(RenderingState const& state, vk::Format form
 static std::optional<vk::raii::PhysicalDevice> createPhysicalDevice(vk::raii::Instance const& instance)
 {
     auto devices_exp = instance.enumeratePhysicalDevices();
-    if (!devices_exp)
+    if (devices_exp.result != vk::Result::eSuccess)
     {
         spdlog::error("No devices: {}");
     }
 
-    auto devices = devices_exp.value();
+    auto devices = std::move(devices_exp.value);
 
     if (devices.empty())
     {
@@ -299,7 +299,7 @@ static vk::raii::Device createLogicalDevice(vk::raii::PhysicalDevice const& phys
 
 
     auto result = physical_device.enumerateDeviceExtensionProperties();
-    for (auto const& extension : result)
+    for (auto const& extension : result.value)
     {
     }
     float queue_priority = 1.0f;
@@ -359,7 +359,7 @@ static vk::raii::Device createLogicalDevice(vk::raii::PhysicalDevice const& phys
 
     auto device = physical_device.createDevice(device_info, nullptr);
 
-    return std::move(device.value());
+    return std::move(device.value);
 }
 
 static SwapChainSupportDetails querySwapChainSupport(vk::PhysicalDevice const& device, vk::SurfaceKHR const& surface)
@@ -471,7 +471,7 @@ static SwapChain createSwapchain(vk::raii::PhysicalDevice const& physical_device
     swap_chain_create_info.setClipped(true);
     // swap_chain_create_info.setOldSwapchain(VK_NULL_HANDLE);
 
-    vk::raii::SwapchainKHR swap_chain = device.createSwapchainKHR(swap_chain_create_info).value();
+    vk::raii::SwapchainKHR swap_chain = std::move(device.createSwapchainKHR(swap_chain_create_info).value);
     auto swap_chain_images = vk::Device(device).getSwapchainImagesKHR(swap_chain);
 
     auto swap_chain_image_format = surface_format.format;
@@ -511,7 +511,7 @@ static auto createImageViews(SwapChain const& sc, vk::raii::Device const& device
         image_view_create_info.subresourceRange.baseArrayLayer = 0;
         image_view_create_info.subresourceRange.layerCount = 1;
 
-        swap_chain_image_views.push_back(device.createImageView(image_view_create_info).value());
+        swap_chain_image_views.push_back(std::move(device.createImageView(image_view_create_info).value));
     }
 
     return swap_chain_image_views;
@@ -611,7 +611,7 @@ static vk::raii::CommandPool createCommandPool(vk::raii::Device const& device, Q
     pool_info.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer;
     pool_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
 
-    return device.createCommandPool(pool_info).value();
+    return std::move(device.createCommandPool(pool_info).value);
 
 }
 
@@ -623,7 +623,7 @@ static std::vector<vk::raii::CommandBuffer> createCommandBuffer(vk::raii::Device
     alloc_info.level = vk::CommandBufferLevel::ePrimary;
     alloc_info.commandBufferCount = 2;
 
-    auto command_buffers = device.allocateCommandBuffers(alloc_info).value();
+    auto command_buffers = std::move(device.allocateCommandBuffers(alloc_info).value);
 
     return command_buffers;
 }
@@ -640,9 +640,9 @@ static Semaphores createSemaphores(vk::raii::Device const& device)
     Semaphores semaphores{};
     for (int i = 0; i < 2; ++i)
     {
-        semaphores.in_flight_fence.push_back(std::make_unique<vk::raii::Fence>(std::move(device.createFence(fence_info).value())));
-        semaphores.image_available_semaphore.push_back(std::make_unique<vk::raii::Semaphore>(std::move(device.createSemaphore(semaphore_info).value())));
-        semaphores.render_finished_semaphore.push_back(std::make_unique<vk::raii::Semaphore>(std::move(device.createSemaphore(semaphore_info).value())));
+        semaphores.in_flight_fence.push_back(std::make_unique<vk::raii::Fence>(std::move(device.createFence(fence_info).value)));
+        semaphores.image_available_semaphore.push_back(std::make_unique<vk::raii::Semaphore>(std::move(device.createSemaphore(semaphore_info).value)));
+        semaphores.render_finished_semaphore.push_back(std::make_unique<vk::raii::Semaphore>(std::move(device.createSemaphore(semaphore_info).value)));
 
     }
 
@@ -685,7 +685,7 @@ std::tuple<vk::raii::Image, vk::raii::DeviceMemory> createImage(RenderingState c
     image_info.samples = n_samples;
     image_info.flags = static_cast<vk::ImageCreateFlagBits>(0);
 
-    vk::raii::Image texture_image = state.device.createImage(image_info).value();
+    vk::raii::Image texture_image = std::move(state.device.createImage(image_info).value);
 
     auto mem_reqs = texture_image.getMemoryRequirements();
 
@@ -694,7 +694,7 @@ std::tuple<vk::raii::Image, vk::raii::DeviceMemory> createImage(RenderingState c
     alloc_info.allocationSize = mem_reqs.size;
     alloc_info.memoryTypeIndex = findMemoryType(state.physical_device, mem_reqs.memoryTypeBits, properties);
 
-    vk::raii::DeviceMemory texture_image_memory = state.device.allocateMemory(alloc_info).value();
+    vk::raii::DeviceMemory texture_image_memory = std::move(state.device.allocateMemory(alloc_info).value);
     texture_image.bindMemory(texture_image_memory, 0);
 
     return {std::move(texture_image), std::move(texture_image_memory)};
@@ -715,7 +715,7 @@ vk::raii::ImageView createImageView(vk::raii::Device const& device, vk::Image co
 
     auto texture_image_view = device.createImageView(view_info);
 
-    return std::move(texture_image_view.value());
+    return std::move(texture_image_view.value);
 }
 
 std::vector<std::unique_ptr<ImageResource>> createFogBuffer(RenderingState const& state, vk::MemoryPropertyFlags properties)
@@ -738,7 +738,7 @@ std::vector<std::unique_ptr<ImageResource>> createFogBuffer(RenderingState const
     std::vector<std::unique_ptr<ImageResource>> resources;
     for (int i = 0; i < 2; ++i)
     {
-        vk::raii::Image fog_3d_texture = state.device.createImage(create_info).value();
+        vk::raii::Image fog_3d_texture = std::move(state.device.createImage(create_info).value);
 
         auto mem_reqs = fog_3d_texture.getMemoryRequirements();
 
@@ -747,7 +747,7 @@ std::vector<std::unique_ptr<ImageResource>> createFogBuffer(RenderingState const
         alloc_info.allocationSize = mem_reqs.size;
         alloc_info.setMemoryTypeIndex(findMemoryType(state.physical_device, mem_reqs.memoryTypeBits, properties));
 
-        auto buffer_memory = state.device.allocateMemory(alloc_info).value();
+        auto buffer_memory = std::move(state.device.allocateMemory(alloc_info).value);
 
         fog_3d_texture.bindMemory(buffer_memory, 0);
 
@@ -849,8 +849,8 @@ std::optional<RenderingState> createVulkanRenderState()
 
     auto semaphores = createSemaphores(device);
 
-    auto graphics_queue = device.getQueue(*indices.graphics_family, 0).value();
-    auto present_queue = device.getQueue(*indices.present_family, 0).value();
+    auto graphics_queue = device.getQueue(*indices.graphics_family, 0);
+    auto present_queue = device.getQueue(*indices.present_family, 0);
 
     auto const& properties = physical_device->getProperties();
     uint32_t uniform_buffer_alignment_min = properties.limits.minUniformBufferOffsetAlignment;
@@ -888,7 +888,7 @@ vk::raii::CommandBuffer beginSingleTimeCommands(RenderingState const& state)
     alloc_info.commandPool = state.command_pool;
     alloc_info.commandBufferCount = 1;
 
-    vk::raii::CommandBuffer cmd_buffer = std::move(state.device.allocateCommandBuffers(alloc_info).value()[0]);
+    vk::raii::CommandBuffer cmd_buffer = std::move(state.device.allocateCommandBuffers(alloc_info).value[0]);
 
     vk::CommandBufferBeginInfo begin_info{};
     begin_info.sType = vk::StructureType::eCommandBufferBeginInfo;
@@ -1143,7 +1143,7 @@ Buffer createBuffer(RenderingState const& state,
 
     auto vertex_buffer = state.device.createBuffer(buffer_info);
 
-    vk::raii::Buffer buffer = std::move(vertex_buffer.value());
+    vk::raii::Buffer buffer = std::move(vertex_buffer.value);
 
     auto mem_reqs = buffer.getMemoryRequirements();
 
@@ -1152,7 +1152,7 @@ Buffer createBuffer(RenderingState const& state,
     alloc_info.allocationSize = mem_reqs.size;
     alloc_info.setMemoryTypeIndex(findMemoryType(state.physical_device, mem_reqs.memoryTypeBits, properties));
 
-    auto buffer_memory = state.device.allocateMemory(alloc_info).value();
+    auto buffer_memory = std::move(state.device.allocateMemory(alloc_info).value);
     buffer.bindMemory(buffer_memory, 0);
 
     return {std::move(buffer), std::move(buffer_memory)};
@@ -1183,7 +1183,7 @@ vk::raii::Sampler createDepthTextureSampler(RenderingState const& state)
     // sampler_info.compareEnable = true;
     // sampler_info.compareOp = vk::CompareOp::eLess;
 
-    vk::raii::Sampler sampler = *state.device.createSampler(sampler_info);
+    vk::raii::Sampler sampler = std::move(state.device.createSampler(sampler_info).value);
     return sampler;
 }
 
@@ -1222,7 +1222,7 @@ vk::raii::Sampler createTextureSampler(RenderingState const& state, bool mip_map
         sampler_info.maxLod = 11.0f;
     }
 
-    vk::raii::Sampler sampler = *state.device.createSampler(sampler_info);
+    vk::raii::Sampler sampler = std::move(state.device.createSampler(sampler_info).value);
     return sampler;
 }
 
@@ -1235,7 +1235,7 @@ Buffer createVertexBuffer(RenderingState const& state, std::vector<Vertex> const
                                vk::MemoryPropertyFlagBits::eHostVisible
                              | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    void* data = staging_buffer_memory.mapMemory(0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0));
+    void* data = staging_buffer_memory.mapMemory(0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0)).value;
     memcpy(data, vertices.data(), buffer_size);
     staging_buffer_memory.unmapMemory();
 
@@ -1257,7 +1257,7 @@ Buffer createIndexBuffer(RenderingState const& state, std::vector<uint32_t> indi
                                vk::MemoryPropertyFlagBits::eHostVisible
                              | vk::MemoryPropertyFlagBits::eHostCoherent);
 
-    void* data = staging_buffer_memory.mapMemory(0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0));
+    void* data = staging_buffer_memory.mapMemory(0, buffer_size, static_cast<vk::MemoryMapFlagBits>(0)).value;
     memcpy(data, indices.data(), buffer_size);
     staging_buffer_memory.unmapMemory();
 

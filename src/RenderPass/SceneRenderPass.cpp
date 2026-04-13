@@ -128,12 +128,12 @@ static std::vector<std::unique_ptr<SceneFramebufferState>> createFrameBuffers(Re
         framebuffer_info.height = state.swap_chain.extent.height;
         framebuffer_info.layers = 1;
 
-        auto framebuffer = state.device.createFramebuffer(framebuffer_info).value();
+        auto framebuffer = std::move(state.device.createFramebuffer(framebuffer_info).value);
 
-        swap_chain_frame_buffers.push_back({std::make_unique<SceneFramebufferState>(std::move(framebuffer),
+        swap_chain_frame_buffers.push_back(std::make_unique<SceneFramebufferState>(std::move(framebuffer),
                                                                   std::move(color_resources),
                                                                   std::move(depth_image),
-                                                                  std::move(depth_resolve_image))});
+                                                                  std::move(depth_resolve_image)));
     }
 
     return swap_chain_frame_buffers;

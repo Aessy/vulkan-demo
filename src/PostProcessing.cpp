@@ -298,7 +298,7 @@ static std::vector<std::unique_ptr<PostProcessingFramebuffer>> createPostProcess
         auto result = state.device.createFramebuffer(framebuffer_info);
 
         PostProcessingFramebuffer framebuffer {
-            .framebuffer = std::move(result.value()),
+            .framebuffer = std::move(result.value),
             .resources = std::move(color_resources)
         };
 
