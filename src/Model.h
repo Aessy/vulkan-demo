@@ -17,6 +17,8 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
+#include <glm/gtc/constants.hpp>
+#include <cmath>
 
 struct ModelBufferObject
 {
@@ -113,15 +115,39 @@ struct Vertex
 
 struct Camera
 {
-    glm::mat4 proj;
-    glm::mat4 view;
-    glm::vec3 pos;
-    glm::vec3 camera_front;
-    glm::vec3 up;
-    glm::vec2 pitch_yawn{};
-    glm::dvec3 pos_d{0.0};          // true world position in km (CPU only, never sent to GPU)
-    float base_speed_km_s{1.0f};   // user-adjustable base speed (km/s)
+    glm::mat4  proj;
+    glm::mat4  view;
+    glm::vec3  pos;                       // always vec3(0) in CRR
+    glm::vec3  camera_front{0.0f, 0.0f, -1.0f};  // derived, toward orbit_target
+    glm::vec3  up{0.0f, 1.0f, 0.0f};     // derived
+    glm::dvec3 pos_d{0.0};               // derived — true world position in km
+
+    // Orbit camera parameters (authoritative state):
+    glm::dvec3 orbit_target{0.0};        // point to orbit around (km); Sun = origin
+    double     orbit_distance{3e8};      // km from target
+    float      orbit_azimuth{20.0f};     // horizontal angle around target (degrees)
+    float      orbit_elevation{30.0f};   // angle above ecliptic (degrees); clamped [-89, 89]
 };
+
+// Derive pos_d, camera_front, and up from orbit parameters.
+// Call after any orbit parameter change.
+inline void updateCameraFromOrbit(Camera& cam)
+{
+    float az  = glm::radians(cam.orbit_azimuth);
+    float el  = glm::radians(cam.orbit_elevation);
+    float cel = std::cos(el);
+
+    glm::dvec3 offset{
+        (double)(std::sin(az) * cel) * cam.orbit_distance,
+        (double) std::sin(el)        * cam.orbit_distance,
+        (double)(std::cos(az) * cel) * cam.orbit_distance
+    };
+
+    cam.pos_d        = cam.orbit_target + offset;
+    cam.pos          = glm::vec3(0.0f);
+    cam.camera_front = glm::normalize(glm::vec3(-offset));
+    cam.up           = glm::vec3(0.0f, 1.0f, 0.0f);
+}
 
 struct Model
 {

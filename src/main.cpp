@@ -248,86 +248,39 @@ bool processEvent(Event const& event, App& app)
     return true;
 }
 
-void updateCameraFront(Camera& camera)
+// Orbit camera: scroll to zoom, left drag to rotate, right drag to pan.
+// Reads ImGui IO — call AFTER ImGui::NewFrame() each frame.
+void updateOrbitCamera(Camera& camera)
 {
-    glm::vec3 direction;
-    direction.x = std::cos(glm::radians(camera.pitch_yawn.x)) * cos(glm::radians(camera.pitch_yawn.y));
-    direction.y = std::sin(glm::radians(camera.pitch_yawn.y));
-    direction.z = std::sin(glm::radians(camera.pitch_yawn.x)) * cos(glm::radians(camera.pitch_yawn.y));
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.WantCaptureMouse) return;  // ImGui window is active
 
-    camera.camera_front = glm::normalize(direction);
-}
-
-// Camera-relative rendering: movement accumulates into pos_d (double),
-// camera.pos stays at (0,0,0) so the view matrix is always near-origin.
-void updateCamera(float delta, float camera_speed, vk::Extent2D const& extent, Camera& camera, App& app, GLFWwindow* window)
-{
-    glm::dvec3 disp{0.0};
-    glm::dvec3 front = glm::dvec3(camera.camera_front);
-    glm::dvec3 right = glm::dvec3(glm::normalize(glm::cross(camera.camera_front, camera.up)));
-
-    if (app.keyboard.up)
-        disp += front * (double)camera_speed * (double)delta;
-    if (app.keyboard.down)
-        disp -= front * (double)camera_speed * (double)delta;
-    if (app.keyboard.right)
-        disp += right * (double)camera_speed * (double)delta;
-    if (app.keyboard.left)
-        disp -= right * (double)camera_speed * (double)delta;
-
-    camera.pos_d += disp;
-    camera.pos = glm::vec3(0.0f);  // always at origin for CRR
-
-    static bool first_frame = true;
-    static bool shift_was_up = true;
-    if (shift_was_up && app.keyboard.shift)
+    // Scroll = multiplicative zoom (each notch ±15%)
+    if (io.MouseWheel != 0.0f)
     {
-        first_frame = true;
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-        shift_was_up = false;
+        camera.orbit_distance *= std::pow(0.85, (double)io.MouseWheel);
+        camera.orbit_distance  = std::max(1.0, camera.orbit_distance);
     }
-    else if (!shift_was_up && !app.keyboard.shift)
+
+    // Left drag = orbit (rotate azimuth + elevation around target)
+    if (ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f))
     {
-        first_frame = false;
-        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-        shift_was_up = true;
+        camera.orbit_azimuth   -= io.MouseDelta.x * 0.3f;
+        camera.orbit_elevation += io.MouseDelta.y * 0.3f;
+        if (camera.orbit_elevation >  89.0f) camera.orbit_elevation =  89.0f;
+        if (camera.orbit_elevation < -89.0f) camera.orbit_elevation = -89.0f;
     }
-    else if(app.keyboard.shift)
+
+    // Right drag = pan orbit target in the view plane
+    if (ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0.0f))
     {
-        double xpos, ypos{};
-        glfwGetCursorPos(window, &xpos, &ypos);
-
-        if (first_frame)
-        {
-            app.cursor_pos = CursorPos{xpos, ypos};
-            first_frame = false;
-        }
-
-        double xdiff = xpos - app.cursor_pos.x;
-        double ydiff = ypos - app.cursor_pos.y;
-
-        if (xdiff || ydiff)
-        {
-            app.cursor_pos = CursorPos{xpos, ypos};
-        }
-
-        glm::vec2 diff = glm::vec2(xdiff, ydiff);
-        diff.y = -diff.y;
-
-        const float MOUSE_SENSITIVITY = 0.1f;  // degrees per pixel
-        camera.pitch_yawn += diff * MOUSE_SENSITIVITY;
-
-        if (camera.pitch_yawn.y >= 90)
-            camera.pitch_yawn.y = 89;
-        if (camera.pitch_yawn.y <= -90)
-            camera.pitch_yawn.y = -89;
-
-        updateCameraFront(camera);
+        glm::vec3 right_v = glm::normalize(glm::cross(camera.camera_front, camera.up));
+        double scale = camera.orbit_distance * 0.001;
+        camera.orbit_target -= glm::dvec3(right_v) * (double)io.MouseDelta.x * scale;
+        camera.orbit_target += glm::dvec3(camera.up) * (double)io.MouseDelta.y * scale;
     }
-    else
-    {
-        shift_was_up = true;
-    }
+
+    updateCameraFromOrbit(camera);
 }
 
 // Write PlanetMaterialData to the planet_material_buffer at the correct global draw indices.
@@ -407,13 +360,12 @@ int main()
     camera.proj = glm::perspective(glm::radians(45.0f),
         core.swap_chain.extent.width / (float)core.swap_chain.extent.height,
         0.001f, 1e10f);
-    // pitch=-90 → camera_front=(0,0,-1), pointing in -Z
-    camera.pitch_yawn = glm::vec2(-90.0f, 0.0f);
-    camera.up  = glm::vec3(0.0f, 1.0f, 0.0f);
-    camera.pos = glm::vec3(0.0f);
-    // Start 1,000,000 km above Earth in +Z, looking at it (-Z direction)
-    camera.pos_d = solar_system.states[3].position_km + glm::dvec3(0.0, 0.0, 1000000.0);
-    updateCameraFront(camera);
+    // Orbit camera: start above the ecliptic looking down at the solar system
+    camera.orbit_target    = glm::dvec3(0.0);   // Sun
+    camera.orbit_distance  = 3e8;               // 300M km — inner planets visible
+    camera.orbit_azimuth   = 20.0f;
+    camera.orbit_elevation = 30.0f;
+    updateCameraFromOrbit(camera);
 
     // --- Meshes ---
     Meshes meshes;
@@ -500,12 +452,6 @@ int main()
             if (!processEvent(event, app))
                 return 0;
 
-            // Speed keybindings: ] = ×10, [ = ÷10
-            if (event.key == GLFW_KEY_RIGHT_BRACKET && event.action == GLFW_PRESS)
-                application.scene.camera.base_speed_km_s *= 10.0f;
-            if (event.key == GLFW_KEY_LEFT_BRACKET && event.action == GLFW_PRESS)
-                application.scene.camera.base_speed_km_s =
-                    std::max(0.001f, application.scene.camera.base_speed_km_s / 10.0f);
         }
 
         auto current_time = std::chrono::high_resolution_clock::now();
@@ -523,20 +469,6 @@ int main()
         }
 
         start_time = current_time;
-
-        // Update camera (CRR)
-        if (!first_frame)
-        {
-            // Adaptive speed: slow near surfaces, fast in open space
-            double nearest_dist = 1e30;
-            for (auto const& s : solar_system.states)
-                nearest_dist = std::min(nearest_dist, (double)glm::length(s.position_km - application.scene.camera.pos_d));
-
-            float camera_speed = application.scene.camera.base_speed_km_s * (float)std::max(1.0, nearest_dist / 100.0);
-
-            updateCamera(delta, camera_speed, core.swap_chain.extent,
-                         application.scene.camera, app, core.window);
-        }
 
         // Update solar system orbital positions
         if (!first_frame && !solar_system.paused)
@@ -568,6 +500,9 @@ int main()
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+
+        // Orbit camera: reads ImGui IO for scroll/drag — must be after NewFrame()
+        updateOrbitCamera(application.scene.camera);
 
         gui::createGui(core, application, &solar_system);
 

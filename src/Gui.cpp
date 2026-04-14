@@ -2,6 +2,7 @@
 
 #include <imgui.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <cmath>
 
 #include <array>
 #include <vector>
@@ -714,36 +715,21 @@ void createSolarSystemGui(SolarSystem& solar_system, Camera& cam)
     ImGui::SameLine();
     if (ImGui::Button("Top View"))
     {
-        // 8 billion km above the ecliptic, looking straight down
-        cam.pos_d        = glm::dvec3(0.0, 8000e6, 0.0);
-        cam.pitch_yawn   = glm::vec2(0.0f, -89.9f);
-        cam.camera_front = glm::vec3(0.0f, -1.0f, 0.0f);
-        cam.up           = glm::vec3(0.0f, 0.0f, -1.0f);  // avoid gimbal lock
+        cam.orbit_elevation = 89.0f;
+        cam.orbit_azimuth   = 0.0f;
+        updateCameraFromOrbit(cam);
     }
     ImGui::SameLine();
     if (ImGui::Button("Side View"))
     {
-        // 8 billion km along +Z, looking toward the sun
-        cam.pos_d        = glm::dvec3(0.0, 0.0, 8000e6);
-        cam.pitch_yawn   = glm::vec2(-90.0f, 0.0f);
-        cam.camera_front = glm::vec3(0.0f, 0.0f, -1.0f);
-        cam.up           = glm::vec3(0.0f, 1.0f, 0.0f);
+        cam.orbit_elevation = 0.0f;
+        cam.orbit_azimuth   = 0.0f;
+        updateCameraFromOrbit(cam);
     }
 
     ImGui::Separator();
-
-    // Compute effective adaptive speed (mirrors main.cpp logic)
-    double nearest = 1e30;
-    for (auto const& s : solar_system.states)
-        nearest = std::min(nearest, (double)glm::length(s.position_km - cam.pos_d));
-    float effective_km_s = cam.base_speed_km_s * (float)std::max(1.0, nearest / 100.0);
-    float effective_kmh  = effective_km_s * 3600.0f;
-
-    ImGui::Text("Speed: %.3g km/h", (double)effective_kmh);
-    ImGui::DragFloat("Base speed (km/s)", &cam.base_speed_km_s,
-                     cam.base_speed_km_s * 0.05f, 0.001f, 1e9f, "%.4g",
-                     ImGuiSliderFlags_Logarithmic);
-    ImGui::TextDisabled("[ / ] keys: speed /10 or x10");
+    ImGui::Checkbox("Show orbit rings", &solar_system.show_orbits);
+    ImGui::TextDisabled("Scroll: zoom  |  L-drag: orbit  |  R-drag: pan");
 
     ImGui::Separator();
     ImGui::Text("  Label  %-8s  Distance", "Body");
@@ -804,12 +790,70 @@ void drawPlanetLabels(SolarSystem const& solar_system, Camera const& cam)
     }
 }
 
+void drawOrbitRings(SolarSystem const& ss, Camera const& cam)
+{
+    if (!ss.show_orbits) return;
+
+    ImDrawList* dl    = ImGui::GetForegroundDrawList();
+    ImVec2      screen = ImGui::GetIO().DisplaySize;
+
+    glm::mat4 view = glm::lookAt(glm::vec3(0.0f), cam.camera_front, cam.up);
+
+    const int N = 128;
+
+    for (int i = 0; i < (int)ss.defs.size(); ++i)
+    {
+        double r = ss.defs[i].semi_major_axis_km;
+        if (r <= 0.0) continue;  // Sun has no orbit
+
+        glm::vec3 col = ss.defs[i].albedo_color;
+        ImU32 color = IM_COL32((int)(col.r * 180.0f),
+                                (int)(col.g * 180.0f),
+                                (int)(col.b * 180.0f), 160);
+
+        // Build the circle as one or more screen-space polyline segments,
+        // breaking whenever a point goes behind the camera.
+        std::vector<ImVec2> segment;
+        segment.reserve(N + 2);
+
+        auto flush_segment = [&]() {
+            if ((int)segment.size() >= 2)
+                dl->AddPolyline(segment.data(), (int)segment.size(), color, 0, 1.5f);
+            segment.clear();
+        };
+
+        for (int j = 0; j <= N; ++j)
+        {
+            float    angle   = (float)j / (float)N * 2.0f * glm::pi<float>();
+            glm::dvec3 world_km(std::cos(angle) * r, 0.0, std::sin(angle) * r);
+            glm::vec3  cam_rel = glm::vec3(world_km - cam.pos_d);
+
+            glm::vec4 clip = cam.proj * view * glm::vec4(cam_rel, 1.0f);
+
+            if (clip.w <= 0.0f) { flush_segment(); continue; }  // behind camera
+
+            glm::vec3 ndc = glm::vec3(clip) / clip.w;
+            if (std::abs(ndc.x) > 1.1f || std::abs(ndc.y) > 1.1f)
+            {
+                flush_segment();
+                continue;
+            }
+
+            float sx = ( ndc.x * 0.5f + 0.5f) * screen.x;
+            float sy = (-ndc.y * 0.5f + 0.5f) * screen.y;
+            segment.push_back(ImVec2(sx, sy));
+        }
+        flush_segment();
+    }
+}
+
 void createGui(RenderingState const& core, Application& application, SolarSystem* solar_system)
 {
     if (solar_system)
     {
         createSolarSystemGui(*solar_system, application.scene.camera);
         drawPlanetLabels(*solar_system, application.scene.camera);
+        drawOrbitRings(*solar_system, application.scene.camera);
     }
 
     ImGui::Begin("Vulkan rendering engine", nullptr, ImGuiWindowFlags_MenuBar);

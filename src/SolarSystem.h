@@ -42,6 +42,7 @@ struct SolarSystem {
     double simulation_time_s{0.0};
     double time_scale{1'000'000.0};
     bool paused{false};
+    bool show_orbits{true};
 };
 
 SolarSystem createSolarSystem();
