@@ -15,7 +15,6 @@ namespace gui
 
 void createSolarSystemGui(SolarSystem& solar_system, Camera& cam);
 void drawPlanetLabels(SolarSystem const& solar_system, Camera const& cam);
-void drawOrbitRings(SolarSystem const& solar_system, Camera const& cam);
 void createGui(RenderingState const& core, Application& application, SolarSystem* solar_system = nullptr);
 
 }

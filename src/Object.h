@@ -39,6 +39,11 @@ struct Object
 
     ObjectType object_type = ObjectType::STANDARD;
 
+    float line_width{1.0f};
+    float dash_count{0.0f};
+    float line_alpha{1.0f};
+    bool  visible{true};
+
     int id = Id();
 };
 

@@ -699,7 +699,7 @@ void showTextures(Application& application)
 void createSolarSystemGui(SolarSystem& solar_system, Camera& cam)
 {
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(360, 340), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(380, 460), ImGuiCond_FirstUseEver);
     ImGui::Begin("Solar System");
 
     ImGui::Text("Camera: %.1f, %.1f, %.1f km", cam.pos_d.x, cam.pos_d.y, cam.pos_d.z);
@@ -728,7 +728,53 @@ void createSolarSystemGui(SolarSystem& solar_system, Camera& cam)
     }
 
     ImGui::Separator();
+
+    // Object selection
+    {
+        // Build combo label
+        const char* selected_name =
+            (solar_system.selected_body < 0)
+            ? "Sun"
+            : solar_system.defs[solar_system.selected_body].name;
+
+        if (ImGui::BeginCombo("Focus", selected_name))
+        {
+            if (ImGui::Selectable("Sun", solar_system.selected_body == -1))
+                solar_system.selected_body = -1;
+            for (int i = 0; i < (int)solar_system.defs.size(); ++i)
+            {
+                bool selected = (solar_system.selected_body == i);
+                if (ImGui::Selectable(solar_system.defs[i].name, selected))
+                    solar_system.selected_body = i;
+                if (selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+    ImGui::Separator();
+
+    // Orbit ring controls
     ImGui::Checkbox("Show orbit rings", &solar_system.show_orbits);
+    if (solar_system.show_orbits)
+    {
+        ImGui::SameLine();
+        ImGui::Checkbox("Stippled##orb", &solar_system.orbit_stippled);
+        ImGui::SliderFloat("Orbit width",   &solar_system.orbit_line_width, 0.5f, 8.0f);
+        ImGui::SliderFloat("Orbit opacity", &solar_system.orbit_opacity,    0.0f, 1.0f);
+    }
+
+    // Grid controls
+    ImGui::Checkbox("Show grid", &solar_system.show_grid);
+    if (solar_system.show_grid)
+    {
+        ImGui::SliderFloat("Grid width",   &solar_system.grid_line_width, 0.5f, 4.0f);
+        ImGui::SliderFloat("Grid opacity", &solar_system.grid_opacity,    0.0f, 1.0f);
+        ImGui::SliderFloat("Grid spacing (Mkm)", &solar_system.grid_spacing_km,
+                           1e7f, 2e9f, "%.3e");
+    }
+
     ImGui::TextDisabled("Scroll: zoom  |  L-drag: orbit  |  R-drag: pan");
 
     ImGui::Separator();
@@ -746,7 +792,11 @@ void createSolarSystemGui(SolarSystem& solar_system, Camera& cam)
         if (ImGui::Checkbox("##lbl", &show))
             solar_system.show_label[i] = show;
         ImGui::SameLine();
-        ImGui::Text("%-8s  %12.0f km", def.name, dist);
+        // Highlight selected body
+        if (solar_system.selected_body == i)
+            ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.3f, 1.0f), "%-8s  %12.0f km", def.name, dist);
+        else
+            ImGui::Text("%-8s  %12.0f km", def.name, dist);
         ImGui::PopID();
     }
 
@@ -790,62 +840,6 @@ void drawPlanetLabels(SolarSystem const& solar_system, Camera const& cam)
     }
 }
 
-void drawOrbitRings(SolarSystem const& ss, Camera const& cam)
-{
-    if (!ss.show_orbits) return;
-
-    ImDrawList* dl    = ImGui::GetForegroundDrawList();
-    ImVec2      screen = ImGui::GetIO().DisplaySize;
-
-    glm::mat4 view = glm::lookAt(glm::vec3(0.0f), cam.camera_front, cam.up);
-
-    const int N = 128;
-
-    for (int i = 0; i < (int)ss.defs.size(); ++i)
-    {
-        double r = ss.defs[i].semi_major_axis_km;
-        if (r <= 0.0) continue;  // Sun has no orbit
-
-        glm::vec3 col = ss.defs[i].albedo_color;
-        ImU32 color = IM_COL32((int)(col.r * 180.0f),
-                                (int)(col.g * 180.0f),
-                                (int)(col.b * 180.0f), 160);
-
-        // Build the circle as one or more screen-space polyline segments,
-        // breaking whenever a point goes behind the camera.
-        std::vector<ImVec2> segment;
-        segment.reserve(N + 2);
-
-        auto flush_segment = [&]() {
-            if ((int)segment.size() >= 2)
-                dl->AddPolyline(segment.data(), (int)segment.size(), color, 0, 1.5f);
-            segment.clear();
-        };
-
-        for (int j = 0; j <= N; ++j)
-        {
-            float    angle   = (float)j / (float)N * 2.0f * glm::pi<float>();
-            glm::dvec3 world_km(std::cos(angle) * r, 0.0, std::sin(angle) * r);
-            glm::vec3  cam_rel = glm::vec3(world_km - cam.pos_d);
-
-            glm::vec4 clip = cam.proj * view * glm::vec4(cam_rel, 1.0f);
-
-            if (clip.w <= 0.0f) { flush_segment(); continue; }  // behind camera
-
-            glm::vec3 ndc = glm::vec3(clip) / clip.w;
-            if (std::abs(ndc.x) > 1.1f || std::abs(ndc.y) > 1.1f)
-            {
-                flush_segment();
-                continue;
-            }
-
-            float sx = ( ndc.x * 0.5f + 0.5f) * screen.x;
-            float sy = (-ndc.y * 0.5f + 0.5f) * screen.y;
-            segment.push_back(ImVec2(sx, sy));
-        }
-        flush_segment();
-    }
-}
 
 void createGui(RenderingState const& core, Application& application, SolarSystem* solar_system)
 {
@@ -853,7 +847,6 @@ void createGui(RenderingState const& core, Application& application, SolarSystem
     {
         createSolarSystemGui(*solar_system, application.scene.camera);
         drawPlanetLabels(*solar_system, application.scene.camera);
-        drawOrbitRings(*solar_system, application.scene.camera);
     }
 
     ImGui::Begin("Vulkan rendering engine", nullptr, ImGuiWindowFlags_MenuBar);

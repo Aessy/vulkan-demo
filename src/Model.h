@@ -113,6 +113,13 @@ struct Vertex
     glm::vec3 bitangent;
 };
 
+struct LineVertex
+{
+    glm::vec3 pos;    // location 0
+    glm::vec4 color;  // location 1
+    float     param;  // location 2 — 0→1 parametric position for stipple
+};
+
 struct Camera
 {
     glm::mat4  proj;

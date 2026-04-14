@@ -21,6 +21,7 @@ set(SRC src/VulkanRenderSystem.cpp
         src/Pipelines/Skybox.cpp
         src/Pipelines/Pipeline.cpp
         src/Pipelines/Planet.cpp
+        src/Pipelines/Lines.cpp
         src/imgui_impl_vulkan.cpp
         src/imgui_impl_glfw.cpp
         )
@@ -57,6 +58,8 @@ add_custom_target(shaders
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/cascaded_shadow.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/cascaded_shadow_frag.spv
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/planet.vert --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/planet_vert.spv
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/planet.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/planet_frag.spv
+                  COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/lines.vert --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/lines_vert.spv
+                  COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/lines.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/lines_frag.spv
                   DEPENDS vulkan-test)
 
 add_custom_target(copy-models ALL

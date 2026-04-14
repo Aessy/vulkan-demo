@@ -73,6 +73,7 @@
 #include "Pipelines/GeneralPurpuse.h"
 #include "Pipelines/Skybox.h"
 #include "Pipelines/Planet.h"
+#include "Pipelines/Lines.h"
 
 #include "RenderPass/ShadowMap.h"
 #include "RenderPass/SceneRenderPass.h"
@@ -283,6 +284,94 @@ void updateOrbitCamera(Camera& camera)
     updateCameraFromOrbit(camera);
 }
 
+// Create a host-visible vertex + index buffer for line geometry.
+static Buffer createLineVertexBuffer(RenderingState const& state, std::vector<LineVertex> const& verts)
+{
+    vk::DeviceSize size = sizeof(LineVertex) * verts.size();
+    auto [buf, mem] = createBuffer(state, size,
+        vk::BufferUsageFlagBits::eVertexBuffer,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    void* data = mem.mapMemory(0, size).value;
+    memcpy(data, verts.data(), (size_t)size);
+    mem.unmapMemory();
+    return {std::move(buf), std::move(mem)};
+}
+
+// Unit circle (radius 1) in XZ plane, 128 LINE_LIST segments.
+// color: rgba with alpha representing opacity.
+static std::pair<std::vector<LineVertex>, std::vector<uint32_t>>
+makeOrbitRingGeometry(glm::vec4 color, int N = 128)
+{
+    std::vector<LineVertex> verts(N);
+    for (int i = 0; i < N; ++i)
+    {
+        float angle = (float)i / (float)N * 2.0f * glm::pi<float>();
+        verts[i].pos   = glm::vec3(std::cos(angle), 0.0f, std::sin(angle));
+        verts[i].color = color;
+        verts[i].param = (float)i / (float)N;
+    }
+    std::vector<uint32_t> indices;
+    indices.reserve(N * 2);
+    for (int i = 0; i < N; ++i)
+    {
+        indices.push_back((uint32_t)i);
+        indices.push_back((uint32_t)((i + 1) % N));
+    }
+    return {verts, indices};
+}
+
+// Recompute orbit ring vertex positions in double precision to avoid float32
+// cancellation.  The ring is a circle of radius `radius_km` centred at the
+// world origin.  We subtract cam.pos_d in double before converting to float,
+// so the GPU only ever sees small CRR-space coordinates.
+// N must match the vertex count used when the buffer was created.
+static void updateOrbitRingVertices(Buffer& vbuf, double radius_km,
+                                    glm::dvec3 const& cam_pos_d, int N = 128)
+{
+    vk::DeviceSize size = sizeof(LineVertex) * N;
+    LineVertex* verts   = static_cast<LineVertex*>(vbuf.memory.mapMemory(0, size).value);
+    double two_pi = 2.0 * glm::pi<double>();
+    for (int i = 0; i < N; ++i)
+    {
+        double angle   = (double)i / (double)N * two_pi;
+        glm::dvec3 world_km(std::cos(angle) * radius_km, 0.0, std::sin(angle) * radius_km);
+        verts[i].pos   = glm::vec3(world_km - cam_pos_d);
+    }
+    vbuf.memory.unmapMemory();
+}
+
+// Grid in XZ plane: (2*half_n+1) lines in each direction, unit spacing.
+// Scaled via model matrix.
+static std::pair<std::vector<LineVertex>, std::vector<uint32_t>>
+makeGridGeometry(glm::vec4 color, int half_n = 10)
+{
+    std::vector<LineVertex> verts;
+    std::vector<uint32_t> indices;
+    int total_lines = 2 * half_n + 1;
+    verts.reserve(total_lines * 4);
+    indices.reserve(total_lines * 4);
+
+    auto add_line = [&](glm::vec3 a, glm::vec3 b)
+    {
+        uint32_t base = (uint32_t)verts.size();
+        verts.push_back({a, color, 0.0f});
+        verts.push_back({b, color, 1.0f});
+        indices.push_back(base);
+        indices.push_back(base + 1);
+    };
+
+    float half = (float)half_n;
+    for (int i = -half_n; i <= half_n; ++i)
+    {
+        float f = (float)i;
+        // Lines parallel to Z
+        add_line(glm::vec3(f, 0.0f, -half), glm::vec3(f, 0.0f, half));
+        // Lines parallel to X
+        add_line(glm::vec3(-half, 0.0f, f), glm::vec3(half, 0.0f, f));
+    }
+    return {verts, indices};
+}
+
 // Write PlanetMaterialData to the planet_material_buffer at the correct global draw indices.
 // Global draw index: programs[0].size() + programs[1].size() + i_in_program2
 static void writePlanetMaterialBuffers(Scene& scene, SolarSystem const& ss, int frame)
@@ -416,6 +505,77 @@ int main()
     writePlanetMaterialBuffers(scene, solar_system, 0);
     writePlanetMaterialBuffers(scene, solar_system, 1);
 
+    // --- Line objects: orbit rings + ecliptic grid ---
+    // All use program 3 (Lines pipeline).
+    Material lines_material{.name = {"Lines"}, .program = 3, .shader_data = {}};
+
+    // Orbit ring buffers — kept alive for the duration of the render loop.
+    std::vector<Buffer> orbit_ring_vbufs;
+    std::vector<Buffer> orbit_ring_ibufs;
+    std::vector<int>    orbit_ring_obj_ids;
+    // std::vector<double> orbit_ring_radii;  // semi_major_axis_km per ring, for per-frame CRR update
+
+    for (int i = 0; i < (int)solar_system.defs.size(); ++i)
+    {
+        double r = solar_system.defs[i].semi_major_axis_km;
+        if (r <= 0.0) continue;  // Sun has no orbit
+
+        glm::vec3 col = solar_system.defs[i].albedo_color;
+        auto [ring_verts, ring_indices] = makeOrbitRingGeometry(glm::vec4(col, 1.0f));
+
+        auto vbuf = createLineVertexBuffer(core, ring_verts);
+        auto ibuf = createIndexBuffer(core, ring_indices);
+
+        // Positions are baked per-frame in double precision; model matrix is identity.
+        // updateOrbitRingVertices(vbuf, r, camera.pos_d);
+
+        Object obj{};
+        obj.vertex_buffer = vbuf.buffer;
+        obj.index_buffer  = ibuf.buffer;
+        obj.indices_size  = (uint32_t)ring_indices.size();
+        // obj.position      = glm::vec3(0.0f);   // baked into vertices
+        obj.position      = glm::vec3(-camera.pos_d);
+        obj.rotation      = glm::vec3(0.0f, 1.0f, 0.0f);
+        obj.angel         = 0.0f;
+        obj.scale         = (float)r;
+        obj.material      = lines_material;
+        obj.line_width    = solar_system.orbit_line_width;
+        obj.line_alpha    = solar_system.orbit_opacity;
+        obj.dash_count    = solar_system.orbit_stippled ? 20.0f : 0.0f;
+        obj.visible       = solar_system.show_orbits;
+
+        orbit_ring_obj_ids.push_back((int)scene.objs.size());
+        //orbit_ring_radii.push_back(r);
+        addObject(scene, obj);
+        orbit_ring_vbufs.push_back(std::move(vbuf));
+        orbit_ring_ibufs.push_back(std::move(ibuf));
+    }
+
+    // Grid mesh
+    auto [grid_verts, grid_indices] = makeGridGeometry(
+        glm::vec4(0.5f, 0.5f, 0.65f, 1.0f),
+        solar_system.grid_line_count);
+    auto grid_vbuf = createLineVertexBuffer(core, grid_verts);
+    auto grid_ibuf = createIndexBuffer(core, grid_indices);
+
+    int grid_obj_id = (int)scene.objs.size();
+    {
+        Object obj{};
+        obj.vertex_buffer = grid_vbuf.buffer;
+        obj.index_buffer  = grid_ibuf.buffer;
+        obj.indices_size  = (uint32_t)grid_indices.size();
+        obj.position      = glm::vec3(camera.orbit_target - camera.pos_d);
+        obj.rotation      = glm::vec3(0.0f, 1.0f, 0.0f);
+        obj.angel         = 0.0f;
+        obj.scale         = solar_system.grid_spacing_km;
+        obj.material      = lines_material;
+        obj.line_width    = solar_system.grid_line_width;
+        obj.line_alpha    = solar_system.grid_opacity;
+        obj.dash_count    = 0.0f;
+        obj.visible       = solar_system.show_grid;
+        addObject(scene, obj);
+    }
+
     auto ppp = createPostProcessing(core, scene_render_pass, scene.world_buffer);
     Application application{
         .textures      = std::move(textures),
@@ -476,6 +636,26 @@ int main()
             updateSolarSystem(solar_system, (double)delta);
         }
 
+        // Update orbit_target from selected body BEFORE the camera update so that
+        // updateCameraFromOrbit() inside updateOrbitCamera() uses the correct target.
+        if (solar_system.selected_body < 0)
+            application.scene.camera.orbit_target = solar_system.sun_position_km;
+        else
+            application.scene.camera.orbit_target =
+                solar_system.states[solar_system.selected_body].position_km;
+
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        // Orbit camera: reads ImGui IO — must be after NewFrame().
+        // Updates camera.pos_d and camera_front to this frame's values.
+        updateOrbitCamera(application.scene.camera);
+
+        // CRR positions: all use camera.pos_d which is now up-to-date.
+        // View matrix (built in sceneWriteBuffers) uses camera_front from the same
+        // updateOrbitCamera call, so positions and view are always consistent.
+
         // Update camera-relative planet positions and rotation
         for (int i = 0; i < (int)solar_system.states.size(); ++i)
         {
@@ -488,6 +668,33 @@ int main()
             }
         }
 
+        // Update orbit ring objects: recompute CRR vertex positions in double
+        // precision to eliminate float32 cancellation wobble.
+        {
+            int ring_idx = 0;
+            for (int i = 0; i < (int)solar_system.defs.size(); ++i)
+            {
+                if (solar_system.defs[i].semi_major_axis_km <= 0.0) continue;
+                auto& obj = application.scene.objs[orbit_ring_obj_ids[ring_idx++]];
+                obj.position   = glm::vec3(-application.scene.camera.pos_d);
+                obj.line_width = solar_system.orbit_line_width;
+                obj.line_alpha = solar_system.orbit_opacity;
+                obj.dash_count = solar_system.orbit_stippled ? 20.0f : 0.0f;
+                obj.visible    = solar_system.show_orbits;
+            }
+        }
+
+        // Update grid object: CRR offset to orbit_target + settings
+        {
+            auto& obj = application.scene.objs[grid_obj_id];
+            obj.position   = glm::vec3(application.scene.camera.orbit_target
+                                       - application.scene.camera.pos_d);
+            obj.scale      = solar_system.grid_spacing_km;
+            obj.line_width = solar_system.grid_line_width;
+            obj.line_alpha = solar_system.grid_opacity;
+            obj.visible    = solar_system.show_grid;
+        }
+
         // Update sun position for lighting (sun is always at km origin)
         {
             glm::vec3 sun_cam_rel = glm::vec3(-application.scene.camera.pos_d);
@@ -496,13 +703,6 @@ int main()
                                                ? glm::normalize(sun_cam_rel)
                                                : glm::vec3(1.0f, 0.0f, 0.0f);
         }
-
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        // Orbit camera: reads ImGui IO for scroll/drag — must be after NewFrame()
-        updateOrbitCamera(application.scene.camera);
 
         gui::createGui(core, application, &solar_system);
 

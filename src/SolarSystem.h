@@ -42,7 +42,22 @@ struct SolarSystem {
     double simulation_time_s{0.0};
     double time_scale{1'000'000.0};
     bool paused{false};
-    bool show_orbits{true};
+
+    // Orbit ring rendering
+    bool  show_orbits{true};
+    float orbit_line_width{2.0f};
+    float orbit_opacity{0.6f};
+    bool  orbit_stippled{false};
+
+    // Ecliptic grid
+    bool  show_grid{true};
+    float grid_line_width{1.0f};
+    float grid_opacity{0.35f};
+    int   grid_line_count{20};      // lines per side (total lines = 2*grid_line_count+1)
+    float grid_spacing_km{5e8f};    // ~3.3 AU
+
+    // Object selection (-1 = Sun/origin)
+    int selected_body{-1};
 };
 
 SolarSystem createSolarSystem();

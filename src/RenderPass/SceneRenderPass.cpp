@@ -42,13 +42,30 @@ static void drawScene(vk::CommandBuffer& cmd_buffer, SceneRenderPass& scene_rend
             }
         }
 
+        bool is_lines_program = (o.first == 3);
         for (size_t i = 0; i < o.second.size(); ++i)
         {
-            auto &drawable = scene.objs[o.second[i]];
+            auto const& drawable = scene.objs[o.second[i]];
+
+            if (!drawable.visible)
+            {
+                ++index;
+                continue;
+            }
+
+            if (is_lines_program)
+            {
+                cmd_buffer.setLineWidth(drawable.line_width);
+                float pc[2] = {drawable.dash_count, drawable.line_alpha};
+                cmd_buffer.pushConstants(program.pipeline_layout,
+                                         vk::ShaderStageFlagBits::eFragment,
+                                         0, 2 * sizeof(float), pc);
+            }
+
             cmd_buffer.bindVertexBuffers(0, drawable.vertex_buffer, {0});
             cmd_buffer.bindIndexBuffer(drawable.index_buffer, 0, vk::IndexType::eUint32);
-            cmd_buffer.drawIndexed(drawable.indices_size, 1, 0,0, index);
-            index++;
+            cmd_buffer.drawIndexed(drawable.indices_size, 1, 0, 0, index);
+            ++index;
         }
     }
 }
@@ -260,6 +277,10 @@ SceneRenderPass createSceneRenderPass(RenderingState const& state,
                                                                    scene.model_buffer,
                                                                    scene.planet_material_buffer));
     }
+
+    scene_render_pass.pipelines.push_back(createLinesPipeline(state, render_pass,
+                                                              scene.world_buffer,
+                                                              scene.model_buffer));
 
     return scene_render_pass;
 }

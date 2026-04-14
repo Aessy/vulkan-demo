@@ -8,6 +8,7 @@
 #include "Program.h"
 #include "Scene.h"
 #include "Pipelines/Planet.h"
+#include "Pipelines/Lines.h"
 
 struct SceneFramebufferState
 {
