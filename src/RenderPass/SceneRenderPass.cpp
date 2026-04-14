@@ -69,7 +69,7 @@ void sceneRenderPass(vk::CommandBuffer command_buffer,
     render_pass_info.renderArea.extent = state.swap_chain.extent;
 
     std::array<vk::ClearValue, 2> clear_values{};
-    clear_values[0].color = vk::ClearColorValue(std::array<float,4>{0.3984,0.695,1});
+    clear_values[0].color = vk::ClearColorValue(std::array<float,4>{0.0f, 0.0f, 0.0f, 1.0f});
     clear_values[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
     render_pass_info.clearValueCount = clear_values.size();

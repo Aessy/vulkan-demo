@@ -119,7 +119,8 @@ struct Camera
     glm::vec3 camera_front;
     glm::vec3 up;
     glm::vec2 pitch_yawn{};
-    glm::dvec3 pos_d{0.0};  // true world position in km (CPU only, never sent to GPU)
+    glm::dvec3 pos_d{0.0};          // true world position in km (CPU only, never sent to GPU)
+    float base_speed_km_s{1.0f};   // user-adjustable base speed (km/s)
 };
 
 struct Model

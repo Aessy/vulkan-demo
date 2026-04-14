@@ -695,10 +695,10 @@ void showTextures(Application& application)
 
 }
 
-void createSolarSystemGui(SolarSystem& solar_system, Camera const& cam)
+void createSolarSystemGui(SolarSystem& solar_system, Camera& cam)
 {
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(320, 260), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(360, 340), ImGuiCond_FirstUseEver);
     ImGui::Begin("Solar System");
 
     ImGui::Text("Camera: %.1f, %.1f, %.1f km", cam.pos_d.x, cam.pos_d.y, cam.pos_d.z);
@@ -711,6 +711,39 @@ void createSolarSystemGui(SolarSystem& solar_system, Camera const& cam)
     {
         if (ImGui::Button("Pause"))  solar_system.paused = true;
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Top View"))
+    {
+        // 8 billion km above the ecliptic, looking straight down
+        cam.pos_d        = glm::dvec3(0.0, 8000e6, 0.0);
+        cam.pitch_yawn   = glm::vec2(0.0f, -89.9f);
+        cam.camera_front = glm::vec3(0.0f, -1.0f, 0.0f);
+        cam.up           = glm::vec3(0.0f, 0.0f, -1.0f);  // avoid gimbal lock
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Side View"))
+    {
+        // 8 billion km along +Z, looking toward the sun
+        cam.pos_d        = glm::dvec3(0.0, 0.0, 8000e6);
+        cam.pitch_yawn   = glm::vec2(-90.0f, 0.0f);
+        cam.camera_front = glm::vec3(0.0f, 0.0f, -1.0f);
+        cam.up           = glm::vec3(0.0f, 1.0f, 0.0f);
+    }
+
+    ImGui::Separator();
+
+    // Compute effective adaptive speed (mirrors main.cpp logic)
+    double nearest = 1e30;
+    for (auto const& s : solar_system.states)
+        nearest = std::min(nearest, (double)glm::length(s.position_km - cam.pos_d));
+    float effective_km_s = cam.base_speed_km_s * (float)std::max(1.0, nearest / 100.0);
+    float effective_kmh  = effective_km_s * 3600.0f;
+
+    ImGui::Text("Speed: %.3g km/h", (double)effective_kmh);
+    ImGui::DragFloat("Base speed (km/s)", &cam.base_speed_km_s,
+                     cam.base_speed_km_s * 0.05f, 0.001f, 1e9f, "%.4g",
+                     ImGuiSliderFlags_Logarithmic);
+    ImGui::TextDisabled("[ / ] keys: speed /10 or x10");
 
     ImGui::Separator();
     ImGui::Text("  Label  %-8s  Distance", "Body");

@@ -22,6 +22,7 @@ struct PlanetDef {
     int    normal_texture_index;
     float  roughness;
     float  metallic;
+    float  emissive;
     glm::vec3 albedo_color;
 };
 

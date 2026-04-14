@@ -356,6 +356,7 @@ static void writePlanetMaterialBuffers(Scene& scene, SolarSystem const& ss, int 
         mat.albedo_color      = glm::vec4(def.albedo_color, 1.0f);
         mat.roughness         = def.roughness;
         mat.metallic          = def.metallic;
+        mat.emissive          = def.emissive;
 
         writeBuffer(*scene.planet_material_buffer[frame], mat, base_index + i);
     }
@@ -498,6 +499,13 @@ int main()
 
             if (!processEvent(event, app))
                 return 0;
+
+            // Speed keybindings: ] = ×10, [ = ÷10
+            if (event.key == GLFW_KEY_RIGHT_BRACKET && event.action == GLFW_PRESS)
+                application.scene.camera.base_speed_km_s *= 10.0f;
+            if (event.key == GLFW_KEY_LEFT_BRACKET && event.action == GLFW_PRESS)
+                application.scene.camera.base_speed_km_s =
+                    std::max(0.001f, application.scene.camera.base_speed_km_s / 10.0f);
         }
 
         auto current_time = std::chrono::high_resolution_clock::now();
@@ -524,8 +532,7 @@ int main()
             for (auto const& s : solar_system.states)
                 nearest_dist = std::min(nearest_dist, (double)glm::length(s.position_km - application.scene.camera.pos_d));
 
-            const float BASE_SPEED_KM_S = 1.0f; // 1 km/s base
-            float camera_speed = BASE_SPEED_KM_S * (float)std::max(1.0, nearest_dist / 100.0);
+            float camera_speed = application.scene.camera.base_speed_km_s * (float)std::max(1.0, nearest_dist / 100.0);
 
             updateCamera(delta, camera_speed, core.swap_chain.extent,
                          application.scene.camera, app, core.window);

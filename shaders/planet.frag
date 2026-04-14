@@ -29,8 +29,8 @@ struct PlanetMaterial {
     vec4  albedo_color;            // 48 bytes
     float roughness;               // 52 bytes
     float metallic;                // 56 bytes
-    float _pad0;
-    float _pad1;                   // 64 bytes
+    float emissive;                // 60 bytes
+    float _pad0;                   // 64 bytes
 };
 
 layout(std430, set = 3, binding = 0) readonly buffer PlanetMaterialBuffer {
@@ -136,8 +136,9 @@ void main()
         color = mix(color, mat.atmosphere_color_scale.rgb, rim * scale * 0.7);
     }
 
-    // Tone-map (simple Reinhard)
-    color = color / (color + vec3(1.0));
+    // Emissive override (e.g. Sun): mix PBR/tonemapped with raw albedo
+    vec3 pbr_tonemapped = color / (color + vec3(1.0));
+    color = mix(pbr_tonemapped, albedo, mat.emissive);
 
     // Logarithmic depth buffer
     const float FAR = 1e10;

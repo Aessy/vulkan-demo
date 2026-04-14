@@ -18,7 +18,8 @@ struct PlanetMaterialData {
     alignas(16) glm::vec4 albedo_color{0.5f, 0.5f, 0.5f, 1.0f};            // 48 bytes
     alignas(4)  float roughness{0.5f};
     alignas(4)  float metallic{0.0f};
-    float _pad[2]{};                                                     // 64 bytes
+    alignas(4)  float emissive{0.0f};
+    float _pad{};                                                        // 64 bytes
 };
 
 Pipeline createPlanetPipeline(RenderingState const& state,
