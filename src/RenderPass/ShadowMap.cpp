@@ -365,10 +365,6 @@ std::array<Cascade, 4> updateCascadesOriginal(Camera const& camera, glm::vec3 co
 
         if (i == 3)
         {
-            spdlog::info("Texel size: {}", texel_size);
-            spdlog::info("Min Extents: {}", glm::to_string(minExtents));
-            spdlog::info("Max Extents: {}", glm::to_string(maxExtents));
-            spdlog::info("Snapped Center: {}", glm::to_string(snapped_center));
             //spdlog::info("Camera position: {}", glm::to_string(camera_position));
         }
 

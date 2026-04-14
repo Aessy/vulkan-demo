@@ -24,11 +24,14 @@ struct PlanetDef {
     float  metallic;
     float  emissive;
     glm::vec3 albedo_color;
+    glm::dvec3 init_position;
+    glm::dvec3 init_velocity;
 };
 
 struct PlanetState {
     double mean_anomaly{0.0};
     glm::dvec3 position_km{0.0};
+    glm::dvec3 velocity_km{0.0};
     double rotation_angle{0.0};
     int    scene_object_index{-1};
 };
@@ -40,7 +43,7 @@ struct SolarSystem {
     glm::dvec3 sun_position_km{0.0};
     int  sun_scene_object_index{-1};
     double simulation_time_s{0.0};
-    double time_scale{1'000'000.0};
+    double time_scale{1};
     bool paused{false};
 
     // Orbit ring rendering

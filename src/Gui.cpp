@@ -729,6 +729,9 @@ void createSolarSystemGui(SolarSystem& solar_system, Camera& cam)
 
     ImGui::Separator();
 
+    static double ts_min = 1.0, ts_max = 1'000'000.0;
+    ImGui::SliderScalar("Time scale", ImGuiDataType_Double, &solar_system.time_scale, &ts_min, &ts_max, "%.0f x");
+
     // Object selection
     {
         // Build combo label
