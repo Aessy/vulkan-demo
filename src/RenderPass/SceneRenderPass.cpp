@@ -11,6 +11,7 @@
 #include "Scene.h"
 #include "Pipelines/GeneralPurpuse.h"
 #include "Pipelines/Skybox.h"
+#include "Pipelines/Planet.h"
 
 static void drawScene(vk::CommandBuffer& cmd_buffer, SceneRenderPass& scene_render_pass, Scene const& scene, int frame)
 {
@@ -251,6 +252,14 @@ SceneRenderPass createSceneRenderPass(RenderingState const& state,
                                                                        shadow_map.cascaded_distances));
 
     scene_render_pass.pipelines.push_back(createSkyboxPipeline(state, render_pass, scene.world_buffer, scene.model_buffer, scene.atmosphere_data));
+
+    if (!scene.planet_material_buffer.empty())
+    {
+        scene_render_pass.pipelines.push_back(createPlanetPipeline(state, render_pass, textures,
+                                                                   scene.world_buffer,
+                                                                   scene.model_buffer,
+                                                                   scene.planet_material_buffer));
+    }
 
     return scene_render_pass;
 }

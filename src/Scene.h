@@ -34,6 +34,7 @@ struct Scene
     std::vector<std::unique_ptr<UniformBuffer>> model_buffer;
     std::vector<std::unique_ptr<UniformBuffer>> material_buffer;
     std::vector<std::unique_ptr<UniformBuffer>> atmosphere_data;
+    std::vector<std::unique_ptr<UniformBuffer>> planet_material_buffer;
 };
 
 inline void addObject(Scene& scene, Object o)

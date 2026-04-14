@@ -7,6 +7,7 @@
 #include "ShadowMap.h"
 #include "Program.h"
 #include "Scene.h"
+#include "Pipelines/Planet.h"
 
 struct SceneFramebufferState
 {

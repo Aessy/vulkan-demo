@@ -329,9 +329,9 @@ void showCamera(Camera const& camera)
     if (ImGui::BeginPopup("camera"))
     {
 
-        ImGui::Text("Pos: x:%f, y:%f, z:%f",camera.pos.x,
-                                            camera.pos.y,
-                                            camera.pos.z);
+        ImGui::Text("Pos: x:%.1f, y:%.1f, z:%.1f km",camera.pos_d.x,
+                                                     camera.pos_d.y,
+                                                     camera.pos_d.z);
         ImGui::EndPopup();
     }
 }
@@ -561,9 +561,9 @@ void showScene(Application& app, Scene& scene, Models& models)
     if (ImGui::TreeNode("Camera"))
     {
         Camera& camera = scene.camera;
-        ImGui::Text("Pos: x:%f, y:%f, z:%f",camera.pos.x,
-                                            camera.pos.y,
-                                            camera.pos.z);
+        ImGui::Text("Pos: x:%.1f, y:%.1f, z:%.1f km", camera.pos_d.x,
+                                                       camera.pos_d.y,
+                                                       camera.pos_d.z);
         ImGui::TreePop();
     }
     if (ImGui::TreeNode("Light"))

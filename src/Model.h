@@ -119,6 +119,7 @@ struct Camera
     glm::vec3 camera_front;
     glm::vec3 up;
     glm::vec2 pitch_yawn{};
+    glm::dvec3 pos_d{0.0};  // true world position in km (CPU only, never sent to GPU)
 };
 
 struct Model
