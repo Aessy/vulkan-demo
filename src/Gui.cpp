@@ -1,6 +1,7 @@
 #include "Gui.h"
 
 #include <imgui.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <array>
 #include <vector>
@@ -694,9 +695,92 @@ void showTextures(Application& application)
 
 }
 
-void createGui(RenderingState const& core, Application& application)
+void createSolarSystemGui(SolarSystem& solar_system, Camera const& cam)
 {
+    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(320, 260), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Solar System");
+
+    ImGui::Text("Camera: %.1f, %.1f, %.1f km", cam.pos_d.x, cam.pos_d.y, cam.pos_d.z);
+
+    if (solar_system.paused)
+    {
+        if (ImGui::Button("Resume")) solar_system.paused = false;
+    }
+    else
+    {
+        if (ImGui::Button("Pause"))  solar_system.paused = true;
+    }
+
+    ImGui::Separator();
+    ImGui::Text("  Label  %-8s  Distance", "Body");
+    ImGui::Separator();
+
+    for (int i = 0; i < (int)solar_system.defs.size(); ++i)
+    {
+        auto const& def   = solar_system.defs[i];
+        auto const& state = solar_system.states[i];
+        double dist = glm::length(state.position_km - cam.pos_d);
+
+        ImGui::PushID(i);
+        bool show = solar_system.show_label[i];
+        if (ImGui::Checkbox("##lbl", &show))
+            solar_system.show_label[i] = show;
+        ImGui::SameLine();
+        ImGui::Text("%-8s  %12.0f km", def.name, dist);
+        ImGui::PopID();
+    }
+
+    ImGui::End();
+}
+
+void drawPlanetLabels(SolarSystem const& solar_system, Camera const& cam)
+{
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    ImVec2 screen = ImGui::GetIO().DisplaySize;
+
+    // Recompute view matrix (CRR: eye is always at origin)
+    glm::mat4 view = glm::lookAt(glm::vec3(0.0f), cam.camera_front, cam.up);
+
+    for (int i = 0; i < (int)solar_system.defs.size(); ++i)
+    {
+        if (!solar_system.show_label[i]) continue;
+
+        auto const& def   = solar_system.defs[i];
+        auto const& state = solar_system.states[i];
+
+        // Camera-relative world position (double→float, safe due to CRR)
+        glm::vec3 cam_rel = glm::vec3(state.position_km - cam.pos_d);
+
+        glm::vec4 clip = cam.proj * view * glm::vec4(cam_rel, 1.0f);
+
+        if (clip.w <= 0.0f) continue; // behind camera
+
+        glm::vec3 ndc = glm::vec3(clip) / clip.w;
+        if (ndc.x < -1.0f || ndc.x > 1.0f || ndc.y < -1.0f || ndc.y > 1.0f) continue;
+
+        float sx = ( ndc.x * 0.5f + 0.5f) * screen.x;
+        float sy = (-ndc.y * 0.5f + 0.5f) * screen.y;
+
+        // Shadow for readability
+        dl->AddText(ImVec2(sx + 1, sy + 1), IM_COL32(0, 0, 0, 200), def.name);
+        dl->AddText(ImVec2(sx,     sy    ), IM_COL32(255, 255, 100, 255), def.name);
+
+        // Small crosshair dot
+        dl->AddCircleFilled(ImVec2(sx, sy - 8), 3.0f, IM_COL32(255, 255, 100, 200));
+    }
+}
+
+void createGui(RenderingState const& core, Application& application, SolarSystem* solar_system)
+{
+    if (solar_system)
+    {
+        createSolarSystemGui(*solar_system, application.scene.camera);
+        drawPlanetLabels(*solar_system, application.scene.camera);
+    }
+
     ImGui::Begin("Vulkan rendering engine", nullptr, ImGuiWindowFlags_MenuBar);
+
     if (ImGui::CollapsingHeader("Scene"))
     {
         showScene(application, application.scene, application.models);

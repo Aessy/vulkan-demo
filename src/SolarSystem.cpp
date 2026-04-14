@@ -24,6 +24,7 @@ SolarSystem createSolarSystem()
     };
 
     ss.states.resize(ss.defs.size());
+    ss.show_label.resize(ss.defs.size(), false);
 
     // Spread initial mean anomalies 40° apart
     for (int i = 0; i < (int)ss.defs.size(); ++i)

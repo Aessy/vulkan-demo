@@ -35,10 +35,12 @@ struct PlanetState {
 struct SolarSystem {
     std::vector<PlanetDef>   defs;
     std::vector<PlanetState> states;
+    std::vector<bool>        show_label;
     glm::dvec3 sun_position_km{0.0};
     int  sun_scene_object_index{-1};
     double simulation_time_s{0.0};
     double time_scale{1'000'000.0};
+    bool paused{false};
 };
 
 SolarSystem createSolarSystem();

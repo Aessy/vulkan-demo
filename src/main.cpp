@@ -410,8 +410,8 @@ int main()
     camera.pitch_yawn = glm::vec2(-90.0f, 0.0f);
     camera.up  = glm::vec3(0.0f, 1.0f, 0.0f);
     camera.pos = glm::vec3(0.0f);
-    // Start 50,000 km above Earth in +Z, looking at it (-Z direction)
-    camera.pos_d = solar_system.states[3].position_km + glm::dvec3(0.0, 0.0, 50000.0);
+    // Start 1,000,000 km above Earth in +Z, looking at it (-Z direction)
+    camera.pos_d = solar_system.states[3].position_km + glm::dvec3(0.0, 0.0, 1000000.0);
     updateCameraFront(camera);
 
     // --- Meshes ---
@@ -532,7 +532,7 @@ int main()
         }
 
         // Update solar system orbital positions
-        if (!first_frame)
+        if (!first_frame && !solar_system.paused)
         {
             updateSolarSystem(solar_system, (double)delta);
         }
@@ -562,7 +562,7 @@ int main()
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        gui::createGui(core, application);
+        gui::createGui(core, application, &solar_system);
 
         auto result = drawFrame(core, application);
         if (result == DrawResult::RESIZE)
