@@ -35,6 +35,7 @@ struct Scene
     std::vector<std::unique_ptr<UniformBuffer>> material_buffer;
     std::vector<std::unique_ptr<UniformBuffer>> atmosphere_data;
     std::vector<std::unique_ptr<UniformBuffer>> planet_material_buffer;
+    std::vector<std::unique_ptr<UniformBuffer>> atmosphere_color_buffer; // vec4 per body: xyz=color, w=scale
 };
 
 inline void addObject(Scene& scene, Object o)
@@ -87,6 +88,7 @@ inline ModelBufferObject createModelBufferObject(Object const& object)
     auto translation = glm::translate(glm::mat4(1.0f), object.position);
     auto scale = glm::scale(glm::mat4(1.0f), glm::vec3(object.scale, object.scale, object.scale));
     model_buffer.model = translation * rotation * scale;
+    model_buffer.texture_index = static_cast<uint32_t>(object.planet_index);
     return model_buffer;
 }
 

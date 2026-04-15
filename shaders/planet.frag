@@ -13,7 +13,7 @@ struct PlanetMaterial {
     float roughness;
     float metallic;
     float emissive;
-    float _pad0;
+    int   cloud_texture;
 };
 
 layout(std430, set = 3, binding = 0) readonly buffer PlanetMaterialBuffer {
@@ -35,6 +35,12 @@ void main()
     vec3 albedo = mat.diffuse_texture >= 0
         ? texture(texSampler[mat.diffuse_texture], frag_uv).rgb
         : mat.albedo_color.rgb;
+
+    if (mat.cloud_texture >= 0)
+    {
+        float cloud = texture(texSampler[mat.cloud_texture], frag_uv).r;
+        albedo = mix(albedo, vec3(1.0), cloud * 0.9);
+    }
 
     vec3 N = normalize(frag_normal);
     vec3 L = normalize(sun_dir);  // direction from camera toward sun

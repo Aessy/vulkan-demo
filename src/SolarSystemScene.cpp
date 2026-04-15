@@ -141,6 +141,7 @@ void initPlanetObjects(Scene& scene, SolarSystem& ss,
         state.scene_object_index = static_cast<int>(scene.objs.size());
         addObject(scene, obj);
     }
+
 }
 
 SolarSystemLineObjects initOrbitLines(RenderingState const& state, Scene& scene,
@@ -240,8 +241,21 @@ void writePlanetMaterialBuffers(Scene& scene, SolarSystem const& ss, int frame)
         mat.roughness              = def.roughness;
         mat.metallic               = def.metallic;
         mat.emissive               = def.emissive;
+        mat.cloud_texture          = def.cloud_texture_index;
 
         writeBuffer(*scene.planet_material_buffer[frame], mat, base_index + i);
+    }
+}
+
+void writeAtmosphereColorBuffers(Scene& scene, SolarSystem const& ss, int frame)
+{
+    int idx = 0;
+    for (auto const& def : ss.defs)
+    {
+        if (!def.has_atmosphere) { ++idx; continue; }
+        glm::vec4 const data{def.atmosphere_color, def.atmosphere_scale * 2.0f};
+        writeBuffer(*scene.atmosphere_color_buffer[frame], data, idx);
+        ++idx;
     }
 }
 

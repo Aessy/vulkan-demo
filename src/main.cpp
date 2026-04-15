@@ -300,7 +300,8 @@ int main()
 
     spdlog::info("Loading textures");
     Textures textures = createTextures(core, {
-        { "textures/world.topo.200408.3x5400x2700.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb },
+        { "textures/world.topo.200408.3x5400x2700.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb },  // slot 0: Earth diffuse
+        { "textures/cloud_combined_2048.jpg",           TextureType::MipMap, vk::Format::eR8G8B8A8Srgb },  // slot 1: Earth clouds
     });
 
     spdlog::info("Loading models");
@@ -315,7 +316,8 @@ int main()
     scene.model_buffer           = createStorageBuffers<ModelBufferObject>(core, 20);
     scene.material_buffer        = createStorageBuffers<MaterialShaderData>(core, 20);
     scene.atmosphere_data        = createUniformBuffers<Atmosphere>(core);
-    scene.planet_material_buffer = createStorageBuffers<PlanetMaterialData>(core, 20);
+    scene.planet_material_buffer  = createStorageBuffers<PlanetMaterialData>(core, 20);
+    scene.atmosphere_color_buffer = createStorageBuffers<glm::vec4>(core, 20);
 
     auto shadow_map        = createCascadedShadowMap(core, scene);
     auto scene_render_pass = createSceneRenderPass(core, textures, scene, shadow_map);
@@ -349,6 +351,8 @@ int main()
     initPlanetObjects(scene, solar_system, meshes.meshes.at(planet_mesh_id), camera);
     writePlanetMaterialBuffers(scene, solar_system, 0);
     writePlanetMaterialBuffers(scene, solar_system, 1);
+    writeAtmosphereColorBuffers(scene, solar_system, 0);
+    writeAtmosphereColorBuffers(scene, solar_system, 1);
 
     auto line_objects = initOrbitLines(core, scene, solar_system, camera);
 

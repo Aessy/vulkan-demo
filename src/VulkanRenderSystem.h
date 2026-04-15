@@ -161,7 +161,8 @@ struct RenderingState
 struct GraphicsPipelineInput
 {
     vk::PipelineRasterizationStateCreateInfo rasterizer_state{};
-    vk::PipelineDepthStencilStateCreateInfo depth_stencil{};
+    vk::PipelineDepthStencilStateCreateInfo  depth_stencil{};
+    vk::PipelineColorBlendAttachmentState    blend_attachment{};
 };
 
 vk::PipelineRasterizationStateCreateInfo createRasterizerState();

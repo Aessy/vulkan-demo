@@ -28,6 +28,9 @@ SolarSystemLineObjects initOrbitLines(RenderingState const& state, Scene& scene,
 // Write PlanetMaterialData into scene.planet_material_buffer for one frame slot.
 void writePlanetMaterialBuffers(Scene& scene, SolarSystem const& ss, int frame);
 
+// Write atmosphere color+scale (vec4) into scene.atmosphere_color_buffer for one frame slot.
+void writeAtmosphereColorBuffers(Scene& scene, SolarSystem const& ss, int frame);
+
 // Update per-frame CRR positions of all planets, orbit rings, and the grid.
 void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                                 SolarSystemLineObjects& line_objs);

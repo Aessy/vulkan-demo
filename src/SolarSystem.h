@@ -19,6 +19,7 @@ struct PlanetDef {
     float atmosphere_scale;
     int    diffuse_texture_index;
     int    normal_texture_index;
+    int    cloud_texture_index;
     float  roughness;
     float  metallic;
     float  emissive;
@@ -35,6 +36,7 @@ struct PlanetState {
     double rotation_angle{0.0};
     double prev_rotation_angle{0.0};    // rotation at start of current physics step
     int    scene_object_index{-1};
+    int    atm_scene_object_index{-1};
 };
 
 struct SolarSystem {

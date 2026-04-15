@@ -1361,10 +1361,17 @@ vk::PipelineDepthStencilStateCreateInfo createDepthStencil()
 
 GraphicsPipelineInput createDefaultPipelineInput()
 {
-    return {
-        createRasterizerState(),
-        createDepthStencil()
-    };
+    vk::PipelineColorBlendAttachmentState blend{};
+    blend.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+                           vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+    blend.blendEnable         = false;
+    blend.srcColorBlendFactor = vk::BlendFactor::eOne;
+    blend.dstColorBlendFactor = vk::BlendFactor::eZero;
+    blend.colorBlendOp        = vk::BlendOp::eAdd;
+    blend.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+    blend.dstAlphaBlendFactor = vk::BlendFactor::eZero;
+    blend.alphaBlendOp        = vk::BlendOp::eAdd;
+    return { createRasterizerState(), createDepthStencil(), blend };
 }
 
 std::pair<std::vector<vk::Pipeline>, vk::PipelineLayout>  createGraphicsPipline(vk::Device const& device,

@@ -120,17 +120,7 @@ std::tuple<vk::Pipeline, vk::PipelineLayout> createPipeline(PipelineData const& 
     multisampling.alphaToCoverageEnable = false;
     multisampling.alphaToOneEnable = false;
 
-    vk::PipelineColorBlendAttachmentState color_blend_attachement{};
-    color_blend_attachement.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-                                             vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-
-    color_blend_attachement.blendEnable = false;
-    color_blend_attachement.srcColorBlendFactor = vk::BlendFactor::eOne;
-    color_blend_attachement.dstColorBlendFactor = vk::BlendFactor::eZero;
-    color_blend_attachement.colorBlendOp= vk::BlendOp::eAdd;
-    color_blend_attachement.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-    color_blend_attachement.dstAlphaBlendFactor = vk::BlendFactor::eZero;
-    color_blend_attachement.alphaBlendOp = vk::BlendOp::eAdd;
+    auto color_blend_attachement = input.blend_attachment;
 
     vk::PipelineColorBlendStateCreateInfo color_blending;
     color_blending.sType = vk::StructureType::ePipelineColorBlendStateCreateInfo;

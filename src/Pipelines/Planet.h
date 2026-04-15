@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-// std430-compatible, 64 bytes
+// std430-compatible, 80 bytes
 struct PlanetMaterialData {
     alignas(4)  int   diffuse_texture{-1};
     alignas(4)  int   normal_texture{-1};
@@ -19,7 +19,7 @@ struct PlanetMaterialData {
     alignas(4)  float roughness{0.5f};
     alignas(4)  float metallic{0.0f};
     alignas(4)  float emissive{0.0f};
-    float _pad{};                                                        // 64 bytes
+    alignas(4)  int   cloud_texture{-1};                                 // 64 bytes
 };
 
 Pipeline createPlanetPipeline(RenderingState const& state,

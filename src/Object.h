@@ -44,6 +44,7 @@ struct Object
     float line_alpha{1.0f};
     bool  visible{true};
 
+    int planet_index{0};  // planet def index, used by atmosphere shell pipeline
     int id = Id();
 };
 
