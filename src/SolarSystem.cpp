@@ -1,18 +1,29 @@
 #include "SolarSystem.h"
 
 #include <glm/gtc/constants.hpp>
-#include <cmath>
+#include <numbers>
 
 #include <spdlog/spdlog.h>
 
-static constexpr double PI = 3.14159265358979323846;
-
 using glm::dvec3;
 
-// -----------------------------
-// Constants
-// -----------------------------
-const double GM_SUN = 1.32712440018e11; // km^3 / s^2
+static constexpr double GM_SUN = 1.32712440018e11; // km^3 / s^2
+
+// Leapfrog KDK (Kick-Drift-Kick) symplectic integrator.
+// Conserves a modified energy exactly, keeping circular orbits stable
+// over arbitrary simulation lengths.
+static void leapfrogKDK(PlanetState& state, double dt)
+{
+    double r0      = glm::length(state.position_km);
+    dvec3  acc     = -(GM_SUN / (r0 * r0 * r0)) * state.position_km;
+
+    dvec3 vel_half    = state.velocity_km + acc * (dt * 0.5);   // half-kick
+    state.position_km += vel_half * dt;                          // drift
+
+    double r1      = glm::length(state.position_km);
+    dvec3  acc_new = -(GM_SUN / (r1 * r1 * r1)) * state.position_km;
+    state.velocity_km = vel_half + acc_new * (dt * 0.5);        // half-kick
+}
 
 
 SolarSystem createSolarSystem()
@@ -61,14 +72,13 @@ SolarSystem createSolarSystem()
     ss.states.resize(ss.defs.size());
     ss.show_label.resize(ss.defs.size(), false);
 
-    // Spread initial mean anomalies 40° apart
-    for (int i = 0; i < (int)ss.defs.size(); ++i)
+    for (std::size_t i = 0; i < ss.defs.size(); ++i)
     {
-        ss.states[i].mean_anomaly = glm::radians(i * 40.0);
-        double M = ss.states[i].mean_anomaly;
-        double a = ss.defs[i].semi_major_axis_km;
-        ss.states[i].position_km = ss.defs[i].init_position;
-        ss.states[i].velocity_km= ss.defs[i].init_velocity;
+        auto const& def    = ss.defs[i];
+        auto&       state  = ss.states[i];
+        state.mean_anomaly = glm::radians(static_cast<double>(i) * 40.0);
+        state.position_km  = def.init_position;
+        state.velocity_km  = def.init_velocity;
     }
 
     return ss;
@@ -76,47 +86,24 @@ SolarSystem createSolarSystem()
 
 void updateSolarSystem(SolarSystem& ss, double delta_seconds)
 {
-    spdlog::info("Update solar system");
     ss.simulation_time_s += delta_seconds * ss.time_scale;
 
-    double dt = 3600;
-    while (ss.simulation_time_s >= 3600)
+    constexpr double dt = 3600.0; // fixed physics step: 1 hour
+    while (ss.simulation_time_s >= dt)
     {
-        ss.simulation_time_s  -= dt;
+        ss.simulation_time_s -= dt;
 
-        for (int i = 0; i < (int)ss.defs.size(); ++i)
+        for (std::size_t i = 0; i < ss.defs.size(); ++i)
         {
-            auto& def   = ss.defs[i];
-            auto& state = ss.states[i];
+            auto const& def   = ss.defs[i];
+            auto&       state = ss.states[i];
 
             if (def.semi_major_axis_km <= 0.0) continue; // Sun is stationary
 
-            double r = glm::length(state.position_km);
-            double v = glm::length(state.velocity_km);
+            leapfrogKDK(state, dt);
 
-            spdlog::info("{} R: {}", def.name, r);
-            spdlog::info("{} V: {}", def.name, v);
-            spdlog::info("GM: {}", GM_SUN);
-
-            // --- Leapfrog KDK (Kick-Drift-Kick) ---
-            // Symplectic integrator: conserves a modified energy exactly,
-            // so circular orbits remain stable for arbitrary simulation lengths.
-
-            double     r0  = glm::length(state.position_km);
-            glm::dvec3 acc = -(GM_SUN / (r0 * r0 * r0)) * state.position_km;
-
-            glm::dvec3 vel_half    = state.velocity_km + acc * (dt * 0.5); // half-kick
-            state.position_km        += vel_half * dt;                        // drift
-
-            double     r1      = glm::length(state.position_km);
-            glm::dvec3 acc_new = -(GM_SUN / (r1 * r1 * r1)) * state.position_km;
-            state.velocity_km   = vel_half + acc_new * (dt * 0.5);         // half-kick
-
-            // Self-rotation (independent of orbital physics)
             if (def.rotation_period_s > 0.0)
-            {
-                state.rotation_angle += (2.0 * PI / def.rotation_period_s) * dt;
-            }
+                state.rotation_angle += (2.0 * std::numbers::pi_v<double> / def.rotation_period_s) * dt;
         }
     }
 }
@@ -127,13 +114,13 @@ Model createUVSphere(float radius, int stacks, int slices)
 
     for (int i = 0; i <= stacks; ++i)
     {
-        float theta    = (float)i / (float)stacks * glm::pi<float>(); // 0 .. PI
+        float theta    = (float)i / (float)stacks * std::numbers::pi_v<float>;
         float sinTheta = std::sin(theta);
         float cosTheta = std::cos(theta);
 
         for (int j = 0; j <= slices; ++j)
         {
-            float phi    = (float)j / (float)slices * 2.0f * glm::pi<float>(); // 0 .. 2PI
+            float phi    = (float)j / (float)slices * 2.0f * std::numbers::pi_v<float>;
             float sinPhi = std::sin(phi);
             float cosPhi = std::cos(phi);
 

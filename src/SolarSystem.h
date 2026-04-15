@@ -4,7 +4,6 @@
 
 #include <glm/glm.hpp>
 #include <vector>
-#include <cmath>
 
 struct PlanetDef {
     const char* name;

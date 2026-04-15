@@ -15,6 +15,7 @@ set(SRC src/VulkanRenderSystem.cpp
         src/Textures.cpp
         src/Id.cpp
         src/SolarSystem.cpp
+        src/SolarSystemScene.cpp
         src/RenderPass/ShadowMap.cpp
         src/RenderPass/SceneRenderPass.cpp
         src/Pipelines/GeneralPurpuse.cpp
