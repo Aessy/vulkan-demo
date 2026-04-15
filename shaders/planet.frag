@@ -43,9 +43,22 @@ void main()
     float diffuse  = max(dot(N, L), 0.0);
     float lighting = mix(diffuse, 1.0, emissive);
 
+    vec3 color = albedo * lighting;
+
+    // Atmosphere rim glow
+    if (mat.has_atmosphere == 1)
+    {
+        vec3 V = normalize(-frag_pos);
+        float rim = 1.0 - max(dot(N, V), 0.0);
+        rim = pow(rim, 3.0);
+        // Only glow on the lit side
+        float atm_strength = mat.atmosphere_color_scale.w * diffuse;
+        color = mix(color, mat.atmosphere_color_scale.rgb, rim * atm_strength);
+    }
+
     // Logarithmic depth
     const float FAR = 1e10;
     gl_FragDepth = log2(max(1e-6, 1.0 + frag_w)) / log2(FAR + 1.0);
 
-    out_color = vec4(albedo * lighting, 1.0);
+    out_color = vec4(color, 1.0);
 }
