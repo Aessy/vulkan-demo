@@ -113,7 +113,8 @@ static std::tuple<vk::raii::Image, vk::raii::DeviceMemory, uint32_t> createTextu
 
     if (!pixels)
     {
-        spdlog::warn("Could not load texture: {}", path);
+        spdlog::error("Could not load texture '{}': {}", path, stbi_failure_reason());
+        throw std::runtime_error("Failed to load texture: " + path);
     }
 
     uint32_t mip_levels = static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;

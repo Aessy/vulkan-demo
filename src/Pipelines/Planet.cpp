@@ -81,11 +81,14 @@ Pipeline createPlanetPipeline(RenderingState const& state,
     }});
 
     auto const pipeline_data = createPipelineData(state, program_desc);
+    GraphicsPipelineInput input = createDefaultPipelineInput();
+    input.rasterizer_state.cullMode = vk::CullModeFlagBits::eNone;
     auto const [pipeline, pipeline_layout] = createPipeline(pipeline_data,
                                                             state.swap_chain.extent,
                                                             state.device,
                                                             render_pass,
-                                                            state.msaa);
+                                                            state.msaa,
+                                                            input);
     auto pipeline_finish = bindPipeline(pipeline_data, pipeline, pipeline_layout);
 
     updateImageSampler(state.device,

@@ -45,7 +45,7 @@ SolarSystem createSolarSystem()
       { -1.006e8, 6.056e6, 3.864e7 },
       { -1.24e1, 1.01e0, -3.27e1 } },
 
-    { "Earth",    6371.0,    5.972e24, 149.6e6,    0.0167, 31.56e6,     0.409,   86400.0,   true,  {0.4f, 0.6f, 1.0f}, 0.05f, -1, -1, 0.5f, 0.0f, 0.0f, {0.18f, 0.44f, 0.72f},
+    { "Earth",    6371.0,    5.972e24, 149.6e6,    0.0167, 31.56e6,     0.409,   86400.0,   true,  {0.4f, 0.6f, 1.0f}, 0.05f,  0, -1, 0.5f, 0.0f, 0.0f, {0.18f, 0.44f, 0.72f},
       { -2.645341e7, 2.784000e3, 1.439770e8 },
       { -2.981230e1, 1.140000e-4, -5.218140e0 } },
 
@@ -135,11 +135,12 @@ Model createUVSphere(float radius, int stacks, int slices)
             v.pos    = glm::vec3(sinTheta * cosPhi, cosTheta, sinTheta * sinPhi) * radius;
             v.normal = glm::normalize(glm::vec3(sinTheta * cosPhi, cosTheta, sinTheta * sinPhi));
 
-            v.tex_coord   = glm::vec2((float)j / (float)slices, (float)i / (float)stacks);
+            // Flip U so the texture reads left-to-right (west-to-east) when orbiting.
+            v.tex_coord   = glm::vec2(); // glm::vec2((float)j / (float)slices, (float)i / (float)stacks);
             v.normal_coord = v.tex_coord;
 
-            // Tangent = d/dphi of normalized pos
-            v.tangent   = glm::normalize(glm::vec3(-sinPhi, 0.0f, cosPhi));
+            // Tangent = -d/dphi of normalized pos (negated to match flipped U)
+            v.tangent   = glm::normalize(glm::vec3(sinPhi, 0.0f, -cosPhi));
             v.bitangent = glm::cross(v.normal, v.tangent);
 
             model.vertices.push_back(v);

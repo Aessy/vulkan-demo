@@ -328,6 +328,7 @@ static vk::raii::Device createLogicalDevice(vk::raii::PhysicalDevice const& phys
     device_features.samplerAnisotropy = true;
     device_features.tessellationShader = true;
     device_features.wideLines = true;
+    device_features.fillModeNonSolid = true;
     
     vk::PhysicalDeviceVulkan11Features f{};
     f.shaderDrawParameters = true;

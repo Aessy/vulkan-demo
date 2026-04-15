@@ -159,8 +159,8 @@ std::tuple<vk::Pipeline, vk::PipelineLayout> createPipeline(PipelineData const& 
     pipeline_info.stageCount = stages.size();
     pipeline_info.setStages(stages);
 
-    auto rasterizer_state = createRasterizerState();
-    auto depth_stencil_state = createDepthStencil();
+    auto rasterizer_state = input.rasterizer_state;
+    auto depth_stencil_state = input.depth_stencil;
 
     pipeline_info.setPVertexInputState(&vertex_input_info);
     pipeline_info.setPInputAssemblyState(&input_assembly);

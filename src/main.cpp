@@ -299,7 +299,9 @@ int main()
     RenderingState& core = *out;
 
     spdlog::info("Loading textures");
-    Textures textures = createTextures(core, {});
+    Textures textures = createTextures(core, {
+        { "textures/world.topo.200408.3x5400x2700.jpg", TextureType::MipMap, vk::Format::eR8G8B8A8Srgb },
+    });
 
     spdlog::info("Loading models");
     Models models;
