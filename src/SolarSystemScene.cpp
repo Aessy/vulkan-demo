@@ -24,16 +24,52 @@ static Buffer createLineVertexBuffer(RenderingState const& state,
     return {std::move(buf), std::move(mem)};
 }
 
-// Unit circle (radius 1) in XZ plane, N LINE_LIST segments.
+// Osculating Keplerian orbit derived from a state vector (position + velocity).
+// Vertices will be in km, centred on the Sun (focus), in the correct 3D orbital plane.
+struct KeplerOrbit {
+    double      a;      // semi-major axis (km)
+    double      e;      // eccentricity
+    glm::dvec3  e_hat;  // unit vector toward periapsis
+    glm::dvec3  q_hat;  // unit vector 90° ahead of periapsis in orbital plane
+};
+
+static constexpr double GM_SUN_SCENE = 1.32712440018e11; // km^3 / s^2
+
+static KeplerOrbit computeOsculatingOrbit(glm::dvec3 r, glm::dvec3 v)
+{
+    double const r_mag  = glm::length(r);
+    double const v_sq   = glm::dot(v, v);
+    double const energy = v_sq / 2.0 - GM_SUN_SCENE / r_mag;
+    double const a      = -GM_SUN_SCENE / (2.0 * energy);
+
+    glm::dvec3 const h      = glm::cross(r, v);
+    double     const h_mag  = glm::length(h);
+    glm::dvec3 const e_vec  = glm::cross(v, h) / GM_SUN_SCENE - r / r_mag;
+    double     const e      = glm::length(e_vec);
+
+    glm::dvec3 const e_hat = (e > 1e-10) ? e_vec / e : glm::dvec3(1.0, 0.0, 0.0);
+    glm::dvec3 const n_hat = h / h_mag;
+    glm::dvec3 const q_hat = glm::cross(n_hat, e_hat); // 90° ahead in orbit
+
+    return { a, e, e_hat, q_hat };
+}
+
+// Keplerian ellipse in 3D, vertices in km relative to Sun (focus). N LINE_LIST segments.
 static std::pair<std::vector<LineVertex>, std::vector<uint32_t>>
-makeOrbitRingGeometry(glm::vec4 color, int N = 128)
+makeOrbitEllipseGeometry(KeplerOrbit const& orbit, glm::vec4 color, int N = 256)
 {
     std::vector<LineVertex> verts(N);
+    double const b_frac = std::sqrt(1.0 - orbit.e * orbit.e); // b/a = sqrt(1-e^2)
+
     for (int i = 0; i < N; ++i)
     {
-        float angle    = static_cast<float>(i) / static_cast<float>(N)
-                         * 2.0f * std::numbers::pi_v<float>;
-        verts[i].pos   = glm::vec3(std::cos(angle), 0.0f, std::sin(angle));
+        double const E   = 2.0 * std::numbers::pi_v<double> * i / N; // eccentric anomaly
+        double const x   = orbit.a * (std::cos(E) - orbit.e);         // km from Sun (focus)
+        double const z   = orbit.a * b_frac * std::sin(E);            // km
+
+        glm::dvec3 const pos = x * orbit.e_hat + z * orbit.q_hat;
+
+        verts[i].pos   = glm::vec3(pos);  // float precision fine for display
         verts[i].color = color;
         verts[i].param = static_cast<float>(i) / static_cast<float>(N);
     }
@@ -117,11 +153,14 @@ SolarSystemLineObjects initOrbitLines(RenderingState const& state, Scene& scene,
     // Orbit rings — one per planet (skip Sun at index 0)
     for (std::size_t i = 0; i < ss.defs.size(); ++i)
     {
-        double r = ss.defs[i].semi_major_axis_km;
-        if (r <= 0.0) continue;
+        if (ss.defs[i].semi_major_axis_km <= 0.0) continue;
+
+        // Derive true ellipse from initial state vectors (position + velocity).
+        KeplerOrbit const orbit = computeOsculatingOrbit(
+            ss.states[i].position_km, ss.states[i].velocity_km);
 
         glm::vec3 const col = ss.defs[i].albedo_color;
-        auto [ring_verts, ring_indices] = makeOrbitRingGeometry(glm::vec4(col, 1.0f));
+        auto [ring_verts, ring_indices] = makeOrbitEllipseGeometry(orbit, glm::vec4(col, 1.0f));
 
         auto vbuf = createLineVertexBuffer(state, ring_verts);
         auto ibuf = createIndexBuffer(state, ring_indices);
@@ -133,7 +172,7 @@ SolarSystemLineObjects initOrbitLines(RenderingState const& state, Scene& scene,
         obj.position      = glm::vec3(-cam.pos_d);
         obj.rotation      = glm::vec3(0.0f, 1.0f, 0.0f);
         obj.angel         = 0.0f;
-        obj.scale         = static_cast<float>(r);
+        obj.scale         = 1.0f;  // vertices are already in km
         obj.material      = lines_material;
         obj.line_width    = ss.orbit_line_width;
         obj.line_alpha    = ss.orbit_opacity;
