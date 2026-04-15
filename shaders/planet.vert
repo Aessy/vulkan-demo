@@ -31,6 +31,7 @@ layout(std430, set = 2, binding = 0) readonly buffer ObjectBuffer {
 layout(location = 0) out vec3 frag_pos;
 layout(location = 1) out vec3 frag_normal;
 layout(location = 2) out vec3 sun_dir;
+layout(location = 3) out vec2 frag_uv;
 layout(location = 7) out flat int instance;
 layout(location = 8) out float frag_w;
 
@@ -42,7 +43,8 @@ void main()
 
     frag_pos    = world_pos.xyz;
     frag_normal = normalize(mat3(obj.model) * in_normal);
-    sun_dir     = world.sun_pos;  // direction from camera toward sun (world space)
+    sun_dir     = world.sun_pos;
+    frag_uv     = in_tex_coord;  // direction from camera toward sun (world space)
     instance    = gl_BaseInstance;
     frag_w      = gl_Position.w;
 }

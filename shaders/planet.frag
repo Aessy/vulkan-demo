@@ -1,4 +1,7 @@
 #version 460
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout(set = 0, binding = 0) uniform sampler2D texSampler[];
 
 struct PlanetMaterial {
     int   diffuse_texture;
@@ -20,6 +23,7 @@ layout(std430, set = 3, binding = 0) readonly buffer PlanetMaterialBuffer {
 layout(location = 0) in vec3 frag_pos;
 layout(location = 1) in vec3 frag_normal;
 layout(location = 2) in vec3 sun_dir;
+layout(location = 3) in vec2 frag_uv;
 layout(location = 7) in flat int instance;
 layout(location = 8) in float frag_w;
 
@@ -27,12 +31,15 @@ layout(location = 0) out vec4 out_color;
 
 void main()
 {
-    vec3 albedo = planet_mats.objects[instance].albedo_color.rgb;
+    PlanetMaterial mat = planet_mats.objects[instance];
+    vec3 albedo = mat.diffuse_texture >= 0
+        ? texture(texSampler[mat.diffuse_texture], frag_uv).rgb
+        : mat.albedo_color.rgb;
 
     vec3 N = normalize(frag_normal);
     vec3 L = normalize(sun_dir);  // direction from camera toward sun
 
-    float emissive = planet_mats.objects[instance].emissive;
+    float emissive = mat.emissive;
     float diffuse  = max(dot(N, L), 0.0);
     float lighting = mix(diffuse, 1.0, emissive);
 

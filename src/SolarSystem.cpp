@@ -136,7 +136,7 @@ Model createUVSphere(float radius, int stacks, int slices)
             v.normal = glm::normalize(glm::vec3(sinTheta * cosPhi, cosTheta, sinTheta * sinPhi));
 
             // Flip U so the texture reads left-to-right (west-to-east) when orbiting.
-            v.tex_coord   = glm::vec2(); // glm::vec2((float)j / (float)slices, (float)i / (float)stacks);
+            v.tex_coord   = glm::vec2(1.0f - (float)j / (float)slices, (float)i / (float)stacks);
             v.normal_coord = v.tex_coord;
 
             // Tangent = -d/dphi of normalized pos (negated to match flipped U)
