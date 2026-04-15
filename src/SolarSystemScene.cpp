@@ -209,13 +209,19 @@ void writePlanetMaterialBuffers(Scene& scene, SolarSystem const& ss, int frame)
 void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                                 SolarSystemLineObjects& line_objs)
 {
-    // Planet CRR positions and rotation angles
-    for (auto const& state : ss.states)
+    // Planet CRR positions and rotation angles — interpolated between the two
+    // most recent physics steps for smooth sub-step rendering.
+    for (std::size_t i = 0; i < ss.states.size(); ++i)
     {
+        auto const& state = ss.states[i];
         if (state.scene_object_index < 0) continue;
-        auto& obj    = scene.objs[state.scene_object_index];
-        obj.position = glm::vec3(state.position_km - scene.camera.pos_d);
-        obj.angel    = static_cast<float>(glm::degrees(state.rotation_angle));
+        auto& obj = scene.objs[state.scene_object_index];
+
+        double const interp_rot = std::lerp(state.prev_rotation_angle,
+                                            state.rotation_angle, ss.render_alpha);
+
+        obj.position = glm::vec3(interpolatedPosition(ss, i) - scene.camera.pos_d);
+        obj.angel    = static_cast<float>(glm::degrees(interp_rot));
     }
 
     // Orbit ring objects

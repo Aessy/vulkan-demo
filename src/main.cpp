@@ -407,12 +407,13 @@ int main()
         if (!first_frame && !solar_system.paused)
             updateSolarSystem(solar_system, static_cast<double>(delta));
 
-        // Track selected body with the orbit camera
+        // Track selected body with the orbit camera — use the interpolated position
+        // so the camera target and the rendered sphere always move in lock-step.
         if (solar_system.selected_body < 0)
             application.scene.camera.orbit_target = solar_system.sun_position_km;
         else
             application.scene.camera.orbit_target =
-                solar_system.states[solar_system.selected_body].position_km;
+                interpolatedPosition(solar_system, solar_system.selected_body);
 
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplGlfw_NewFrame();

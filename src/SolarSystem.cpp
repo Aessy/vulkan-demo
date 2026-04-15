@@ -2,6 +2,7 @@
 
 #include <glm/gtc/constants.hpp>
 #include <numbers>
+#include <ranges>
 
 #include <spdlog/spdlog.h>
 
@@ -76,9 +77,10 @@ SolarSystem createSolarSystem()
     {
         auto const& def    = ss.defs[i];
         auto&       state  = ss.states[i];
-        state.mean_anomaly = glm::radians(static_cast<double>(i) * 40.0);
-        state.position_km  = def.init_position;
-        state.velocity_km  = def.init_velocity;
+        state.mean_anomaly     = glm::radians(static_cast<double>(i) * 40.0);
+        state.position_km      = def.init_position;
+        state.prev_position_km = def.init_position;  // avoid lerp-from-origin on frame 0
+        state.velocity_km      = def.init_velocity;
     }
 
     return ss;
@@ -93,10 +95,10 @@ void updateSolarSystem(SolarSystem& ss, double delta_seconds)
     {
         ss.simulation_time_s -= dt;
 
-        for (std::size_t i = 0; i < ss.defs.size(); ++i)
+        for (auto&& [def, state] : std::views::zip(ss.defs, ss.states))
         {
-            auto const& def   = ss.defs[i];
-            auto&       state = ss.states[i];
+            state.prev_position_km    = state.position_km;
+            state.prev_rotation_angle = state.rotation_angle;
 
             if (def.semi_major_axis_km <= 0.0) continue; // Sun is stationary
 
@@ -106,6 +108,9 @@ void updateSolarSystem(SolarSystem& ss, double delta_seconds)
                 state.rotation_angle += (2.0 * std::numbers::pi_v<double> / def.rotation_period_s) * dt;
         }
     }
+
+    // Fraction of the current step elapsed — drives rendering interpolation.
+    ss.render_alpha = ss.simulation_time_s / dt;
 }
 
 Model createUVSphere(float radius, int stacks, int slices)

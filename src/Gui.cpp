@@ -788,7 +788,7 @@ void createSolarSystemGui(SolarSystem& solar_system, Camera& cam)
     {
         auto const& def   = solar_system.defs[i];
         auto const& state = solar_system.states[i];
-        double dist = glm::length(state.position_km - cam.pos_d);
+        double dist = glm::length(interpolatedPosition(solar_system, i) - cam.pos_d);
 
         ImGui::PushID(i);
         bool show = solar_system.show_label[i];
@@ -821,8 +821,9 @@ void drawPlanetLabels(SolarSystem const& solar_system, Camera const& cam)
         auto const& def   = solar_system.defs[i];
         auto const& state = solar_system.states[i];
 
-        // Camera-relative world position (double→float, safe due to CRR)
-        glm::vec3 cam_rel = glm::vec3(state.position_km - cam.pos_d);
+        // Camera-relative world position — use interpolated pos so the label
+        // tracks the sphere exactly rather than jumping on each physics step.
+        glm::vec3 cam_rel = glm::vec3(interpolatedPosition(solar_system, i) - cam.pos_d);
 
         glm::vec4 clip = cam.proj * view * glm::vec4(cam_rel, 1.0f);
 
