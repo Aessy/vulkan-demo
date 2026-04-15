@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include <array>
+#include <chrono>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -729,8 +730,28 @@ void createSolarSystemGui(SolarSystem& solar_system, Camera& cam)
 
     ImGui::Separator();
 
+    // Simulation date — J2000 epoch + elapsed seconds
+    {
+        using namespace std::chrono;
+        auto epoch   = sys_days{year{2000}/January/1};
+        auto elapsed = duration_cast<seconds>(duration<double>(solar_system.elapsed_simulation_s));
+        auto now     = epoch + elapsed;
+        auto dp      = floor<days>(now);
+        year_month_day ymd{dp};
+        hh_mm_ss       hms{now - dp};
+
+        ImGui::Text("Date: %04d-%02u-%02u  %02lld:%02lld:%02lld",
+            (int)ymd.year(),
+            (unsigned)ymd.month(),
+            (unsigned)ymd.day(),
+            (long long)hms.hours().count(),
+            (long long)hms.minutes().count(),
+            (long long)hms.seconds().count());
+    }
+
     static double ts_min = 1.0, ts_max = 1'000'000.0;
-    ImGui::SliderScalar("Time scale", ImGuiDataType_Double, &solar_system.time_scale, &ts_min, &ts_max, "%.0f x");
+    ImGui::SliderScalar("Time scale", ImGuiDataType_Double, &solar_system.time_scale, &ts_min, &ts_max, "%.0f x",
+                        ImGuiSliderFlags_Logarithmic);
 
     // Object selection
     {

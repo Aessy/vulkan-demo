@@ -88,7 +88,9 @@ SolarSystem createSolarSystem()
 
 void updateSolarSystem(SolarSystem& ss, double delta_seconds)
 {
-    ss.simulation_time_s += delta_seconds * ss.time_scale;
+    double const scaled_dt = delta_seconds * ss.time_scale;
+    ss.simulation_time_s    += scaled_dt;
+    ss.elapsed_simulation_s += scaled_dt;
 
     constexpr double dt = 3600.0; // fixed physics step: 1 hour
     while (ss.simulation_time_s >= dt)

@@ -43,8 +43,9 @@ struct SolarSystem {
     std::vector<bool>        show_label;
     glm::dvec3 sun_position_km{0.0};
     int  sun_scene_object_index{-1};
-    double simulation_time_s{0.0};  // leftover accumulator after last step
-    double render_alpha{0.0};       // interpolation fraction in [0, 1) for this frame
+    double simulation_time_s{0.0};   // leftover accumulator after last step
+    double elapsed_simulation_s{0.0}; // total elapsed simulation time from epoch
+    double render_alpha{0.0};        // interpolation fraction in [0, 1) for this frame
     double time_scale{1};
     bool paused{false};
 
