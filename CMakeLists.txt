@@ -23,6 +23,7 @@ set(SRC src/VulkanRenderSystem.cpp
         src/Pipelines/Pipeline.cpp
         src/Pipelines/Planet.cpp
         src/Pipelines/Lines.cpp
+        src/Pipelines/Atmosphere.cpp
         src/imgui_impl_vulkan.cpp
         src/imgui_impl_glfw.cpp
         )
@@ -61,6 +62,8 @@ add_custom_target(shaders
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/planet.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/planet_frag.spv
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/lines.vert --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/lines_vert.spv
                   COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/lines.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/lines_frag.spv
+                  COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/atmosphere.vert --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/atmosphere_vert.spv
+                  COMMAND glslc ${CMAKE_SOURCE_DIR}/shaders/atmosphere.frag --target-spv=spv1.5 -o ${CMAKE_BINARY_DIR}/shaders/atmosphere_frag.spv
                   DEPENDS vulkan-test)
 
 add_custom_target(copy-models ALL
