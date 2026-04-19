@@ -85,24 +85,36 @@ Model createBoxMesh()
 // Physics
 // ---------------------------------------------------------------------------
 
-// N-body gravitational acceleration at pos from all solar system bodies.
-// Uses render_alpha to interpolate planet positions between their discrete
-// 3600-second steps. Without this, a planet step causes a 107,000 km jump
-// in Earth's position, which sends any nearby spacecraft flying off-orbit.
+// Gravitational acceleration from Sun and Earth only.
+// Uses render_alpha to interpolate Earth's position between its discrete
+// 3600-second steps for a smooth gravity field.
 static dvec3 gravAccel(dvec3 const& pos, SolarSystem const& ss)
 {
     dvec3 a{0.0};
-    for (std::size_t i = 0; i < ss.defs.size(); ++i)
+
+    // Sun (index 0) — fixed at origin, no interpolation needed
     {
-        dvec3 planet_pos = glm::mix(ss.states[i].prev_position_km,
-                                    ss.states[i].position_km,
-                                    ss.render_alpha);
-        dvec3  r     = planet_pos - pos;
+        static constexpr double GM_SUN = 1.32712440018e11;
+        dvec3  r     = -pos; // Sun at origin
         double r_mag = glm::length(r);
-        if (r_mag < ss.defs[i].radius_km) continue; // inside the body, skip
-        double GM = G_km * ss.defs[i].mass_kg;
-        a += (GM / (r_mag * r_mag * r_mag)) * r;
+        a += (GM_SUN / (r_mag * r_mag * r_mag)) * r;
     }
+
+    // Earth (index 3)
+    {
+        constexpr std::size_t earth_idx = 3;
+        dvec3 earth_pos = glm::mix(ss.states[earth_idx].prev_position_km,
+                                   ss.states[earth_idx].position_km,
+                                   ss.render_alpha);
+        dvec3  r     = earth_pos - pos;
+        double r_mag = glm::length(r);
+        if (r_mag >= ss.defs[earth_idx].radius_km)
+        {
+            double GM = G_km * ss.defs[earth_idx].mass_kg;
+            a += (GM / (r_mag * r_mag * r_mag)) * r;
+        }
+    }
+
     return a;
 }
 
@@ -190,7 +202,11 @@ void spawnSpacecraftAtEarth(std::vector<SpacecraftDef>&  defs,
     double const GM_earth  = G_km * ss.defs[earth_idx].mass_kg;
     double const v_circ    = std::sqrt(GM_earth / r_orbit);
 
-    dvec3 const earth_pos = ss.states[earth_idx].position_km;
+    // Use the same interpolated position gravAccel will see, so the spacecraft
+    // starts at the correct distance from Earth's gravity reference point.
+    dvec3 const earth_pos = glm::mix(ss.states[earth_idx].prev_position_km,
+                                     ss.states[earth_idx].position_km,
+                                     ss.render_alpha);
     dvec3 const earth_vel = ss.states[earth_idx].velocity_km;
 
     // Spawn east (+X) of Earth, orbiting toward +Z (equatorial prograde)
