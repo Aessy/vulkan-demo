@@ -80,6 +80,9 @@
 
 #include "SolarSystem.h"
 #include "SolarSystemScene.h"
+#include "Spacecraft.h"
+
+#include <glm/gtc/quaternion.hpp>
 
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
@@ -246,6 +249,14 @@ bool processEvent(Event const& event, App& app)
     {
         app.keyboard.shift = false;
     }
+    else if (event.key == GLFW_KEY_Q && event.action == GLFW_PRESS)  { app.keyboard.q_key = true;  }
+    else if (event.key == GLFW_KEY_Q && event.action == GLFW_RELEASE) { app.keyboard.q_key = false; }
+    else if (event.key == GLFW_KEY_E && event.action == GLFW_PRESS)  { app.keyboard.e_key = true;  }
+    else if (event.key == GLFW_KEY_E && event.action == GLFW_RELEASE) { app.keyboard.e_key = false; }
+    else if (event.key == GLFW_KEY_Z && event.action == GLFW_PRESS)  { app.keyboard.z_key = true;  }
+    else if (event.key == GLFW_KEY_Z && event.action == GLFW_RELEASE) { app.keyboard.z_key = false; }
+    else if (event.key == GLFW_KEY_X && event.action == GLFW_PRESS)  { app.keyboard.x_key = true;  }
+    else if (event.key == GLFW_KEY_X && event.action == GLFW_RELEASE) { app.keyboard.x_key = false; }
 
     return true;
 }
@@ -255,8 +266,9 @@ bool processEvent(Event const& event, App& app)
 void updateOrbitCamera(Camera& camera)
 {
     ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureMouse) return;  // ImGui window is active
 
+    if (!io.WantCaptureMouse)
+    {
     // Scroll = multiplicative zoom (each notch ±15%)
     if (io.MouseWheel != 0.0f)
     {
@@ -281,7 +293,11 @@ void updateOrbitCamera(Camera& camera)
         camera.orbit_target -= glm::dvec3(right_v) * (double)io.MouseDelta.x * scale;
         camera.orbit_target += glm::dvec3(camera.up) * (double)io.MouseDelta.y * scale;
     }
+    } // end !WantCaptureMouse
 
+    // Always update derived camera position from orbit parameters,
+    // even when the mouse is over a GUI window, so the camera keeps
+    // tracking the selected target.
     updateCameraFromOrbit(camera);
 }
 
@@ -310,14 +326,17 @@ int main()
     auto planet_sphere = createUVSphere(1.0f, 64, 64);
     models.models.insert({planet_sphere.id, planet_sphere});
 
+    auto spacecraft_box = createBoxMesh();
+    models.models.insert({spacecraft_box.id, spacecraft_box});
+
     // --- Scene buffers ---
     Scene scene;
     scene.world_buffer           = createUniformBuffers<WorldBufferObject>(core);
-    scene.model_buffer           = createStorageBuffers<ModelBufferObject>(core, 20);
-    scene.material_buffer        = createStorageBuffers<MaterialShaderData>(core, 20);
+    scene.model_buffer           = createStorageBuffers<ModelBufferObject>(core, 40);
+    scene.material_buffer        = createStorageBuffers<MaterialShaderData>(core, 40);
     scene.atmosphere_data        = createUniformBuffers<Atmosphere>(core);
-    scene.planet_material_buffer  = createStorageBuffers<PlanetMaterialData>(core, 20);
-    scene.atmosphere_color_buffer = createStorageBuffers<glm::vec4>(core, 20);
+    scene.planet_material_buffer  = createStorageBuffers<PlanetMaterialData>(core, 40);
+    scene.atmosphere_color_buffer = createStorageBuffers<glm::vec4>(core, 40);
 
     auto shadow_map        = createCascadedShadowMap(core, scene);
     auto scene_render_pass = createSceneRenderPass(core, textures, scene, shadow_map);
@@ -337,7 +356,8 @@ int main()
 
     // --- Meshes ---
     Meshes meshes;
-    auto planet_mesh_id = meshes.loadMesh(core, models.models.at(planet_sphere.id), "planet_sphere");
+    auto planet_mesh_id     = meshes.loadMesh(core, models.models.at(planet_sphere.id), "planet_sphere");
+    auto spacecraft_mesh_id = meshes.loadMesh(core, models.models.at(spacecraft_box.id), "spacecraft_box");
 
     scene.camera    = camera;
     scene.atmosphere = Atmosphere{};
@@ -355,6 +375,10 @@ int main()
     writeAtmosphereColorBuffers(scene, solar_system, 1);
 
     auto line_objects = initOrbitLines(core, scene, solar_system, camera);
+
+    // Spacecraft — none at startup; the GUI "Spawn at Earth" button adds them.
+    // spacecraft_mesh_id is stored here for use when spawning.
+    // (Spacecraft scene objects are created via initSpacecraftObjects when spawned.)
 
     auto ppp = createPostProcessing(core, scene_render_pass, scene.world_buffer);
     Application application{
@@ -409,13 +433,33 @@ int main()
         }
         start_time = current_time;
 
+        // Spacecraft: initialize any newly spawned craft (scene_object_index == -1)
+        {
+            bool has_new = false;
+            for (auto const& sc : solar_system.spacecraft_states)
+                if (sc.scene_object_index < 0) { has_new = true; break; }
+            if (has_new)
+            {
+                initSpacecraftObjects(application.scene, solar_system,
+                                      application.meshes.meshes.at(spacecraft_mesh_id),
+                                      application.scene.camera);
+                writeSpacecraftMaterialBuffers(application.scene, solar_system, 0);
+                writeSpacecraftMaterialBuffers(application.scene, solar_system, 1);
+            }
+        }
+
         // Advance simulation
         if (!first_frame && !solar_system.paused)
             updateSolarSystem(solar_system, static_cast<double>(delta));
 
-        // Track selected body with the orbit camera — use the interpolated position
-        // so the camera target and the rendered sphere always move in lock-step.
-        if (solar_system.selected_body < 0)
+        // Camera tracking: spacecraft takes priority over planet, planet over sun.
+        if (solar_system.selected_spacecraft >= 0 &&
+            solar_system.selected_spacecraft < static_cast<int>(solar_system.spacecraft_states.size()))
+        {
+            application.scene.camera.orbit_target =
+                interpolatedSpacecraftPosition(solar_system, solar_system.selected_spacecraft);
+        }
+        else if (solar_system.selected_body < 0)
             application.scene.camera.orbit_target = solar_system.sun_position_km;
         else
             application.scene.camera.orbit_target =
@@ -427,6 +471,33 @@ int main()
 
         // Camera must be updated after NewFrame() so it can read ImGui IO.
         updateOrbitCamera(application.scene.camera);
+
+        // Spacecraft rotation and thrust — per-frame controls on the selected craft.
+        // Must run after NewFrame() so WantCaptureKeyboard is current.
+        if (solar_system.selected_spacecraft >= 0 &&
+            solar_system.selected_spacecraft < static_cast<int>(solar_system.spacecraft_states.size()) &&
+            !ImGui::GetIO().WantCaptureKeyboard)
+        {
+            auto& sc  = solar_system.spacecraft_states[solar_system.selected_spacecraft];
+            float rate = glm::radians(solar_system.spacecraft_rotation_rate) * delta;
+
+            // Rotate in spacecraft's local frame (pitch/yaw/roll around own axes)
+            glm::quat local_rot = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+            if (app.keyboard.up)    local_rot = glm::angleAxis(-rate, glm::vec3(1, 0, 0)) * local_rot; // pitch: nose up
+            if (app.keyboard.down)  local_rot = glm::angleAxis(+rate, glm::vec3(1, 0, 0)) * local_rot; // pitch: nose down
+            if (app.keyboard.left)  local_rot = glm::angleAxis(+rate, glm::vec3(0, 0, 1)) * local_rot; // yaw left
+            if (app.keyboard.right) local_rot = glm::angleAxis(-rate, glm::vec3(0, 0, 1)) * local_rot; // yaw right
+            if (app.keyboard.q_key) local_rot = glm::angleAxis(+rate, glm::vec3(0, 1, 0)) * local_rot; // roll CCW
+            if (app.keyboard.e_key) local_rot = glm::angleAxis(-rate, glm::vec3(0, 1, 0)) * local_rot; // roll CW
+
+            sc.orientation = glm::normalize(sc.orientation * glm::dquat(local_rot));
+
+            // Gradual thrust ramp: ±20% of max per second while key held
+            if (app.keyboard.z_key)
+                sc.thrust_level = std::min(1.0, sc.thrust_level + 0.2 * static_cast<double>(delta));
+            if (app.keyboard.x_key)
+                sc.thrust_level = std::max(0.0, sc.thrust_level - 0.2 * static_cast<double>(delta));
+        }
 
         // Sync scene objects to current simulation state and camera position
         updateSceneFromSolarSystem(application.scene, solar_system, line_objects);

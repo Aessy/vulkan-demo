@@ -2,6 +2,7 @@
 
 #include <imgui.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <cmath>
 
 #include <array>
@@ -866,12 +867,96 @@ void drawPlanetLabels(SolarSystem const& solar_system, Camera const& cam)
 }
 
 
+void createSpacecraftGui(SolarSystem& ss, Camera& cam)
+{
+    ImGui::SetNextWindowPos(ImVec2(10, 480), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(380, 300), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Spacecraft Control");
+
+    if (ImGui::Button("Spawn at Earth"))
+    {
+        spawnSpacecraftAtEarth(ss.spacecraft_defs, ss.spacecraft_states, ss);
+        ss.selected_spacecraft = static_cast<int>(ss.spacecraft_states.size()) - 1;
+    }
+
+    if (ss.spacecraft_defs.empty())
+    {
+        ImGui::TextDisabled("No spacecraft. Press 'Spawn at Earth' to add one.");
+        ImGui::End();
+        return;
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button("Focus Camera") && ss.selected_spacecraft >= 0)
+    {
+        cam.orbit_distance = ss.spacecraft_defs[ss.selected_spacecraft].visual_scale_km * 8.0;
+    }
+
+    // Spacecraft selector
+    {
+        const char* sel_name = (ss.selected_spacecraft >= 0)
+            ? ss.spacecraft_defs[ss.selected_spacecraft].name
+            : "None";
+        if (ImGui::BeginCombo("Select", sel_name))
+        {
+            for (int i = 0; i < static_cast<int>(ss.spacecraft_defs.size()); ++i)
+            {
+                bool selected = (ss.selected_spacecraft == i);
+                if (ImGui::Selectable(ss.spacecraft_defs[i].name, selected))
+                    ss.selected_spacecraft = i;
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+    ImGui::SliderFloat("Rotation rate (deg/s)", &ss.spacecraft_rotation_rate, 5.0f, 180.0f);
+
+    if (ss.selected_spacecraft < 0 ||
+        ss.selected_spacecraft >= static_cast<int>(ss.spacecraft_states.size()))
+    {
+        ImGui::End();
+        return;
+    }
+
+    auto const& sc  = ss.spacecraft_states[ss.selected_spacecraft];
+    auto const& def = ss.spacecraft_defs[ss.selected_spacecraft];
+
+    ImGui::Separator();
+
+    // Position
+    ImGui::Text("Position (km)");
+    ImGui::Text("  X: %+.3e   Y: %+.3e   Z: %+.3e",
+        sc.position_km.x, sc.position_km.y, sc.position_km.z);
+
+    // Velocity
+    double v_mag = glm::length(sc.velocity_km);
+    ImGui::Text("Velocity (km/s)");
+    ImGui::Text("  X: %+.3f   Y: %+.3f   Z: %+.3f   |v|: %.3f",
+        sc.velocity_km.x, sc.velocity_km.y, sc.velocity_km.z, v_mag);
+
+    // Orientation — show nose (forward) direction
+    glm::vec3 nose = glm::mat3_cast(glm::quat(sc.orientation)) * glm::vec3(0.0f, 1.0f, 0.0f);
+    ImGui::Text("Nose direction");
+    ImGui::Text("  X: %+.3f   Y: %+.3f   Z: %+.3f", nose.x, nose.y, nose.z);
+
+    // Thrust
+    ImGui::Text("Thrust: %.1f%%", sc.thrust_level * 100.0);
+    ImGui::ProgressBar(static_cast<float>(sc.thrust_level), ImVec2(-1, 0));
+
+    ImGui::Separator();
+    ImGui::TextDisabled("WASD: pitch/yaw  QE: roll  Z: +thrust  X: -thrust");
+
+    ImGui::End();
+}
+
 void createGui(RenderingState const& core, Application& application, SolarSystem* solar_system)
 {
     if (solar_system)
     {
         createSolarSystemGui(*solar_system, application.scene.camera);
         drawPlanetLabels(*solar_system, application.scene.camera);
+        createSpacecraftGui(*solar_system, application.scene.camera);
     }
 
     ImGui::Begin("Vulkan rendering engine", nullptr, ImGuiWindowFlags_MenuBar);

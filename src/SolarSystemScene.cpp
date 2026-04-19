@@ -3,6 +3,9 @@
 #include "Object.h"
 #include "Material.h"
 #include "Pipelines/Planet.h"
+#include "Spacecraft.h"
+
+#include <glm/gtc/quaternion.hpp>
 
 #include <numbers>
 #include <cstring>
@@ -299,6 +302,18 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         obj.line_alpha = ss.grid_opacity;
         obj.visible    = ss.show_grid;
     }
+
+    // Spacecraft positions and orientations
+    for (std::size_t i = 0; i < ss.spacecraft_states.size(); ++i)
+    {
+        auto const& sc = ss.spacecraft_states[i];
+        if (sc.scene_object_index < 0) continue;
+        auto& obj = scene.objs[sc.scene_object_index];
+
+        obj.position         = glm::vec3(sc.position_km - scene.camera.pos_d);
+        obj.rotation_override = glm::mat4_cast(glm::quat(sc.orientation));
+        obj.scale            = static_cast<float>(ss.spacecraft_defs[i].visual_scale_km);
+    }
 }
 
 void updateSunLighting(Scene& scene, Camera const& cam)
@@ -308,4 +323,68 @@ void updateSunLighting(Scene& scene, Camera const& cam)
     scene.light.sun_pos  = glm::length(sun_cam_rel) > 0.0f
                            ? glm::normalize(sun_cam_rel)
                            : glm::vec3(1.0f, 0.0f, 0.0f);
+}
+
+// ---------------------------------------------------------------------------
+// Spacecraft scene objects
+// ---------------------------------------------------------------------------
+
+void initSpacecraftObjects(Scene& scene, SolarSystem& ss,
+                           DrawableMesh const& mesh, Camera const& cam)
+{
+    Material const mat{
+        .name = {"Spacecraft"},
+        .program = 2,
+        .shader_data = {}
+    };
+
+    for (std::size_t i = 0; i < ss.spacecraft_defs.size(); ++i)
+    {
+        auto const& def   = ss.spacecraft_defs[i];
+        auto&       state = ss.spacecraft_states[i];
+
+        if (state.scene_object_index >= 0) continue; // already in scene
+
+        Object obj = createObject(mesh);
+        obj.material  = mat;
+        obj.position  = glm::vec3(state.position_km - cam.pos_d);
+        obj.scale     = static_cast<float>(def.visual_scale_km);
+        obj.rotation_override = glm::mat4(1.0f);
+        obj.visible   = true;
+
+        state.scene_object_index = static_cast<int>(scene.objs.size());
+        addObject(scene, obj);
+    }
+}
+
+void writeSpacecraftMaterialBuffers(Scene& scene, SolarSystem const& ss, int frame)
+{
+    // Compute the same base_index as writePlanetMaterialBuffers
+    int base_index = 0;
+    for (auto const& [prog, obj_list] : scene.programs)
+    {
+        if (prog >= 2) break;
+        base_index += static_cast<int>(obj_list.size());
+    }
+
+    int const planet_count = static_cast<int>(ss.defs.size());
+
+    for (int j = 0; j < static_cast<int>(ss.spacecraft_defs.size()); ++j)
+    {
+        auto const& def = ss.spacecraft_defs[j];
+
+        PlanetMaterialData mat;
+        mat.diffuse_texture        = -1;
+        mat.normal_texture         = -1;
+        mat.has_normal_map         = 0;
+        mat.has_atmosphere         = 0;
+        mat.atmosphere_color_scale = glm::vec4(0.0f);
+        mat.albedo_color           = glm::vec4(def.color, 1.0f);
+        mat.roughness              = 0.5f;
+        mat.metallic               = 0.0f;
+        mat.emissive               = 1.0f; // always fully lit — no sun shading on spacecraft
+        mat.cloud_texture          = -1;
+
+        writeBuffer(*scene.planet_material_buffer[frame], mat, base_index + planet_count + j);
+    }
 }

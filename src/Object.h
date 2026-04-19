@@ -5,6 +5,8 @@
 #include "Id.h"
 #include "Mesh.h"
 
+#include <optional>
+
 /*
 struct Terrain
 {
@@ -45,6 +47,11 @@ struct Object
     bool  visible{true};
 
     int planet_index{0};  // planet def index, used by atmosphere shell pipeline
+
+    // When set, replaces the axis-angle rotation in createModelBufferObject.
+    // Used for objects with quaternion orientation (e.g. spacecraft).
+    std::optional<glm::mat4> rotation_override{};
+
     int id = Id();
 };
 

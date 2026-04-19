@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Model.h"
+#include "Spacecraft.h"
 
 #include <glm/glm.hpp>
 #include <vector>
@@ -66,6 +67,12 @@ struct SolarSystem {
 
     // Object selection (-1 = Sun/origin)
     int selected_body{-1};
+
+    // Spacecraft
+    std::vector<SpacecraftDef>   spacecraft_defs;
+    std::vector<SpacecraftState> spacecraft_states;
+    int   selected_spacecraft{-1};
+    float spacecraft_rotation_rate{45.0f}; // degrees per second
 };
 
 SolarSystem createSolarSystem();
@@ -79,4 +86,10 @@ Model createUVSphere(float radius, int stacks, int slices);
 {
     auto const& state = ss.states[idx];
     return glm::mix(state.prev_position_km, state.position_km, ss.render_alpha);
+}
+
+// Interpolated position for a spacecraft (no render_alpha — use current position).
+[[nodiscard]] inline glm::dvec3 interpolatedSpacecraftPosition(SolarSystem const& ss, std::size_t idx)
+{
+    return ss.spacecraft_states[idx].position_km;
 }

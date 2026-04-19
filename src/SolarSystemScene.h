@@ -37,3 +37,11 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
 
 // Update the sun light direction from the current camera position.
 void updateSunLighting(Scene& scene, Camera const& cam);
+
+// Add one Object per spacecraft to the scene (program 2, same as planets).
+// Populates SpacecraftState::scene_object_index for each craft.
+void initSpacecraftObjects(Scene& scene, SolarSystem& ss,
+                           DrawableMesh const& mesh, Camera const& cam);
+
+// Write PlanetMaterialData for spacecraft into planet_material_buffer (after planets).
+void writeSpacecraftMaterialBuffers(Scene& scene, SolarSystem const& ss, int frame);

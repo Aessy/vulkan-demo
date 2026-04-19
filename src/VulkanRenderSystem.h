@@ -37,11 +37,16 @@ struct Event
 };
 struct Keyboard
 {
-    bool up = false;
-    bool down = false;
-    bool left = false;
+    bool up    = false;
+    bool down  = false;
+    bool left  = false;
     bool right = false;
     bool shift = false;
+    // Spacecraft controls
+    bool q_key = false; // roll CCW
+    bool e_key = false; // roll CW
+    bool z_key = false; // thrust increase
+    bool x_key = false; // thrust decrease
 };
 
 struct CursorPos

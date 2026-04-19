@@ -113,6 +113,9 @@ void updateSolarSystem(SolarSystem& ss, double delta_seconds)
 
     // Fraction of the current step elapsed — drives rendering interpolation.
     ss.render_alpha = ss.simulation_time_s / dt;
+
+    // Spacecraft physics (finer steps, N-body gravity + thrust)
+    updateSpacecrafts(ss.spacecraft_defs, ss.spacecraft_states, ss, scaled_dt);
 }
 
 Model createUVSphere(float radius, int stacks, int slices)
