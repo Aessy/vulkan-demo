@@ -128,8 +128,11 @@ void updateSolarSystem(SolarSystem& ss, double delta_seconds)
     ss.elapsed_simulation_s += scaled_dt;
 
     constexpr double dt = 3600.0; // fixed physics step: 1 hour
+
+    std::size_t how_many_sub_steps = 0;
     while (ss.simulation_time_s >= dt)
     {
+      ++how_many_sub_steps;
         ss.simulation_time_s -= dt;
 
         for (auto&& [def, state] : std::views::zip(ss.defs, ss.states))
@@ -172,11 +175,23 @@ void updateSolarSystem(SolarSystem& ss, double delta_seconds)
         }
     }
 
+    if (how_many_sub_steps > 1)
+    {
+      spdlog::info("Multiple substeps");
+    }
+
     // Fraction of the current step elapsed — drives rendering interpolation.
     ss.render_alpha = ss.simulation_time_s / dt;
 
-    // Spacecraft physics (finer steps, N-body gravity + thrust)
-    updateSpacecrafts(ss.spacecraft_defs, ss.spacecraft_states, ss, scaled_dt);
+    // Spacecraft integrate for this frame's scaled_dt using the latest planet positions.
+    // render_alpha=1.0 so gravity samples Earth/Moon at their most current position,
+    // avoiding the stale-prev-position error that occurs when render_alpha≈0 after a step.
+    {
+        //double saved_alpha  = ss.render_alpha;
+        //ss.render_alpha     = 1.0;
+        updateSpacecrafts(ss.spacecraft_defs, ss.spacecraft_states, ss, scaled_dt);
+        //ss.render_alpha     = saved_alpha;
+    }
 }
 
 Model createUVSphere(float radius, int stacks, int slices)
