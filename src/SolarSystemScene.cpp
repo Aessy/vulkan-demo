@@ -147,6 +147,32 @@ void initPlanetObjects(Scene& scene, SolarSystem& ss,
 
 }
 
+void initMoonObjects(Scene& scene, SolarSystem& ss,
+                     DrawableMesh const& mesh, Camera const& cam)
+{
+    Material const planet_material{
+        .name = {"Planet"},
+        .program = 2,
+        .shader_data = {}
+    };
+
+    for (std::size_t k = 0; k < ss.moon_states.size(); ++k)
+    {
+        auto&       moon_state = ss.moon_states[k];
+        auto const& moon_def   = ss.defs[moon_state.parent_planet_index].moons[moon_state.moon_index];
+
+        auto obj = createObject(mesh);
+        obj.material  = planet_material;
+        obj.position  = glm::vec3(moon_state.position_km - cam.pos_d);
+        obj.scale     = static_cast<float>(moon_def.radius_km);
+        obj.rotation  = glm::vec3(0.0f, 1.0f, 0.0f);
+        obj.angel     = 0.0f;
+
+        moon_state.scene_object_index = static_cast<int>(scene.objs.size());
+        addObject(scene, obj);
+    }
+}
+
 SolarSystemLineObjects initOrbitLines(RenderingState const& state, Scene& scene,
                                       SolarSystem const& ss, Camera const& cam)
 {
@@ -250,6 +276,38 @@ void writePlanetMaterialBuffers(Scene& scene, SolarSystem const& ss, int frame)
     }
 }
 
+void writeMoonMaterialBuffers(Scene& scene, SolarSystem const& ss, int frame)
+{
+    int base_index = 0;
+    for (auto const& [prog, obj_list] : scene.programs)
+    {
+        if (prog >= 2) break;
+        base_index += static_cast<int>(obj_list.size());
+    }
+
+    int const planet_count = static_cast<int>(ss.defs.size());
+
+    for (int k = 0; k < static_cast<int>(ss.moon_states.size()); ++k)
+    {
+        auto const& moon_state = ss.moon_states[k];
+        auto const& moon_def   = ss.defs[moon_state.parent_planet_index].moons[moon_state.moon_index];
+
+        PlanetMaterialData mat;
+        mat.diffuse_texture        = moon_def.diffuse_texture_index;
+        mat.normal_texture         = moon_def.normal_texture_index;
+        mat.has_normal_map         = (moon_def.normal_texture_index >= 0) ? 1 : 0;
+        mat.has_atmosphere         = 0;
+        mat.atmosphere_color_scale = glm::vec4(0.0f);
+        mat.albedo_color           = glm::vec4(moon_def.albedo_color, 1.0f);
+        mat.roughness              = moon_def.roughness;
+        mat.metallic               = moon_def.metallic;
+        mat.emissive               = moon_def.emissive;
+        mat.cloud_texture          = -1;
+
+        writeBuffer(*scene.planet_material_buffer[frame], mat, base_index + planet_count + k);
+    }
+}
+
 void writeAtmosphereColorBuffers(Scene& scene, SolarSystem const& ss, int frame)
 {
     int idx = 0;
@@ -301,6 +359,19 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         obj.line_width = ss.grid_line_width;
         obj.line_alpha = ss.grid_opacity;
         obj.visible    = ss.show_grid;
+    }
+
+    // Moon positions and rotation
+    for (std::size_t k = 0; k < ss.moon_states.size(); ++k)
+    {
+        auto const& moon = ss.moon_states[k];
+        if (moon.scene_object_index < 0) continue;
+        auto& obj = scene.objs[moon.scene_object_index];
+
+        double const interp_rot = std::lerp(moon.prev_rotation_angle,
+                                             moon.rotation_angle, ss.render_alpha);
+        obj.position = glm::vec3(interpolatedMoonPosition(ss, k) - scene.camera.pos_d);
+        obj.angel    = static_cast<float>(glm::degrees(interp_rot));
     }
 
     // Spacecraft positions and orientations
@@ -368,6 +439,9 @@ void writeSpacecraftMaterialBuffers(Scene& scene, SolarSystem const& ss, int fra
     }
 
     int const planet_count = static_cast<int>(ss.defs.size());
+    int moon_count = 0;
+    for (auto const& def : ss.defs)
+        moon_count += static_cast<int>(def.moons.size());
 
     for (int j = 0; j < static_cast<int>(ss.spacecraft_defs.size()); ++j)
     {
@@ -385,6 +459,7 @@ void writeSpacecraftMaterialBuffers(Scene& scene, SolarSystem const& ss, int fra
         mat.emissive               = 1.0f; // always fully lit — no sun shading on spacecraft
         mat.cloud_texture          = -1;
 
-        writeBuffer(*scene.planet_material_buffer[frame], mat, base_index + planet_count + j);
+        writeBuffer(*scene.planet_material_buffer[frame], mat,
+                    base_index + planet_count + moon_count + j);
     }
 }

@@ -6,6 +6,32 @@
 #include <glm/glm.hpp>
 #include <vector>
 
+struct MoonDef {
+    const char* name{"Moon"};
+    double radius_km{0.0};
+    double mass_kg{0.0};
+    double rotation_period_s{0.0};
+    int    diffuse_texture_index{-1};
+    int    normal_texture_index{-1};
+    float  roughness{0.9f};
+    float  metallic{0.0f};
+    float  emissive{0.0f};
+    glm::vec3  albedo_color{0.45f, 0.45f, 0.45f};
+    glm::dvec3 init_position_relative{};  // km, relative to parent planet
+    glm::dvec3 init_velocity_relative{};  // km/s, relative to parent planet
+};
+
+struct MoonState {
+    glm::dvec3 position_km{0.0};
+    glm::dvec3 prev_position_km{0.0};
+    glm::dvec3 velocity_km{0.0};
+    double rotation_angle{0.0};
+    double prev_rotation_angle{0.0};
+    int scene_object_index{-1};
+    int parent_planet_index{-1};
+    int moon_index{0};
+};
+
 struct PlanetDef {
     const char* name;
     double radius_km;
@@ -27,6 +53,7 @@ struct PlanetDef {
     glm::vec3 albedo_color;
     glm::dvec3 init_position;
     glm::dvec3 init_velocity;
+    std::vector<MoonDef> moons{};
 };
 
 struct PlanetState {
@@ -46,7 +73,7 @@ struct SolarSystem {
     std::vector<bool>        show_label;
     glm::dvec3 sun_position_km{0.0};
     int  sun_scene_object_index{-1};
-    double simulation_time_s{0.0};   // leftover accumulator after last step
+    double simulation_time_s{3600.0}; // pre-seeded so first updateSolarSystem fires immediately
     double elapsed_simulation_s{0.0}; // total elapsed simulation time from epoch
     double render_alpha{0.0};        // interpolation fraction in [0, 1) for this frame
     double time_scale{1};
@@ -67,6 +94,11 @@ struct SolarSystem {
 
     // Object selection (-1 = Sun/origin)
     int selected_body{-1};
+
+    // Moons
+    std::vector<MoonState> moon_states;
+    std::vector<bool>      show_moon_label;
+    int selected_moon{-1};
 
     // Spacecraft
     std::vector<SpacecraftDef>   spacecraft_defs;
@@ -92,4 +124,11 @@ Model createUVSphere(float radius, int stacks, int slices);
 [[nodiscard]] inline glm::dvec3 interpolatedSpacecraftPosition(SolarSystem const& ss, std::size_t idx)
 {
     return ss.spacecraft_states[idx].position_km;
+}
+
+// Render-interpolated world position for a moon.
+[[nodiscard]] inline glm::dvec3 interpolatedMoonPosition(SolarSystem const& ss, std::size_t moon_idx)
+{
+    auto const& s = ss.moon_states[moon_idx];
+    return glm::mix(s.prev_position_km, s.position_km, ss.render_alpha);
 }

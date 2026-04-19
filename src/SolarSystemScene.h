@@ -20,6 +20,11 @@ struct SolarSystemLineObjects
 void initPlanetObjects(Scene& scene, SolarSystem& ss,
                        DrawableMesh const& mesh, Camera const& cam);
 
+// Add one sphere Object per moon to the scene (program 2).
+// Populates MoonState::scene_object_index for each moon.
+void initMoonObjects(Scene& scene, SolarSystem& ss,
+                     DrawableMesh const& mesh, Camera const& cam);
+
 // Create orbit-ring and ecliptic-grid line objects (program 3) and return
 // the handles needed to update them each frame.
 SolarSystemLineObjects initOrbitLines(RenderingState const& state, Scene& scene,
@@ -27,6 +32,9 @@ SolarSystemLineObjects initOrbitLines(RenderingState const& state, Scene& scene,
 
 // Write PlanetMaterialData into scene.planet_material_buffer for one frame slot.
 void writePlanetMaterialBuffers(Scene& scene, SolarSystem const& ss, int frame);
+
+// Write PlanetMaterialData for moons into planet_material_buffer (after planets).
+void writeMoonMaterialBuffers(Scene& scene, SolarSystem const& ss, int frame);
 
 // Write atmosphere color+scale (vec4) into scene.atmosphere_color_buffer for one frame slot.
 void writeAtmosphereColorBuffers(Scene& scene, SolarSystem const& ss, int frame);

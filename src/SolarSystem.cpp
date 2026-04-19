@@ -9,21 +9,29 @@
 using glm::dvec3;
 
 static constexpr double GM_SUN = 1.32712440018e11; // km^3 / s^2
+static constexpr double G_km   = 6.674e-20;        // km^3 / (kg * s^2)
 
 // Leapfrog KDK (Kick-Drift-Kick) symplectic integrator.
 // Conserves a modified energy exactly, keeping circular orbits stable
 // over arbitrary simulation lengths.
-static void leapfrogKDK(PlanetState& state, double dt)
+// attractor_begin: attractor position at start of step; attractor_end: at end of step.
+static dvec3 gravAccel(dvec3 const& pos, dvec3 const& attractor, double GM)
 {
-    double r0      = glm::length(state.position_km);
-    dvec3  acc     = -(GM_SUN / (r0 * r0 * r0)) * state.position_km;
+    dvec3  r  = pos - attractor;
+    double rm = glm::length(r);
+    return -(GM / (rm * rm * rm)) * r;
+}
 
-    dvec3 vel_half    = state.velocity_km + acc * (dt * 0.5);   // half-kick
-    state.position_km += vel_half * dt;                          // drift
-
-    double r1      = glm::length(state.position_km);
-    dvec3  acc_new = -(GM_SUN / (r1 * r1 * r1)) * state.position_km;
-    state.velocity_km = vel_half + acc_new * (dt * 0.5);        // half-kick
+// Single-attractor KDK leapfrog (used for planets orbiting the Sun).
+static void leapfrogKDK(dvec3& position, dvec3& velocity,
+                         dvec3 const& attractor_begin, dvec3 const& attractor_end,
+                         double GM, double dt)
+{
+    dvec3 acc0 = gravAccel(position, attractor_begin, GM);
+    dvec3 vel_half = velocity + acc0 * (dt * 0.5);
+    position      += vel_half * dt;
+    dvec3 acc1 = gravAccel(position, attractor_end, GM);
+    velocity = vel_half + acc1 * (dt * 0.5);
 }
 
 
@@ -70,6 +78,15 @@ SolarSystem createSolarSystem()
       { 1.14e0, -1.26e-1, 3.01e0 } }
 };
 
+    // Earth's Moon
+    ss.defs[3].moons = {{
+        "Moon", 1737.4, 7.342e22, 2360591.5,
+        -1, -1, 0.9f, 0.0f, 0.0f,
+        {0.45f, 0.45f, 0.45f},
+        {384400.0, 0.0, 0.0},
+        {0.0, 0.0, 1.018}
+    }};
+
     ss.states.resize(ss.defs.size());
     ss.show_label.resize(ss.defs.size(), false);
 
@@ -82,6 +99,24 @@ SolarSystem createSolarSystem()
         state.prev_position_km = def.init_position;  // avoid lerp-from-origin on frame 0
         state.velocity_km      = def.init_velocity;
     }
+
+    for (std::size_t i = 0; i < ss.defs.size(); ++i)
+    {
+        auto const& planet_def   = ss.defs[i];
+        auto const& planet_state = ss.states[i];
+        for (std::size_t j = 0; j < planet_def.moons.size(); ++j)
+        {
+            auto const& moon_def = planet_def.moons[j];
+            MoonState ms;
+            ms.parent_planet_index = static_cast<int>(i);
+            ms.moon_index          = static_cast<int>(j);
+            ms.position_km         = planet_state.position_km + moon_def.init_position_relative;
+            ms.prev_position_km    = ms.position_km;
+            ms.velocity_km         = planet_state.velocity_km + moon_def.init_velocity_relative;
+            ss.moon_states.push_back(ms);
+        }
+    }
+    ss.show_moon_label.resize(ss.moon_states.size(), false);
 
     return ss;
 }
@@ -104,10 +139,36 @@ void updateSolarSystem(SolarSystem& ss, double delta_seconds)
 
             if (def.semi_major_axis_km <= 0.0) continue; // Sun is stationary
 
-            leapfrogKDK(state, dt);
+            leapfrogKDK(state.position_km, state.velocity_km,
+                        dvec3(0.0), dvec3(0.0), GM_SUN, dt);
 
             if (def.rotation_period_s > 0.0)
                 state.rotation_angle += (2.0 * std::numbers::pi_v<double> / def.rotation_period_s) * dt;
+        }
+
+        for (auto& moon : ss.moon_states)
+        {
+            moon.prev_position_km    = moon.position_km;
+            moon.prev_rotation_angle = moon.rotation_angle;
+
+            auto const& parent_state = ss.states[moon.parent_planet_index];
+            auto const& parent_def   = ss.defs[moon.parent_planet_index];
+            auto const& moon_def     = parent_def.moons[moon.moon_index];
+            double const GM_parent   = G_km * parent_def.mass_kg;
+
+            // KDK with two attractors: Sun (fixed at origin) + parent planet.
+            // Using parent positions bracketing the step keeps the coupling symplectic.
+            dvec3 acc0 = gravAccel(moon.position_km, dvec3(0.0), GM_SUN)
+                       + gravAccel(moon.position_km, parent_state.prev_position_km, GM_parent);
+            dvec3 vel_half = moon.velocity_km + acc0 * (dt * 0.5);
+            moon.position_km += vel_half * dt;
+
+            dvec3 acc1 = gravAccel(moon.position_km, dvec3(0.0), GM_SUN)
+                       + gravAccel(moon.position_km, parent_state.position_km, GM_parent);
+            moon.velocity_km = vel_half + acc1 * (dt * 0.5);
+
+            if (moon_def.rotation_period_s > 0.0)
+                moon.rotation_angle += (2.0 * std::numbers::pi_v<double> / moon_def.rotation_period_s) * dt;
         }
     }
 

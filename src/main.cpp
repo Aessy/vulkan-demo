@@ -369,8 +369,11 @@ int main()
 
     // --- Populate scene with planets and line objects ---
     initPlanetObjects(scene, solar_system, meshes.meshes.at(planet_mesh_id), camera);
+    initMoonObjects(scene, solar_system, meshes.meshes.at(planet_mesh_id), camera);
     writePlanetMaterialBuffers(scene, solar_system, 0);
     writePlanetMaterialBuffers(scene, solar_system, 1);
+    writeMoonMaterialBuffers(scene, solar_system, 0);
+    writeMoonMaterialBuffers(scene, solar_system, 1);
     writeAtmosphereColorBuffers(scene, solar_system, 0);
     writeAtmosphereColorBuffers(scene, solar_system, 1);
 
@@ -452,12 +455,18 @@ int main()
         if (!first_frame && !solar_system.paused)
             updateSolarSystem(solar_system, static_cast<double>(delta));
 
-        // Camera tracking: spacecraft takes priority over planet, planet over sun.
+        // Camera tracking priority: spacecraft > moon > planet/sun
         if (solar_system.selected_spacecraft >= 0 &&
             solar_system.selected_spacecraft < static_cast<int>(solar_system.spacecraft_states.size()))
         {
             application.scene.camera.orbit_target =
                 interpolatedSpacecraftPosition(solar_system, solar_system.selected_spacecraft);
+        }
+        else if (solar_system.selected_moon >= 0 &&
+                 solar_system.selected_moon < static_cast<int>(solar_system.moon_states.size()))
+        {
+            application.scene.camera.orbit_target =
+                interpolatedMoonPosition(solar_system, solar_system.selected_moon);
         }
         else if (solar_system.selected_body < 0)
             application.scene.camera.orbit_target = solar_system.sun_position_km;

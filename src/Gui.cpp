@@ -765,12 +765,18 @@ void createSolarSystemGui(SolarSystem& solar_system, Camera& cam)
         if (ImGui::BeginCombo("Focus", selected_name))
         {
             if (ImGui::Selectable("Sun", solar_system.selected_body == -1))
+            {
                 solar_system.selected_body = -1;
+                solar_system.selected_moon = -1;
+            }
             for (int i = 0; i < (int)solar_system.defs.size(); ++i)
             {
                 bool selected = (solar_system.selected_body == i);
                 if (ImGui::Selectable(solar_system.defs[i].name, selected))
+                {
                     solar_system.selected_body = i;
+                    solar_system.selected_moon = -1;
+                }
                 if (selected)
                     ImGui::SetItemDefaultFocus();
             }
@@ -806,22 +812,80 @@ void createSolarSystemGui(SolarSystem& solar_system, Camera& cam)
     ImGui::Text("  Label  %-8s  Distance", "Body");
     ImGui::Separator();
 
+    int moon_flat_idx = 0;
     for (int i = 0; i < (int)solar_system.defs.size(); ++i)
     {
-        auto const& def   = solar_system.defs[i];
-        auto const& state = solar_system.states[i];
+        auto const& def = solar_system.defs[i];
         double dist = glm::length(interpolatedPosition(solar_system, i) - cam.pos_d);
+        bool planet_selected = (solar_system.selected_body == i && solar_system.selected_moon < 0);
+        bool has_moons = !def.moons.empty();
 
         ImGui::PushID(i);
-        bool show = solar_system.show_label[i];
-        if (ImGui::Checkbox("##lbl", &show))
-            solar_system.show_label[i] = show;
-        ImGui::SameLine();
-        // Highlight selected body
-        if (solar_system.selected_body == i)
-            ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.3f, 1.0f), "%-8s  %12.0f km", def.name, dist);
+
+        if (has_moons)
+        {
+            bool open = ImGui::TreeNodeEx("##tree", ImGuiTreeNodeFlags_DefaultOpen);
+            ImGui::SameLine();
+            bool show = solar_system.show_label[i];
+            if (ImGui::Checkbox("##lbl", &show)) solar_system.show_label[i] = show;
+            ImGui::SameLine();
+            if (planet_selected) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.3f, 1.0f));
+            char planet_buf[80];
+            std::snprintf(planet_buf, sizeof(planet_buf), "%-8s  %12.0f km##planet%d", def.name, dist, i);
+            if (ImGui::Selectable(planet_buf, planet_selected))
+            {
+                solar_system.selected_body = i;
+                solar_system.selected_moon = -1;
+            }
+            if (planet_selected) ImGui::PopStyleColor();
+
+            if (open)
+            {
+                for (int j = 0; j < (int)def.moons.size(); ++j, ++moon_flat_idx)
+                {
+                    auto const& moon_def = def.moons[j];
+                    double moon_dist = glm::length(interpolatedMoonPosition(solar_system, moon_flat_idx) - cam.pos_d);
+                    bool moon_selected = (solar_system.selected_moon == moon_flat_idx);
+
+                    ImGui::PushID(moon_flat_idx + 10000);
+                    bool moon_show = solar_system.show_moon_label[moon_flat_idx];
+                    if (ImGui::Checkbox("##mlbl", &moon_show)) solar_system.show_moon_label[moon_flat_idx] = moon_show;
+                    ImGui::SameLine();
+                    if (moon_selected) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.3f, 1.0f));
+                    char moon_buf[80];
+                    std::snprintf(moon_buf, sizeof(moon_buf), "  %-6s  %12.0f km##moon%d", moon_def.name, moon_dist, moon_flat_idx);
+                    if (ImGui::Selectable(moon_buf, moon_selected))
+                    {
+                        solar_system.selected_moon        = moon_flat_idx;
+                        solar_system.selected_body        = -1;
+                        solar_system.selected_spacecraft  = -1;
+                    }
+                    if (moon_selected) ImGui::PopStyleColor();
+                    ImGui::PopID();
+                }
+                ImGui::TreePop();
+            }
+            else
+            {
+                moon_flat_idx += static_cast<int>(def.moons.size());
+            }
+        }
         else
-            ImGui::Text("%-8s  %12.0f km", def.name, dist);
+        {
+            bool show = solar_system.show_label[i];
+            if (ImGui::Checkbox("##lbl", &show)) solar_system.show_label[i] = show;
+            ImGui::SameLine();
+            if (planet_selected) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 0.3f, 1.0f));
+            char planet_buf[80];
+            std::snprintf(planet_buf, sizeof(planet_buf), "%-8s  %12.0f km##planet%d", def.name, dist, i);
+            if (ImGui::Selectable(planet_buf, planet_selected))
+            {
+                solar_system.selected_body = i;
+                solar_system.selected_moon = -1;
+            }
+            if (planet_selected) ImGui::PopStyleColor();
+        }
+
         ImGui::PopID();
     }
 
@@ -863,6 +927,28 @@ void drawPlanetLabels(SolarSystem const& solar_system, Camera const& cam)
 
         // Small crosshair dot
         dl->AddCircleFilled(ImVec2(sx, sy - 8), 3.0f, IM_COL32(255, 255, 100, 200));
+    }
+
+    for (int k = 0; k < (int)solar_system.moon_states.size(); ++k)
+    {
+        if (!solar_system.show_moon_label[k]) continue;
+
+        auto const& moon_state = solar_system.moon_states[k];
+        auto const& moon_def   = solar_system.defs[moon_state.parent_planet_index].moons[moon_state.moon_index];
+
+        glm::vec3 cam_rel = glm::vec3(interpolatedMoonPosition(solar_system, k) - cam.pos_d);
+        glm::vec4 clip    = cam.proj * view * glm::vec4(cam_rel, 1.0f);
+
+        if (clip.w <= 0.0f) continue;
+        glm::vec3 ndc = glm::vec3(clip) / clip.w;
+        if (ndc.x < -1.0f || ndc.x > 1.0f || ndc.y < -1.0f || ndc.y > 1.0f) continue;
+
+        float sx = ( ndc.x * 0.5f + 0.5f) * screen.x;
+        float sy = (-ndc.y * 0.5f + 0.5f) * screen.y;
+
+        dl->AddText(ImVec2(sx + 1, sy + 1), IM_COL32(0, 0, 0, 200), moon_def.name);
+        dl->AddText(ImVec2(sx,     sy    ), IM_COL32(200, 200, 255, 255), moon_def.name);
+        dl->AddCircleFilled(ImVec2(sx, sy - 8), 3.0f, IM_COL32(200, 200, 255, 200));
     }
 }
 
