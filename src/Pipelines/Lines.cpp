@@ -31,11 +31,11 @@ Pipeline createLinesPipeline(RenderingState const& state,
         }
     }});
 
-    // Set 1: ModelBufferObject SSBO (size 20) — vertex stage
+    // Set 1: ModelBufferObject SSBO (size 40) — vertex stage
     program_desc.buffers.push_back({layer_types::Buffer{
         .name = {{"model_buffer"}},
         .type = layer_types::BufferType::ModelBufferObject,
-        .size = 20,
+        .size = 40,
         .binding = layer_types::Binding{
             .name     = {{"binding model"}},
             .binding  = 0,
@@ -217,7 +217,7 @@ Pipeline createLinesPipeline(RenderingState const& state,
                                           model_buffer,
                                           pipeline_finish.descriptor_sets[1].set,
                                           pipeline_finish.descriptor_sets[1].layout_bindings[0],
-                                          20);
+                                          40);
 
     return pipeline_finish;
 }

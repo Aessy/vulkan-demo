@@ -13,6 +13,17 @@ struct SolarSystemLineObjects
     std::vector<Buffer> orbit_ring_ibufs;
     std::vector<int>    orbit_ring_obj_ids; // indices into Scene::objs
     int                 grid_obj_id{-1};
+
+    // Per-spacecraft osculating orbit rings (around Earth)
+    std::vector<Buffer> sc_orbit_vbufs;
+    std::vector<Buffer> sc_orbit_ibufs;
+    std::vector<int>    sc_orbit_obj_ids;
+
+    // Per-spacecraft predicted N-body path (pre-allocated, updated in-place)
+    static constexpr int MAX_PATH_VERTS = 4000; // 2000 segments × 2 verts
+    std::vector<Buffer> sc_path_vbufs;
+    std::vector<Buffer> sc_path_ibufs;
+    std::vector<int>    sc_path_obj_ids;
 };
 
 // Add one sphere Object per solar-system body to the scene (program 2).
@@ -53,3 +64,9 @@ void initSpacecraftObjects(Scene& scene, SolarSystem& ss,
 
 // Write PlanetMaterialData for spacecraft into planet_material_buffer (after planets).
 void writeSpacecraftMaterialBuffers(Scene& scene, SolarSystem const& ss, int frame);
+
+// Create osculating orbit ring + predicted path line objects for all current spacecraft.
+// Call after initOrbitLines() and whenever spacecraft are spawned.
+void initSpacecraftLines(RenderingState const& state, Scene& scene,
+                         SolarSystem const& ss, Camera const& cam,
+                         SolarSystemLineObjects& line_objs);

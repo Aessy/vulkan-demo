@@ -1015,6 +1015,15 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
     ImGui::Text("  X: %+.3e   Y: %+.3e   Z: %+.3e",
         sc.position_km.x, sc.position_km.y, sc.position_km.z);
 
+    // Altitude above Earth
+    {
+        constexpr std::size_t earth_idx = 3;
+        glm::dvec3 earth_pos = interpolatedPosition(ss, earth_idx);
+        double dist_km  = glm::length(sc.position_km - earth_pos);
+        double alt_km   = dist_km - ss.defs[earth_idx].radius_km;
+        ImGui::Text("Altitude (Earth): %.1f km", alt_km);
+    }
+
     // Velocity
     double v_mag = glm::length(sc.velocity_km);
     ImGui::Text("Velocity (km/s)");
@@ -1032,6 +1041,34 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
 
     ImGui::Separator();
     ImGui::TextDisabled("WASD: pitch/yaw  QE: roll  Z: +thrust  X: -thrust");
+
+    // Orbit ring controls
+    ImGui::Separator();
+    ImGui::Checkbox("Show orbit ring", &ss.show_spacecraft_orbit);
+    if (ss.show_spacecraft_orbit)
+    {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80.0f);
+        ImGui::SliderFloat("##orb_w", &ss.spacecraft_orbit_line_width, 0.5f, 4.0f, "w:%.1f");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80.0f);
+        ImGui::SliderFloat("##orb_a", &ss.spacecraft_orbit_opacity, 0.0f, 1.0f, "a:%.2f");
+    }
+
+    // Predicted path controls
+    if (ImGui::Checkbox("Show predicted path", &ss.show_spacecraft_path))
+        ss.spacecraft_path_dirty = true;
+    if (ss.show_spacecraft_path)
+    {
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(100.0f);
+        float dur_f = static_cast<float>(ss.spacecraft_path_duration_s);
+        if (ImGui::SliderFloat("##path_dur", &dur_f, 1000.0f, 30000.0f, "%.0f s"))
+        {
+            ss.spacecraft_path_duration_s = dur_f;
+            ss.spacecraft_path_dirty      = true;
+        }
+    }
 
     ImGui::End();
 }

@@ -105,6 +105,16 @@ struct SolarSystem {
     std::vector<SpacecraftState> spacecraft_states;
     int   selected_spacecraft{-1};
     float spacecraft_rotation_rate{45.0f}; // degrees per second
+
+    // Spacecraft orbit ring (osculating Keplerian ellipse around Earth)
+    bool  show_spacecraft_orbit{true};
+    float spacecraft_orbit_line_width{1.0f};
+    float spacecraft_orbit_opacity{0.6f};
+
+    // Spacecraft predicted N-body path (forward integration)
+    bool   show_spacecraft_path{false};
+    double spacecraft_path_duration_s{8800.0}; // ~1.6 LEO orbits
+    bool   spacecraft_path_dirty{true};
 };
 
 SolarSystem createSolarSystem();

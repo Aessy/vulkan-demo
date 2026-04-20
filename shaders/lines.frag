@@ -15,4 +15,8 @@ void main()
     if (pc.dash_count > 0.0 && fract(v_param * pc.dash_count) < 0.5)
         discard;
     fragColor = vec4(v_color.rgb, v_color.a * pc.alpha);
+
+    // Match the log depth used by the planet shader so depth comparison is consistent.
+    float frag_w = 1.0 / gl_FragCoord.w;
+    gl_FragDepth = log2(max(1e-6, 1.0 + frag_w)) / log2(1e10 + 1.0);
 }

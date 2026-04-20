@@ -448,6 +448,9 @@ int main()
                                       application.scene.camera);
                 writeSpacecraftMaterialBuffers(application.scene, solar_system, 0);
                 writeSpacecraftMaterialBuffers(application.scene, solar_system, 1);
+                initSpacecraftLines(core, application.scene, solar_system,
+                                    application.scene.camera, line_objects);
+                solar_system.spacecraft_path_dirty = true;
             }
         }
 
@@ -501,11 +504,23 @@ int main()
 
             sc.orientation = glm::normalize(sc.orientation * glm::dquat(local_rot));
 
-            // Gradual thrust ramp: ±20% of max per second while key held
-            if (app.keyboard.z_key)
-                sc.thrust_level = std::min(1.0, sc.thrust_level + 0.2 * static_cast<double>(delta));
-            if (app.keyboard.x_key)
-                sc.thrust_level = std::max(0.0, sc.thrust_level - 0.2 * static_cast<double>(delta));
+            // Gradual thrust ramp: ±20% of max per second while key held (1× only)
+            if (solar_system.time_scale == 1.0)
+            {
+                double prev_thrust = sc.thrust_level;
+                if (app.keyboard.z_key)
+                    sc.thrust_level = std::min(1.0, sc.thrust_level + 0.2 * static_cast<double>(delta));
+                if (app.keyboard.x_key)
+                    sc.thrust_level = std::max(0.0, sc.thrust_level - 0.2 * static_cast<double>(delta));
+                if (sc.thrust_level != prev_thrust)
+                    solar_system.spacecraft_path_dirty = true;
+            }
+        }
+
+        // Periodically refresh the predicted path so it tracks the evolving orbit
+        {
+            static int path_tick = 0;
+            if (++path_tick >= 120) { path_tick = 0; solar_system.spacecraft_path_dirty = true; }
         }
 
         // Sync scene objects to current simulation state and camera position
