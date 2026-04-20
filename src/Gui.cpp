@@ -975,7 +975,9 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
     ImGui::SameLine();
     if (ImGui::Button("Focus Camera") && ss.selected_spacecraft >= 0)
     {
-        cam.orbit_distance = ss.spacecraft_defs[ss.selected_spacecraft].visual_scale_km * 8.0;
+        cam.orbit_distance  = ss.spacecraft_defs[ss.selected_spacecraft].visual_scale_km * 8.0;
+        ss.selected_body    = -1;   // release planet/sun focus so camera follows spacecraft
+        ss.selected_moon    = -1;
     }
 
     // Spacecraft selector
@@ -1007,7 +1009,7 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
         return;
     }
 
-    auto const& sc  = ss.spacecraft_states[ss.selected_spacecraft];
+    auto&       sc  = ss.spacecraft_states[ss.selected_spacecraft];
     auto const& def = ss.spacecraft_defs[ss.selected_spacecraft];
 
     ImGui::Separator();
@@ -1039,6 +1041,12 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
 
     // Thrust
     ImGui::Text("Thrust: %.1f%%", sc.thrust_level * 100.0);
+    ImGui::SameLine();
+    if (ImGui::Button("Stop Thrust"))
+    {
+        sc.thrust_level              = 0.0;
+        ss.spacecraft_path_dirty     = true;
+    }
     ImGui::ProgressBar(static_cast<float>(sc.thrust_level), ImVec2(-1, 0));
 
     ImGui::Separator();
