@@ -38,20 +38,47 @@ static void addFace(Model& m,
     m.indices.push_back(base);     m.indices.push_back(base + 2); m.indices.push_back(base + 3);
 }
 
+static void addTriangle(Model& m,
+                        glm::vec3 v0, glm::vec3 v1, glm::vec3 v2)
+{
+    glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+    glm::vec3 t = glm::normalize(v1 - v0);
+    glm::vec3 b = glm::normalize(v2 - v0);
+    auto base = static_cast<uint32_t>(m.vertices.size());
+
+    m.vertices.push_back({v0, {0.0f, 0.0f}, normal, {0.0f, 0.0f}, t, b});
+    m.vertices.push_back({v1, {1.0f, 0.0f}, normal, {1.0f, 0.0f}, t, b});
+    m.vertices.push_back({v2, {0.5f, 1.0f}, normal, {0.5f, 1.0f}, t, b});
+
+    m.indices.push_back(base);
+    m.indices.push_back(base + 1);
+    m.indices.push_back(base + 2);
+}
+
 Model createBoxMesh()
 {
     // Half-extents — proportions: 5m wide × 30m tall × 5m deep.
     // Scaled at render time by visual_scale_km where 1 unit = 5m.
-    constexpr float hx = 0.5f;   // width  / 2  → 1 unit wide
-    constexpr float hy = 3.0f;   // length / 2  → 6 units tall  (+Y = forward/nose)
-    constexpr float hz = 0.5f;   // depth  / 2  → 1 unit deep
+    constexpr float hx  = 0.5f;   // width  / 2  → 1 unit wide
+    constexpr float hy  = 3.0f;   // length / 2  → 6 units tall  (+Y = forward/nose)
+    constexpr float hz  = 0.5f;   // depth  / 2  → 1 unit deep
+    constexpr float tip = 1.5f;   // nose pyramid height above +Y face
+
+    // Corners of the top (nose-end) of the body box
+    const glm::vec3 A{-hx, +hy, -hz};
+    const glm::vec3 B{+hx, +hy, -hz};
+    const glm::vec3 C{+hx, +hy, +hz};
+    const glm::vec3 D{-hx, +hy, +hz};
+    // Apex of the nose pyramid
+    const glm::vec3 P{0.0f, +hy + tip, 0.0f};
 
     Model m;
 
-    // +Y face (nose)
-    addFace(m,
-        {-hx, +hy, -hz}, {+hx, +hy, -hz}, {+hx, +hy, +hz}, {-hx, +hy, +hz},
-        {0, 1, 0});
+    // Nose — 4 triangular pyramid faces meeting at apex P
+    addTriangle(m, D, C, P); // +Z side
+    addTriangle(m, C, B, P); // +X side
+    addTriangle(m, B, A, P); // -Z side
+    addTriangle(m, A, D, P); // -X side
 
     // -Y face (engine/rear)
     addFace(m,

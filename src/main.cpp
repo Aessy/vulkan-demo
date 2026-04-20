@@ -491,18 +491,44 @@ int main()
             !ImGui::GetIO().WantCaptureKeyboard)
         {
             auto& sc  = solar_system.spacecraft_states[solar_system.selected_spacecraft];
-            float rate = glm::radians(solar_system.spacecraft_rotation_rate) * delta;
 
-            // Rotate in spacecraft's local frame (pitch/yaw/roll around own axes)
-            glm::quat local_rot = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-            if (app.keyboard.up)    local_rot = glm::angleAxis(-rate, glm::vec3(1, 0, 0)) * local_rot; // pitch: nose up
-            if (app.keyboard.down)  local_rot = glm::angleAxis(+rate, glm::vec3(1, 0, 0)) * local_rot; // pitch: nose down
-            if (app.keyboard.left)  local_rot = glm::angleAxis(+rate, glm::vec3(0, 0, 1)) * local_rot; // yaw left
-            if (app.keyboard.right) local_rot = glm::angleAxis(-rate, glm::vec3(0, 0, 1)) * local_rot; // yaw right
-            if (app.keyboard.q_key) local_rot = glm::angleAxis(+rate, glm::vec3(0, 1, 0)) * local_rot; // roll CCW
-            if (app.keyboard.e_key) local_rot = glm::angleAxis(-rate, glm::vec3(0, 1, 0)) * local_rot; // roll CW
+            if (solar_system.spacecraft_follow_orbit)
+            {
+                // Auto-align nose (+Y) to orbital velocity relative to Earth
+                constexpr std::size_t earth_idx = 3;
+                glm::dvec3 earth_pos = glm::mix(solar_system.states[earth_idx].prev_position_km,
+                                                solar_system.states[earth_idx].position_km,
+                                                solar_system.render_alpha);
+                glm::dvec3 earth_vel = solar_system.states[earth_idx].velocity_km;
+                glm::dvec3 vel_rel   = sc.velocity_km - earth_vel;
+                double speed = glm::length(vel_rel);
+                if (speed > 1e-10)
+                {
+                    glm::dvec3 fwd    = vel_rel / speed;
+                    glm::dvec3 radial = glm::normalize(sc.position_km - earth_pos);
+                    glm::dvec3 right  = glm::normalize(glm::cross(fwd, radial));
+                    glm::dvec3 up     = glm::cross(right, fwd);
+                    // Build rotation matrix: columns = world-space directions of local X, Y, Z
+                    glm::vec3 fwd_f{fwd}, right_f{right}, up_f{up};
+                    glm::mat3 rot{right_f, fwd_f, up_f};
+                    sc.orientation = glm::dquat(glm::quat_cast(rot));
+                }
+            }
+            else
+            {
+                float rate = glm::radians(solar_system.spacecraft_rotation_rate) * delta;
 
-            sc.orientation = glm::normalize(sc.orientation * glm::dquat(local_rot));
+                // Rotate in spacecraft's local frame (pitch/yaw/roll around own axes)
+                glm::quat local_rot = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+                if (app.keyboard.up)    local_rot = glm::angleAxis(-rate, glm::vec3(1, 0, 0)) * local_rot; // pitch: nose up
+                if (app.keyboard.down)  local_rot = glm::angleAxis(+rate, glm::vec3(1, 0, 0)) * local_rot; // pitch: nose down
+                if (app.keyboard.left)  local_rot = glm::angleAxis(+rate, glm::vec3(0, 0, 1)) * local_rot; // yaw left
+                if (app.keyboard.right) local_rot = glm::angleAxis(-rate, glm::vec3(0, 0, 1)) * local_rot; // yaw right
+                if (app.keyboard.q_key) local_rot = glm::angleAxis(+rate, glm::vec3(0, 1, 0)) * local_rot; // roll CCW
+                if (app.keyboard.e_key) local_rot = glm::angleAxis(-rate, glm::vec3(0, 1, 0)) * local_rot; // roll CW
+
+                sc.orientation = glm::normalize(sc.orientation * glm::dquat(local_rot));
+            }
 
             // Gradual thrust ramp: ±20% of max per second while key held (1× only)
             if (solar_system.time_scale == 1.0)

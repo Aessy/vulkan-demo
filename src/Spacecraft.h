@@ -11,7 +11,7 @@ struct SolarSystem;
 struct SpacecraftDef {
     const char* name{"Spacecraft-1"};
     double      mass_kg{10000.0};         // kg
-    double      thrust_N{100000.0};       // max thrust in Newtons
+    double      thrust_N{10000000.0};      // max thrust in Newtons
     double      visual_scale_km{0.005};   // uniform scale: 1 unit = 5m → craft is 5m × 30m × 5m
     glm::vec3   color{1.0f, 0.9f, 0.2f}; // golden yellow
 };

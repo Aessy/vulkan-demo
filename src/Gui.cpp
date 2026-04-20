@@ -996,7 +996,9 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
         }
     }
 
-    ImGui::SliderFloat("Rotation rate (deg/s)", &ss.spacecraft_rotation_rate, 5.0f, 180.0f);
+    ImGui::Checkbox("Follow orbit (auto-align nose to velocity)", &ss.spacecraft_follow_orbit);
+    if (!ss.spacecraft_follow_orbit)
+        ImGui::SliderFloat("Rotation rate (deg/s)", &ss.spacecraft_rotation_rate, 5.0f, 180.0f);
 
     if (ss.selected_spacecraft < 0 ||
         ss.selected_spacecraft >= static_cast<int>(ss.spacecraft_states.size()))

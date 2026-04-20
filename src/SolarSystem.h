@@ -105,6 +105,7 @@ struct SolarSystem {
     std::vector<SpacecraftState> spacecraft_states;
     int   selected_spacecraft{-1};
     float spacecraft_rotation_rate{45.0f}; // degrees per second
+    bool  spacecraft_follow_orbit{false};  // auto-align nose to orbital velocity
 
     // Spacecraft orbit ring (osculating Keplerian ellipse around Earth)
     bool  show_spacecraft_orbit{true};
