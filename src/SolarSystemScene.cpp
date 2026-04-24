@@ -61,7 +61,7 @@ static KeplerOrbit computeOsculatingOrbit(glm::dvec3 r, glm::dvec3 v, double GM)
 
 // Keplerian ellipse in 3D, vertices in km relative to Sun (focus). N LINE_LIST segments.
 static std::pair<std::vector<LineVertex>, std::vector<uint32_t>>
-makeOrbitEllipseGeometry(KeplerOrbit const& orbit, glm::vec4 color, int N = 256)
+makeOrbitEllipseGeometry(KeplerOrbit const& orbit, glm::vec4 color, int N = 1024)
 {
     std::vector<LineVertex> verts(N);
     double const b_frac = std::sqrt(1.0 - orbit.e * orbit.e); // b/a = sqrt(1-e^2)
@@ -87,6 +87,49 @@ makeOrbitEllipseGeometry(KeplerOrbit const& orbit, glm::vec4 color, int N = 256)
         indices.push_back(static_cast<uint32_t>((i + 1) % N));
     }
     return {verts, indices};
+}
+
+// Unit circle in XZ plane, radius 1. Used for spacecraft orbit rings driven by model matrix.
+static std::pair<std::vector<LineVertex>, std::vector<uint32_t>>
+makeUnitCircleGeometry(glm::vec4 color, int N = 1024)
+{
+    std::vector<LineVertex> verts(N);
+    for (int i = 0; i < N; ++i)
+    {
+        float const E  = 2.0f * std::numbers::pi_v<float> * i / N;
+        verts[i].pos   = { std::cos(E), 0.0f, std::sin(E) };
+        verts[i].color = color;
+        verts[i].param = static_cast<float>(i) / static_cast<float>(N);
+    }
+    std::vector<uint32_t> indices;
+    indices.reserve(N * 2);
+    for (int i = 0; i < N; ++i)
+    {
+        indices.push_back(static_cast<uint32_t>(i));
+        indices.push_back(static_cast<uint32_t>((i + 1) % N));
+    }
+    return {verts, indices};
+}
+
+// Build a 4x4 model matrix that transforms the unit circle (XZ plane, radius 1)
+// into a Keplerian ellipse. The focus (e.g. Earth) is at the matrix origin.
+// obj.position should be set to the focus position in camera-relative space.
+static glm::mat4 orbitRingMatrix(KeplerOrbit const& orbit)
+{
+    float const a_f = static_cast<float>(orbit.a);
+    float const b_f = static_cast<float>(orbit.a * std::sqrt(1.0 - orbit.e * orbit.e));
+    float const ae_f = static_cast<float>(orbit.a * orbit.e); // focus offset from ellipse center
+    glm::vec3 const eh(orbit.e_hat);
+    glm::vec3 const qh(orbit.q_hat);
+    // Translate so ellipse center sits at -ae*e_hat from the focus
+    // (focus is the origin; ellipse center is ae along periapsis direction)
+    glm::mat4 m(
+        glm::vec4(a_f * eh,                0.0f),   // col 0: X → e_hat scaled by a
+        glm::vec4(0.0f, 1.0f, 0.0f,        0.0f),   // col 1: Y unchanged
+        glm::vec4(b_f * qh,                0.0f),   // col 2: Z → q_hat scaled by b
+        glm::vec4(-ae_f * eh,              1.0f)    // col 3: shift center to put focus at origin
+    );
+    return m;
 }
 
 // Grid in XZ plane: (2*half_n+1) lines in each direction, unit spacing.
@@ -304,30 +347,30 @@ void initSpacecraftLines(RenderingState const& state, Scene& scene,
     {
         auto const& sc = ss.spacecraft_states[i];
 
-        // --- Orbit ring ---
+        // --- Orbit ring (unit circle driven by model matrix — no per-frame geometry upload) ---
         glm::dvec3 earth_pos_phys   = planetPositionAtSpacecraftTime(ss, earth_idx, i);
         glm::dvec3 earth_pos_render = interpolatedPosition(ss, earth_idx);
         glm::dvec3 r_rel = sc.position_km - earth_pos_phys;
         glm::dvec3 v_rel = sc.velocity_km  - earth_vel;
         KeplerOrbit orbit = computeOsculatingOrbit(r_rel, v_rel, GM_EARTH_SCENE);
 
-        auto [ring_v, ring_i] = makeOrbitEllipseGeometry(
-            orbit, glm::vec4(1.0f, 0.9f, 0.3f, 1.0f));
+        auto [ring_v, ring_i] = makeUnitCircleGeometry(glm::vec4(1.0f, 0.9f, 0.3f, 1.0f));
 
         auto ov = createLineVertexBuffer(state, ring_v);
         auto oi = createIndexBuffer(state, ring_i);
 
         Object ro{};
-        ro.vertex_buffer = ov.buffer;
-        ro.index_buffer  = oi.buffer;
-        ro.indices_size  = static_cast<uint32_t>(ring_i.size());
-        ro.position      = glm::vec3(earth_pos_render - cam.pos_d);
-        ro.scale         = 1.0f;
-        ro.rotation      = glm::vec3(0.0f, 1.0f, 0.0f);
-        ro.material      = lines_mat;
-        ro.line_width    = ss.spacecraft_orbit_line_width;
-        ro.line_alpha    = ss.spacecraft_orbit_opacity;
-        ro.visible       = ss.show_spacecraft_orbit && orbit.e < 1.0;
+        ro.vertex_buffer     = ov.buffer;
+        ro.index_buffer      = oi.buffer;
+        ro.indices_size      = static_cast<uint32_t>(ring_i.size());
+        ro.position          = glm::vec3(earth_pos_render - cam.pos_d);
+        ro.scale             = 1.0f;
+        ro.rotation          = glm::vec3(0.0f, 1.0f, 0.0f);
+        ro.rotation_override = orbitRingMatrix(orbit);
+        ro.material          = lines_mat;
+        ro.line_width        = ss.spacecraft_orbit_line_width;
+        ro.line_alpha        = ss.spacecraft_orbit_opacity;
+        ro.visible           = ss.show_spacecraft_orbit && orbit.e < 1.0;
 
         line_objs.sc_orbit_obj_ids.push_back(static_cast<int>(scene.objs.size()));
         addObject(scene, ro);
@@ -519,26 +562,17 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         glm::dvec3 const earth_pos_render = interpolatedPosition(ss, earth_idx);
         glm::vec3  const earth_crr = glm::vec3(earth_pos_render - scene.camera.pos_d);
 
-        // --- Osculating orbit ring ---
+        // --- Osculating orbit ring (model-matrix driven, no geometry rebuild) ---
         glm::dvec3 r_rel = sc.position_km - earth_pos_phys;
         glm::dvec3 v_rel = sc.velocity_km  - earth_vel;
         KeplerOrbit orbit = computeOsculatingOrbit(r_rel, v_rel, GM_EARTH_SCENE);
 
-        auto& ring_obj      = scene.objs[line_objs.sc_orbit_obj_ids[i]];
-        ring_obj.position   = earth_crr;
-        ring_obj.line_width = ss.spacecraft_orbit_line_width;
-        ring_obj.line_alpha = ss.spacecraft_orbit_opacity;
-        ring_obj.visible    = ss.show_spacecraft_orbit && orbit.e < 1.0 && orbit.a > 0.0;
-
-        if (ring_obj.visible)
-        {
-            auto [rv, ri] = makeOrbitEllipseGeometry(orbit, glm::vec4(1.0f, 0.9f, 0.3f, 1.0f));
-            auto& vbuf    = line_objs.sc_orbit_vbufs[i];
-            vk::DeviceSize sz = sizeof(LineVertex) * rv.size();
-            void* ptr = vbuf.memory.mapMemory(0, sz).value;
-            std::memcpy(ptr, rv.data(), static_cast<std::size_t>(sz));
-            vbuf.memory.unmapMemory();
-        }
+        auto& ring_obj           = scene.objs[line_objs.sc_orbit_obj_ids[i]];
+        ring_obj.position        = earth_crr;
+        ring_obj.rotation_override = orbitRingMatrix(orbit);
+        ring_obj.line_width      = ss.spacecraft_orbit_line_width;
+        ring_obj.line_alpha      = ss.spacecraft_orbit_opacity;
+        ring_obj.visible         = ss.show_spacecraft_orbit && orbit.e < 1.0 && orbit.a > 0.0;
 
         // --- Predicted N-body path ---
         auto& path_obj = scene.objs[line_objs.sc_path_obj_ids[i]];
