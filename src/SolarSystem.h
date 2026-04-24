@@ -131,10 +131,25 @@ Model createUVSphere(float radius, int stacks, int slices);
     return glm::mix(state.prev_position_km, state.position_km, ss.render_alpha);
 }
 
-// Interpolated position for a spacecraft (no render_alpha — use current position).
+// Extrapolated position for a spacecraft: advances from the last physics step
+// by the remaining unprocessed accumulator time using the current velocity.
+// This keeps the craft visually smooth between the fixed 30s physics steps.
 [[nodiscard]] inline glm::dvec3 interpolatedSpacecraftPosition(SolarSystem const& ss, std::size_t idx)
 {
-    return ss.spacecraft_states[idx].position_km;
+    auto const& sc = ss.spacecraft_states[idx];
+    return sc.position_km + sc.velocity_km * sc.time_accumulator;
+}
+
+// Planet position at the same physics time as a given spacecraft's last step.
+// Use this when pairing sc.position_km / sc.velocity_km with a planet position
+// so that r_rel is self-consistent and doesn't drift between spacecraft steps.
+[[nodiscard]] inline glm::dvec3 planetPositionAtSpacecraftTime(
+    SolarSystem const& ss, std::size_t planet_idx, std::size_t sc_idx)
+{
+    auto const& sc    = ss.spacecraft_states[sc_idx];
+    auto const& state = ss.states[planet_idx];
+    double alpha = glm::clamp((ss.simulation_time_s - sc.time_accumulator) / 3600.0, 0.0, 1.0);
+    return glm::mix(state.prev_position_km, state.position_km, alpha);
 }
 
 // Render-interpolated world position for a moon.

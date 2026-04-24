@@ -1,8 +1,8 @@
 #include "Spacecraft.h"
 #include "SolarSystem.h"
+#include "Physics.h"
 
 #include <glm/gtc/quaternion.hpp>
-#include <numbers>
 #include <algorithm>
 #include <cmath>
 
@@ -14,8 +14,8 @@ using glm::dvec3;
 // Constants
 // ---------------------------------------------------------------------------
 
-// Gravitational constant in km^3 / (kg * s^2)
-static constexpr double G_km = 6.674e-20;
+static constexpr double GM_SUN = 1.32712440018e11; // km^3 / s^2
+static constexpr double G_km   = 6.674e-20;        // km^3 / (kg * s^2)
 
 // ---------------------------------------------------------------------------
 // Box mesh (2 × 4 × 0.5, local +Y = nose direction)
@@ -112,119 +112,66 @@ Model createBoxMesh()
 // Physics
 // ---------------------------------------------------------------------------
 
-static dvec3 gravAccel(dvec3 const& pos, SolarSystem const& ss, double alpha)
-{
-    dvec3 a{0.0};
-
-    // Sun — fixed at origin
-    {
-        static constexpr double GM_SUN = 1.32712440018e11;
-        dvec3  r     = -pos;
-        double r_mag = glm::length(r);
-        a += (GM_SUN / (r_mag * r_mag * r_mag)) * r;
-    }
-
-    // Earth
-    {
-        constexpr std::size_t earth_idx = 3;
-        dvec3 earth_pos = glm::mix(ss.states[earth_idx].prev_position_km,
-                                   ss.states[earth_idx].position_km,
-                                   alpha);
-        dvec3  r     = earth_pos - pos;
-        double r_mag = glm::length(r);
-        if (r_mag >= ss.defs[earth_idx].radius_km)
-        {
-            double GM = G_km * ss.defs[earth_idx].mass_kg;
-            a += (GM / (r_mag * r_mag * r_mag)) * r;
-        }
-    }
-
-    // Moon
-    for (auto const& moon : ss.moon_states)
-    {
-        auto const& moon_def = ss.defs[moon.parent_planet_index].moons[moon.moon_index];
-        dvec3  body_pos = glm::mix(moon.prev_position_km, moon.position_km, alpha);
-        dvec3  r     = body_pos - pos;
-        double r_mag = glm::length(r);
-        if (r_mag < moon_def.radius_km) continue;
-        double GM = G_km * moon_def.mass_kg;
-        a += (GM / (r_mag * r_mag * r_mag)) * r;
-    }
-
-    return a;
-}
-
-// One leapfrog KDK step for a single spacecraft.
-static void stepSpacecraft(SpacecraftDef const& def, SpacecraftState& sc,
-                           SolarSystem const& ss, double dt, double alpha)
-{
-    glm::vec3  fwd_f = glm::mat3_cast(glm::quat(sc.orientation)) * glm::vec3(0.0f, 1.0f, 0.0f);
-    dvec3      fwd   = glm::dvec3(fwd_f);
-
-    dvec3 thrust_a = fwd * (sc.thrust_level * def.thrust_N / def.mass_kg * 1e-3);
-
-    dvec3 acc0 = gravAccel(sc.position_km, ss, alpha) + thrust_a;
-
-    dvec3 vel_half  = sc.velocity_km + acc0 * (dt * 0.5);
-    sc.position_km += vel_half * dt;
-
-    dvec3 acc1     = gravAccel(sc.position_km, ss, alpha) + thrust_a;
-    sc.velocity_km = vel_half + acc1 * (dt * 0.5);
-}
-
 void updateSpacecrafts(std::vector<SpacecraftDef> const& defs,
                        std::vector<SpacecraftState>&      states,
                        SolarSystem const&                 ss,
                        double                             scaled_dt)
 {
-    static int debug_frame = 0;
+    constexpr double SC_DT       = 30.0;
+    constexpr double PLANET_STEP = 3600.0;
 
     for (std::size_t i = 0; i < defs.size(); ++i)
     {
         auto const& def = defs[i];
         auto&       sc  = states[i];
 
-        sc.prev_position_km = sc.position_km;
+        sc.prev_position_km  = sc.position_km;
+        sc.time_accumulator += scaled_dt;
 
-        // Sub-step at SC_MAX_DT intervals, advancing a local alpha each step so
-        // planet/moon positions are interpolated at the correct moment in time
-        // rather than frozen at a single render_alpha for the whole frame.
-        constexpr double SC_MAX_DT    = 30.0;
-        constexpr double PLANET_STEP  = 3600.0;
-        double t         = std::fmod(ss.elapsed_simulation_s - scaled_dt, PLANET_STEP);
-        double remaining = scaled_dt;
-        while (remaining > 0.0)
+        // Thrust: constant direction over each substep (orientation fixed per step).
+        dvec3 fwd      = dvec3(glm::mat3_cast(glm::quat(sc.orientation)) * glm::vec3(0, 1, 0));
+        dvec3 thrust_a = fwd * (sc.thrust_level * def.thrust_N / def.mass_kg * 1e-3);
+
+        // Pre-collect body bracket positions (planet step prev/curr) and GMs.
+        // These don't change between substeps — only alpha changes.
+        struct BodyBracket { dvec3 prev, curr; double GM; };
+        std::vector<BodyBracket> bodies;
+        bodies.reserve(1 + ss.defs.size() + ss.moon_states.size());
+
+        bodies.push_back({dvec3(0.0), dvec3(0.0), GM_SUN}); // Sun, stationary
+
+        for (std::size_t j = 1; j < ss.defs.size(); ++j)    // planets (skip Sun at 0)
+            bodies.push_back({ss.states[j].prev_position_km,
+                              ss.states[j].position_km,
+                              G_km * ss.defs[j].mass_kg});
+
+        for (auto const& moon : ss.moon_states)
         {
-            double sub_dt = std::min(remaining, SC_MAX_DT);
-            double alpha  = std::clamp(t / PLANET_STEP, 0.0, 1.0);
-            stepSpacecraft(def, sc, ss, sub_dt, alpha);
-            t         += sub_dt;
-            if (t >= PLANET_STEP) t -= PLANET_STEP;
-            remaining -= sub_dt;
+            auto const& moon_def = ss.defs[moon.parent_planet_index].moons[moon.moon_index];
+            bodies.push_back({moon.prev_position_km,
+                              moon.position_km,
+                              G_km * moon_def.mass_kg});
         }
 
-        if (debug_frame % 60 == 0)
+        std::vector<Attractor> attractors(bodies.size());
+
+        while (sc.time_accumulator >= SC_DT)
         {
-            // Find Earth index
-            std::size_t earth_idx = 3;
-            for (std::size_t j = 0; j < ss.defs.size(); ++j)
-                if (std::string_view(ss.defs[j].name) == "Earth") { earth_idx = j; break; }
+            // Where is the spacecraft within the current planet step?
+            // simulation_time_s is the elapsed time in the current planet step.
+            // time_accumulator is how far behind the current sim time we still are.
+            double alpha_begin = std::clamp((ss.simulation_time_s - sc.time_accumulator)          / PLANET_STEP, 0.0, 1.0);
+            double alpha_end   = std::clamp((ss.simulation_time_s - sc.time_accumulator + SC_DT)  / PLANET_STEP, 0.0, 1.0);
 
-            dvec3 earth_pos = glm::mix(ss.states[earth_idx].prev_position_km,
-                                       ss.states[earth_idx].position_km,
-                                       ss.render_alpha);
-            dvec3 rel       = sc.position_km - earth_pos;
-            double dist     = glm::length(rel);
-            double speed    = glm::length(sc.velocity_km - ss.states[earth_idx].velocity_km);
-            double v_circ   = std::sqrt(G_km * ss.defs[earth_idx].mass_kg / dist);
+            for (std::size_t k = 0; k < bodies.size(); ++k)
+                attractors[k] = {glm::mix(bodies[k].prev, bodies[k].curr, alpha_begin),
+                                 glm::mix(bodies[k].prev, bodies[k].curr, alpha_end),
+                                 bodies[k].GM};
 
-/*
-            spdlog::info("SC[{}] dist_earth={:.1f} km  alt={:.1f} km  rel_speed={:.3f} km/s  v_circ={:.3f} km/s  scaled_dt={:.4f}s  render_alpha={:.4f}",
-                i, dist, dist - ss.defs[earth_idx].radius_km, speed, v_circ, scaled_dt, ss.render_alpha);
-                */
+            leapfrogKDK(sc.position_km, sc.velocity_km, attractors, SC_DT, thrust_a);
+            sc.time_accumulator -= SC_DT;
         }
     }
-    ++debug_frame;
 }
 
 // ---------------------------------------------------------------------------

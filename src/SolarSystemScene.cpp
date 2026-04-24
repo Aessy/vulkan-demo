@@ -298,7 +298,6 @@ void initSpacecraftLines(RenderingState const& state, Scene& scene,
     Material const lines_mat{.name = {"Lines"}, .program = 3, .shader_data = {}};
     constexpr std::size_t earth_idx = 3;
 
-    glm::dvec3 earth_pos = interpolatedPosition(ss, earth_idx);
     glm::dvec3 earth_vel = ss.states[earth_idx].velocity_km;
 
     for (std::size_t i = 0; i < ss.spacecraft_states.size(); ++i)
@@ -306,7 +305,9 @@ void initSpacecraftLines(RenderingState const& state, Scene& scene,
         auto const& sc = ss.spacecraft_states[i];
 
         // --- Orbit ring ---
-        glm::dvec3 r_rel = sc.position_km - earth_pos;
+        glm::dvec3 earth_pos_phys   = planetPositionAtSpacecraftTime(ss, earth_idx, i);
+        glm::dvec3 earth_pos_render = interpolatedPosition(ss, earth_idx);
+        glm::dvec3 r_rel = sc.position_km - earth_pos_phys;
         glm::dvec3 v_rel = sc.velocity_km  - earth_vel;
         KeplerOrbit orbit = computeOsculatingOrbit(r_rel, v_rel, GM_EARTH_SCENE);
 
@@ -320,7 +321,7 @@ void initSpacecraftLines(RenderingState const& state, Scene& scene,
         ro.vertex_buffer = ov.buffer;
         ro.index_buffer  = oi.buffer;
         ro.indices_size  = static_cast<uint32_t>(ring_i.size());
-        ro.position      = glm::vec3(earth_pos - cam.pos_d);
+        ro.position      = glm::vec3(earth_pos_render - cam.pos_d);
         ro.scale         = 1.0f;
         ro.rotation      = glm::vec3(0.0f, 1.0f, 0.0f);
         ro.material      = lines_mat;
@@ -345,7 +346,7 @@ void initSpacecraftLines(RenderingState const& state, Scene& scene,
         po.vertex_buffer = pv.buffer;
         po.index_buffer  = pi.buffer;
         po.indices_size  = 0; // nothing drawn until first rebuild
-        po.position      = glm::vec3(earth_pos - cam.pos_d);
+        po.position      = glm::vec3(earth_pos_render - cam.pos_d);
         po.scale         = 1.0f;
         po.rotation      = glm::vec3(0.0f, 1.0f, 0.0f);
         po.material      = lines_mat;
@@ -496,7 +497,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         if (sc.scene_object_index < 0) continue;
         auto& obj = scene.objs[sc.scene_object_index];
 
-        obj.position         = glm::vec3(sc.position_km - scene.camera.pos_d);
+        obj.position         = glm::vec3(interpolatedSpacecraftPosition(ss, i) - scene.camera.pos_d);
         obj.rotation_override = glm::mat4_cast(glm::quat(sc.orientation));
         obj.scale            = static_cast<float>(ss.spacecraft_defs[i].visual_scale_km);
     }
@@ -505,17 +506,21 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
     if (line_objs.sc_orbit_obj_ids.empty()) return;
 
     constexpr std::size_t earth_idx = 3;
-    glm::dvec3 const earth_pos = interpolatedPosition(ss, earth_idx);
     glm::dvec3 const earth_vel = ss.states[earth_idx].velocity_km;
-    glm::vec3  const earth_crr = glm::vec3(earth_pos - scene.camera.pos_d);
 
     for (std::size_t i = 0; i < ss.spacecraft_states.size(); ++i)
     {
         if (i >= line_objs.sc_orbit_obj_ids.size()) break;
         auto const& sc = ss.spacecraft_states[i];
 
+        // Physics-time Earth position: consistent with sc.position_km for orbit shape.
+        // Render-time Earth position: where the ring object is anchored in the scene.
+        glm::dvec3 const earth_pos_phys = planetPositionAtSpacecraftTime(ss, earth_idx, i);
+        glm::dvec3 const earth_pos_render = interpolatedPosition(ss, earth_idx);
+        glm::vec3  const earth_crr = glm::vec3(earth_pos_render - scene.camera.pos_d);
+
         // --- Osculating orbit ring ---
-        glm::dvec3 r_rel = sc.position_km - earth_pos;
+        glm::dvec3 r_rel = sc.position_km - earth_pos_phys;
         glm::dvec3 v_rel = sc.velocity_km  - earth_vel;
         KeplerOrbit orbit = computeOsculatingOrbit(r_rel, v_rel, GM_EARTH_SCENE);
 

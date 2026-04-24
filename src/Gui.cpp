@@ -1023,7 +1023,7 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
     {
         constexpr std::size_t earth_idx = 3;
         glm::dvec3 earth_pos = interpolatedPosition(ss, earth_idx);
-        double dist_km  = glm::length(sc.position_km - earth_pos);
+        double dist_km  = glm::length(interpolatedSpacecraftPosition(ss, static_cast<std::size_t>(ss.selected_spacecraft)) - earth_pos);
         double alt_km   = dist_km - ss.defs[earth_idx].radius_km;
         ImGui::Text("Altitude (Earth): %.1f km", alt_km);
     }

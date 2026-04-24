@@ -22,6 +22,7 @@ struct SpacecraftState {
     glm::dvec3 velocity_km{0.0};                    // km/s
     glm::dquat orientation{1.0, 0.0, 0.0, 0.0};    // world-space orientation; local +Y = nose
     double     thrust_level{0.0};                   // [0, 1] fraction of max thrust
+    double     time_accumulator{0.0};               // simulation seconds pending integration
     int        scene_object_index{-1};
 };
 
