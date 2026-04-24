@@ -81,6 +81,7 @@
 #include "SolarSystem.h"
 #include "SolarSystemScene.h"
 #include "Spacecraft.h"
+#include "Maneuver.h"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -445,9 +446,9 @@ int main()
             {
                 initSpacecraftObjects(application.scene, solar_system,
                                       application.meshes.meshes.at(spacecraft_mesh_id),
-                                      application.scene.camera);
-                writeSpacecraftMaterialBuffers(application.scene, solar_system, 0);
-                writeSpacecraftMaterialBuffers(application.scene, solar_system, 1);
+                                      application.scene.camera, line_objects);
+                writeSpacecraftMaterialBuffers(application.scene, solar_system, line_objects, 0);
+                writeSpacecraftMaterialBuffers(application.scene, solar_system, line_objects, 1);
                 initSpacecraftLines(core, application.scene, solar_system,
                                     application.scene.camera, line_objects);
                 solar_system.spacecraft_path_dirty = true;
@@ -457,6 +458,26 @@ int main()
         // Advance simulation
         if (!first_frame && !solar_system.paused)
             updateSolarSystem(solar_system, static_cast<double>(delta));
+
+        // Per-frame SOI update and accumulated dV tracking
+        for (std::size_t sci = 0; sci < solar_system.spacecraft_states.size(); ++sci)
+        {
+            updateSpacecraftSOI(solar_system, sci);
+
+            auto&       sc  = solar_system.spacecraft_states[sci];
+            auto const& def = solar_system.spacecraft_defs[sci];
+            double const burn_rate = def.thrust_N / def.mass_kg * 1e-3; // km/s²
+
+            for (auto& node : sc.maneuvers)
+            {
+                if (!node.approved || node.completed) continue;
+                double target = glm::length(node.delta_v_world);
+                if (target <= 0.0) continue;
+                node.accumulated_dv += sc.thrust_level * burn_rate * static_cast<double>(delta);
+                if (node.accumulated_dv >= target)
+                    node.accumulated_dv = target;
+            }
+        }
 
         // Camera tracking priority: moon > planet > spacecraft > sun
         if (solar_system.selected_moon >= 0 &&
@@ -494,7 +515,32 @@ int main()
         {
             auto& sc  = solar_system.spacecraft_states[solar_system.selected_spacecraft];
 
-            if (solar_system.spacecraft_follow_orbit)
+            // Check per-maneuver lock_attitude on first active approved maneuver
+            bool any_lock = false;
+            for (auto const& node : sc.maneuvers)
+                if (node.approved && !node.completed) { any_lock = node.lock_attitude; break; }
+            if (any_lock)
+            {
+                // Lock nose to the burn Δv direction of the first active maneuver
+                constexpr std::size_t earth_idx = 3;
+                glm::dvec3 earth_vel = solar_system.states[earth_idx].velocity_km;
+                glm::dvec3 v_rel     = sc.velocity_km - earth_vel;
+                // Find the burn delta_v_world for the first approved non-completed maneuver
+                glm::dvec3 burn_dir{0.0};
+                for (auto const& node : sc.maneuvers)
+                    if (node.approved && !node.completed && glm::length(node.delta_v_world) > 1e-12)
+                    { burn_dir = node.delta_v_world; break; }
+                if (glm::length(burn_dir) < 1e-12) burn_dir = v_rel; // fallback: prograde
+                glm::dvec3 fwd = glm::normalize(burn_dir);
+                // Choose an up vector not parallel to fwd
+                glm::dvec3 ref = (std::abs(fwd.z) < 0.9) ? glm::dvec3(0,0,1) : glm::dvec3(0,1,0);
+                glm::dvec3 right = glm::normalize(glm::cross(fwd, ref));
+                glm::dvec3 up    = glm::cross(right, fwd);
+                glm::vec3 fwd_f{fwd}, right_f{right}, up_f{up};
+                glm::mat3 rot{right_f, fwd_f, up_f};
+                sc.orientation = glm::dquat(glm::quat_cast(rot));
+            }
+            else if (solar_system.spacecraft_follow_orbit)
             {
                 // Auto-align nose (+Y) to orbital velocity relative to Earth
                 constexpr std::size_t earth_idx = 3;
@@ -510,7 +556,6 @@ int main()
                     glm::dvec3 radial = glm::normalize(sc.position_km - earth_pos);
                     glm::dvec3 right  = glm::normalize(glm::cross(fwd, radial));
                     glm::dvec3 up     = glm::cross(right, fwd);
-                    // Build rotation matrix: columns = world-space directions of local X, Y, Z
                     glm::vec3 fwd_f{fwd}, right_f{right}, up_f{up};
                     glm::mat3 rot{right_f, fwd_f, up_f};
                     sc.orientation = glm::dquat(glm::quat_cast(rot));
@@ -537,9 +582,9 @@ int main()
             {
                 double prev_thrust = sc.thrust_level;
                 if (app.keyboard.z_key)
-                    sc.thrust_level = std::min(1.0, sc.thrust_level + 0.2 * static_cast<double>(delta));
+                    sc.thrust_level = std::min(1.0, sc.thrust_level + 0.4 * static_cast<double>(delta));
                 if (app.keyboard.x_key)
-                    sc.thrust_level = std::max(0.0, sc.thrust_level - 0.2 * static_cast<double>(delta));
+                    sc.thrust_level = std::max(0.0, sc.thrust_level - 0.4 * static_cast<double>(delta));
                 if (sc.thrust_level != prev_thrust)
                     solar_system.spacecraft_path_dirty = true;
             }

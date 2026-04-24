@@ -103,6 +103,7 @@ struct SolarSystem {
     // Spacecraft
     std::vector<SpacecraftDef>   spacecraft_defs;
     std::vector<SpacecraftState> spacecraft_states;
+    std::vector<bool>            show_spacecraft_label;
     int   selected_spacecraft{-1};
     float spacecraft_rotation_rate{45.0f}; // degrees per second
     bool  spacecraft_follow_orbit{false};  // auto-align nose to orbital velocity
@@ -116,6 +117,21 @@ struct SolarSystem {
     bool   show_spacecraft_path{false};
     double spacecraft_path_duration_s{8800.0}; // ~1.6 LEO orbits
     bool   spacecraft_path_dirty{true};
+
+    // Maneuver planning mode
+    bool   maneuver_mode{false};
+    bool   maneuver_targets_initialized{false};
+    int    maneuver_sc_idx{-1};
+    double maneuver_t0_s{0.0};            // slider value [0, 3600]
+    // Target absolute velocity at t0 in PRN frame (km/s). Default = current orbit.
+    // Actual Δv = target − reference (computed each frame in updateSceneFromSolarSystem).
+    double maneuver_prograde{0.0};
+    double maneuver_radial{0.0};
+    double maneuver_normal{0.0};
+    // Reference velocity at t0 in PRN frame (updated each frame, read by GUI)
+    double maneuver_ref_prograde{0.0};
+    double maneuver_ref_radial{0.0};
+    double maneuver_ref_normal{0.0};
 };
 
 SolarSystem createSolarSystem();

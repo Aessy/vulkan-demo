@@ -4,6 +4,7 @@
 #include "Material.h"
 #include "Pipelines/Planet.h"
 #include "Spacecraft.h"
+#include "Maneuver.h"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -158,6 +159,22 @@ makeGridGeometry(glm::vec4 color, int half_n = 10)
         add_line(glm::vec3(f, 0.0f, -half), glm::vec3(f, 0.0f, half));
         add_line(glm::vec3(-half, 0.0f, f), glm::vec3(half, 0.0f, f));
     }
+    return {verts, indices};
+}
+
+// Small cross marker: 4 arms in ±e_hat and ±q_hat directions, arm_km long each.
+// Used to mark the burn node position on the current orbit ring.
+// Returns a host-mapped-ready vertex/index buffer (4 verts, 4 indices, LINE_LIST).
+static std::pair<std::vector<LineVertex>, std::vector<uint32_t>>
+makeNodeCrossGeometry(float arm_km, glm::vec4 color)
+{
+    std::vector<LineVertex> verts = {
+        { glm::vec3( arm_km, 0.0f,    0.0f),    color, 0.0f },
+        { glm::vec3(-arm_km, 0.0f,    0.0f),    color, 1.0f },
+        { glm::vec3(   0.0f, 0.0f,  arm_km),    color, 0.0f },
+        { glm::vec3(   0.0f, 0.0f, -arm_km),    color, 1.0f },
+    };
+    std::vector<uint32_t> indices = {0, 1, 2, 3};
     return {verts, indices};
 }
 
@@ -401,6 +418,53 @@ void initSpacecraftLines(RenderingState const& state, Scene& scene,
         addObject(scene, po);
         line_objs.sc_path_vbufs.push_back(std::move(pv));
         line_objs.sc_path_ibufs.push_back(std::move(pi));
+
+        // --- Post-burn maneuver orbit ring (unit circle, cyan, initially hidden) ---
+        auto [mov, moi] = makeUnitCircleGeometry(glm::vec4(0.2f, 0.9f, 1.0f, 1.0f));
+        auto mv = createLineVertexBuffer(state, mov);
+        auto mi = createIndexBuffer(state, moi);
+
+        Object mro{};
+        mro.vertex_buffer     = mv.buffer;
+        mro.index_buffer      = mi.buffer;
+        mro.indices_size      = static_cast<uint32_t>(moi.size());
+        mro.position          = glm::vec3(earth_pos_render - cam.pos_d);
+        mro.scale             = 1.0f;
+        mro.rotation          = glm::vec3(0.0f, 1.0f, 0.0f);
+        mro.rotation_override = orbitRingMatrix(orbit);
+        mro.material          = lines_mat;
+        mro.line_width        = 1.5f;
+        mro.line_alpha        = 0.8f;
+        mro.visible           = false;
+
+        line_objs.sc_maneuver_orbit_obj_ids.push_back(static_cast<int>(scene.objs.size()));
+        addObject(scene, mro);
+        line_objs.sc_maneuver_orbit_vbufs.push_back(std::move(mv));
+        line_objs.sc_maneuver_orbit_ibufs.push_back(std::move(mi));
+    }
+
+    // --- Burn node cross marker (one shared, hidden until planning) ---
+    {
+        auto [cv, ci] = makeNodeCrossGeometry(80.0f, glm::vec4(1.0f, 0.6f, 0.0f, 1.0f));
+        auto cnv = createLineVertexBuffer(state, cv);
+        auto cni = createIndexBuffer(state, ci);
+
+        Object cno{};
+        cno.vertex_buffer = cnv.buffer;
+        cno.index_buffer  = cni.buffer;
+        cno.indices_size  = static_cast<uint32_t>(ci.size());
+        cno.position      = glm::vec3(0.0f);
+        cno.scale         = 1.0f;
+        cno.rotation      = glm::vec3(0.0f, 1.0f, 0.0f);
+        cno.material      = lines_mat;
+        cno.line_width    = 2.0f;
+        cno.line_alpha    = 1.0f;
+        cno.visible       = false;
+
+        line_objs.maneuver_node_obj_id = static_cast<int>(scene.objs.size());
+        addObject(scene, cno);
+        line_objs.maneuver_node_vbuf = std::move(cnv);
+        line_objs.maneuver_node_ibuf = std::move(cni);
     }
 }
 
@@ -616,6 +680,154 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
 
             const_cast<SolarSystem&>(ss).spacecraft_path_dirty = false;
         }
+
+        // --- Maneuver visuals (ghost, post-burn ring, node marker) ---
+        bool const is_maneuver_sc = ss.maneuver_mode &&
+                                    ss.maneuver_sc_idx == static_cast<int>(i);
+
+        if (i < line_objs.sc_maneuver_orbit_obj_ids.size())
+        {
+            auto& mo = scene.objs[line_objs.sc_maneuver_orbit_obj_ids[i]];
+            if (is_maneuver_sc)
+            {
+                // Propagate orbit to burn time (relative to Earth)
+                auto [br, bv] = keplerPropagate(r_rel, v_rel, GM_EARTH_SCENE,
+                                                ss.maneuver_t0_s);
+
+                // Decompose reference velocity at t0 into PRN frame
+                glm::dvec3 const pg_hat = glm::length(bv) > 1e-15
+                    ? glm::normalize(bv) : glm::dvec3(0.0, 1.0, 0.0);
+                glm::dvec3 const rd_hat = glm::length(br) > 1e-15
+                    ? glm::normalize(br) : glm::dvec3(1.0, 0.0, 0.0);
+                glm::dvec3 const nm_hat = glm::normalize(glm::cross(br, bv));
+                double const ref_pg = glm::dot(bv, pg_hat);
+                double const ref_rd = glm::dot(bv, rd_hat);
+                double const ref_nm = glm::dot(bv, nm_hat); // ≈ 0
+
+                // Publish reference so GUI can display it; seed targets on first frame
+                auto& ss_mut = const_cast<SolarSystem&>(ss);
+                ss_mut.maneuver_ref_prograde = ref_pg;
+                ss_mut.maneuver_ref_radial   = ref_rd;
+                ss_mut.maneuver_ref_normal   = ref_nm;
+                if (!ss_mut.maneuver_targets_initialized)
+                {
+                    ss_mut.maneuver_prograde            = ref_pg;
+                    ss_mut.maneuver_radial              = ref_rd;
+                    ss_mut.maneuver_normal              = ref_nm;
+                    ss_mut.maneuver_targets_initialized = true;
+                }
+
+                // Actual Δv = target velocity − reference velocity
+                glm::dvec3 const dv = dvWorld(br, bv,
+                    ss.maneuver_prograde - ref_pg,
+                    ss.maneuver_radial   - ref_rd,
+                    ss.maneuver_normal   - ref_nm);
+                glm::dvec3 const bv_post = bv + dv;
+
+                // Store burn state for HUD / approval
+                if (!ss_mut.spacecraft_states[i].maneuvers.empty() &&
+                    !ss_mut.spacecraft_states[i].maneuvers.back().approved)
+                {
+                    auto& node = ss_mut.spacecraft_states[i].maneuvers.back();
+                    node.burn_pos_rel   = br;
+                    node.burn_vel_rel   = bv;
+                    node.delta_v_world  = dv;
+                }
+
+                KeplerOrbit const post_orbit = computeOsculatingOrbit(br, bv_post, GM_EARTH_SCENE);
+                double const dv_mag = glm::length(dv);
+                mo.position          = earth_crr;
+                mo.rotation_override = orbitRingMatrix(post_orbit);
+                mo.visible           = post_orbit.a > 0.0 && post_orbit.e < 1.0 && dv_mag > 0.0;
+            }
+            else
+            {
+                // Show approved (non-completed) maneuver orbit using stored burn state
+                auto const& sc2 = ss.spacecraft_states[i];
+                bool shown = false;
+                for (auto const& node : sc2.maneuvers)
+                {
+                    if (!node.approved || node.completed) continue;
+                    if (glm::length(node.delta_v_world) < 1e-12) continue;
+                    glm::dvec3 bv_post = node.burn_vel_rel + node.delta_v_world;
+                    KeplerOrbit const aorbit = computeOsculatingOrbit(
+                        node.burn_pos_rel, bv_post, GM_EARTH_SCENE);
+                    if (aorbit.a > 0.0 && aorbit.e < 1.0)
+                    {
+                        mo.position          = earth_crr;
+                        mo.rotation_override = orbitRingMatrix(aorbit);
+                        mo.visible           = true;
+                        shown = true;
+                    }
+                    break; // one maneuver ring per spacecraft
+                }
+                if (!shown) mo.visible = false;
+            }
+        }
+    }
+
+    // Burn node marker — visible during planning AND for approved nodes
+    if (line_objs.maneuver_node_obj_id >= 0)
+    {
+        auto& no = scene.objs[line_objs.maneuver_node_obj_id];
+        no.visible = false;
+
+        if (ss.maneuver_mode && ss.maneuver_sc_idx >= 0 &&
+            ss.maneuver_sc_idx < static_cast<int>(ss.spacecraft_states.size()))
+        {
+            // Planning: propagate to current t0
+            std::size_t const sci  = static_cast<std::size_t>(ss.maneuver_sc_idx);
+            auto const& sc2        = ss.spacecraft_states[sci];
+            glm::dvec3 earth_pos_p = planetPositionAtSpacecraftTime(ss, earth_idx, sci);
+            glm::dvec3 earth_pos_r = interpolatedPosition(ss, earth_idx);
+            glm::dvec3 r2          = sc2.position_km - earth_pos_p;
+            glm::dvec3 v2          = sc2.velocity_km - earth_vel;
+            auto [br, bv]          = keplerPropagate(r2, v2, GM_EARTH_SCENE, ss.maneuver_t0_s);
+            no.position  = glm::vec3(earth_pos_r + br - scene.camera.pos_d);
+            no.visible   = true;
+        }
+        else
+        {
+            // Approved: show at stored burn position for first active maneuver found
+            for (std::size_t sci = 0; sci < ss.spacecraft_states.size(); ++sci)
+            {
+                for (auto const& node : ss.spacecraft_states[sci].maneuvers)
+                {
+                    if (!node.approved || node.completed) continue;
+                    glm::dvec3 earth_pos_r = interpolatedPosition(ss, earth_idx);
+                    no.position = glm::vec3(earth_pos_r + node.burn_pos_rel - scene.camera.pos_d);
+                    no.visible  = true;
+                    goto node_done;
+                }
+            }
+            node_done:;
+        }
+    }
+
+    // Ghost spacecraft
+    if (line_objs.maneuver_ghost_obj_id >= 0)
+    {
+        auto& go = scene.objs[line_objs.maneuver_ghost_obj_id];
+        if (ss.maneuver_mode && ss.maneuver_sc_idx >= 0 &&
+            ss.maneuver_sc_idx < static_cast<int>(ss.spacecraft_states.size()))
+        {
+            std::size_t const sci  = static_cast<std::size_t>(ss.maneuver_sc_idx);
+            auto const& sc2        = ss.spacecraft_states[sci];
+            glm::dvec3 earth_pos_p = planetPositionAtSpacecraftTime(ss, earth_idx, sci);
+            glm::dvec3 earth_pos_r = interpolatedPosition(ss, earth_idx);
+            glm::dvec3 r2          = sc2.position_km - earth_pos_p;
+            glm::dvec3 v2          = sc2.velocity_km - earth_vel;
+            auto [br, bv]          = keplerPropagate(r2, v2, GM_EARTH_SCENE, ss.maneuver_t0_s);
+            glm::vec3  ghost_crr   = glm::vec3(earth_pos_r + br - scene.camera.pos_d);
+            go.position          = ghost_crr;
+            go.scale             = static_cast<float>(ss.spacecraft_defs[sci].visual_scale_km);
+            go.rotation_override = scene.objs[sc2.scene_object_index].rotation_override;
+            go.visible           = true;
+        }
+        else
+        {
+            go.visible = false;
+        }
     }
 }
 
@@ -633,7 +845,8 @@ void updateSunLighting(Scene& scene, Camera const& cam)
 // ---------------------------------------------------------------------------
 
 void initSpacecraftObjects(Scene& scene, SolarSystem& ss,
-                           DrawableMesh const& mesh, Camera const& cam)
+                           DrawableMesh const& mesh, Camera const& cam,
+                           SolarSystemLineObjects& line_objs)
 {
     Material const mat{
         .name = {"Spacecraft"},
@@ -658,9 +871,25 @@ void initSpacecraftObjects(Scene& scene, SolarSystem& ss,
         state.scene_object_index = static_cast<int>(scene.objs.size());
         addObject(scene, obj);
     }
+
+    // Ghost spacecraft: one shared object at maneuver burn position.
+    // Added last so its gl_BaseInstance falls after all real spacecraft.
+    if (line_objs.maneuver_ghost_obj_id < 0 && !ss.spacecraft_defs.empty())
+    {
+        Object ghost = createObject(mesh);
+        ghost.material        = mat;
+        ghost.position        = glm::vec3(0.0f);
+        ghost.scale           = static_cast<float>(ss.spacecraft_defs[0].visual_scale_km);
+        ghost.rotation_override = glm::mat4(1.0f);
+        ghost.visible         = false;
+
+        line_objs.maneuver_ghost_obj_id = static_cast<int>(scene.objs.size());
+        addObject(scene, ghost);
+    }
 }
 
-void writeSpacecraftMaterialBuffers(Scene& scene, SolarSystem const& ss, int frame)
+void writeSpacecraftMaterialBuffers(Scene& scene, SolarSystem const& ss,
+                                    SolarSystemLineObjects const& line_objs, int frame)
 {
     // Compute the same base_index as writePlanetMaterialBuffers
     int base_index = 0;
@@ -688,10 +917,28 @@ void writeSpacecraftMaterialBuffers(Scene& scene, SolarSystem const& ss, int fra
         mat.albedo_color           = glm::vec4(def.color, 1.0f);
         mat.roughness              = 0.5f;
         mat.metallic               = 0.0f;
-        mat.emissive               = 1.0f; // always fully lit — no sun shading on spacecraft
+        mat.emissive               = 1.0f;
         mat.cloud_texture          = -1;
 
         writeBuffer(*scene.planet_material_buffer[frame], mat,
                     base_index + planet_count + moon_count + j);
+    }
+
+    // Ghost spacecraft material: golden-orange tint
+    if (line_objs.maneuver_ghost_obj_id >= 0)
+    {
+        int const ghost_slot = planet_count + moon_count + static_cast<int>(ss.spacecraft_defs.size());
+        PlanetMaterialData ghost_mat;
+        ghost_mat.diffuse_texture        = -1;
+        ghost_mat.normal_texture         = -1;
+        ghost_mat.has_normal_map         = 0;
+        ghost_mat.has_atmosphere         = 0;
+        ghost_mat.atmosphere_color_scale = glm::vec4(0.0f);
+        ghost_mat.albedo_color           = glm::vec4(1.0f, 0.5f, 0.1f, 1.0f);
+        ghost_mat.roughness              = 0.5f;
+        ghost_mat.metallic               = 0.0f;
+        ghost_mat.emissive               = 1.0f;
+        ghost_mat.cloud_texture          = -1;
+        writeBuffer(*scene.planet_material_buffer[frame], ghost_mat, base_index + ghost_slot);
     }
 }

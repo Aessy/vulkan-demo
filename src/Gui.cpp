@@ -950,6 +950,29 @@ void drawPlanetLabels(SolarSystem const& solar_system, Camera const& cam)
         dl->AddText(ImVec2(sx,     sy    ), IM_COL32(200, 200, 255, 255), moon_def.name);
         dl->AddCircleFilled(ImVec2(sx, sy - 8), 3.0f, IM_COL32(200, 200, 255, 200));
     }
+
+    // Spacecraft labels
+    for (int j = 0; j < static_cast<int>(solar_system.spacecraft_states.size()); ++j)
+    {
+        if (j >= static_cast<int>(solar_system.show_spacecraft_label.size())) break;
+        if (!solar_system.show_spacecraft_label[j]) continue;
+
+        auto const& sc  = solar_system.spacecraft_states[j];
+        auto const& def = solar_system.spacecraft_defs[j];
+
+        glm::vec3 cam_rel = glm::vec3(interpolatedSpacecraftPosition(solar_system, j) - cam.pos_d);
+        glm::vec4 clip    = cam.proj * view * glm::vec4(cam_rel, 1.0f);
+        if (clip.w <= 0.0f) continue;
+        glm::vec3 ndc = glm::vec3(clip) / clip.w;
+        if (ndc.x < -1.0f || ndc.x > 1.0f || ndc.y < -1.0f || ndc.y > 1.0f) continue;
+
+        float sx = ( ndc.x * 0.5f + 0.5f) * screen.x;
+        float sy = (-ndc.y * 0.5f + 0.5f) * screen.y;
+
+        dl->AddText(ImVec2(sx + 1, sy + 1), IM_COL32(0, 0, 0, 200), def.name);
+        dl->AddText(ImVec2(sx,     sy    ), IM_COL32(255, 220, 80, 255), def.name);
+        dl->AddCircleFilled(ImVec2(sx, sy - 8), 3.0f, IM_COL32(255, 220, 80, 200));
+    }
 }
 
 
@@ -962,6 +985,7 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
     if (ImGui::Button("Spawn at Earth"))
     {
         spawnSpacecraftAtEarth(ss.spacecraft_defs, ss.spacecraft_states, ss);
+        ss.show_spacecraft_label.push_back(true); // label on by default
         ss.selected_spacecraft = static_cast<int>(ss.spacecraft_states.size()) - 1;
     }
 
@@ -980,7 +1004,7 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
         ss.selected_moon    = -1;
     }
 
-    // Spacecraft selector
+    // Spacecraft selector with per-craft label toggle
     {
         const char* sel_name = (ss.selected_spacecraft >= 0)
             ? ss.spacecraft_defs[ss.selected_spacecraft].name
@@ -990,6 +1014,14 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
             for (int i = 0; i < static_cast<int>(ss.spacecraft_defs.size()); ++i)
             {
                 bool selected = (ss.selected_spacecraft == i);
+                if (i < static_cast<int>(ss.show_spacecraft_label.size()))
+                {
+                    ImGui::PushID(i);
+                    bool lbl = ss.show_spacecraft_label[i];
+                    if (ImGui::Checkbox("##lbl", &lbl)) ss.show_spacecraft_label[i] = lbl;
+                    ImGui::SameLine();
+                    ImGui::PopID();
+                }
                 if (ImGui::Selectable(ss.spacecraft_defs[i].name, selected))
                     ss.selected_spacecraft = i;
                 if (selected) ImGui::SetItemDefaultFocus();
@@ -1080,6 +1112,178 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
         }
     }
 
+    // Maneuver planning button
+    ImGui::Separator();
+    if (ImGui::Button("Plan Maneuver"))
+    {
+        ss.maneuver_mode                = true;
+        ss.maneuver_targets_initialized = false; // let updateSceneFromSolarSystem seed targets
+        ss.paused                       = true;
+        ss.maneuver_sc_idx              = ss.selected_spacecraft;
+        ss.maneuver_t0_s                = 0.0;
+
+        ManeuverNode pending{};
+        pending.t0_s = 0.0;
+        sc.maneuvers.push_back(pending);
+    }
+
+    ImGui::End();
+}
+
+static void createManeuverPlannerGui(SolarSystem& ss)
+{
+    if (!ss.maneuver_mode) return;
+    if (ss.maneuver_sc_idx < 0 ||
+        ss.maneuver_sc_idx >= static_cast<int>(ss.spacecraft_states.size())) return;
+
+    auto& sc  = ss.spacecraft_states[ss.maneuver_sc_idx];
+    auto const& def = ss.spacecraft_defs[ss.maneuver_sc_idx];
+
+    ImGui::SetNextWindowPos(ImVec2(400, 400), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(360, 260), ImGuiCond_FirstUseEver);
+    bool open = true;
+    if (ImGui::Begin("Maneuver Planner", &open))
+    {
+        ImGui::Text("Planning maneuver for: %s", def.name);
+        ImGui::Separator();
+
+        float t0_min = static_cast<float>(ss.maneuver_t0_s / 60.0);
+        if (ImGui::SliderFloat("T0 (sim-min)", &t0_min, 0.0f, 60.0f, "%.1f min"))
+            ss.maneuver_t0_s = static_cast<double>(t0_min) * 60.0;
+
+        ImGui::TextDisabled("Reference at T0:  pg %.4f  rd %.4f  nm %.4f  km/s",
+            ss.maneuver_ref_prograde, ss.maneuver_ref_radial, ss.maneuver_ref_normal);
+
+        float pg = static_cast<float>(ss.maneuver_prograde);
+        float rd = static_cast<float>(ss.maneuver_radial);
+        float nm = static_cast<float>(ss.maneuver_normal);
+        if (ImGui::DragFloat("Prograde (km/s)", &pg, 0.001f, 0.0f, 15.0f,  "%.4f")) ss.maneuver_prograde = pg;
+        if (ImGui::DragFloat("Radial   (km/s)", &rd, 0.001f, -5.0f,  5.0f, "%.4f")) ss.maneuver_radial   = rd;
+        if (ImGui::DragFloat("Normal   (km/s)", &nm, 0.001f, -5.0f,  5.0f, "%.4f")) ss.maneuver_normal   = nm;
+
+        // Actual |Δv| from the pending node (updated by updateSceneFromSolarSystem before GUI runs)
+        double dv_mag = 0.0;
+        for (auto const& node : sc.maneuvers)
+            if (!node.approved) { dv_mag = glm::length(node.delta_v_world); break; }
+
+        ImGui::Text("Total |Δv|: %.4f km/s", dv_mag);
+
+        double const burn_rate = def.thrust_N / def.mass_kg * 1e-3; // km/s²
+        double const burn_time = (burn_rate > 0.0) ? dv_mag / burn_rate : 0.0;
+        ImGui::Text("Est. burn time: %.1f s", burn_time);
+
+        ImGui::Separator();
+        if (ImGui::Button("Approve"))
+        {
+            // Find the pending node and approve it
+            // delta_v_world, burn_pos_rel, burn_vel_rel are already up-to-date
+            // (set by updateSceneFromSolarSystem which runs before the GUI each frame)
+            for (auto& node : sc.maneuvers)
+            {
+                if (!node.approved)
+                {
+                    node.t0_s        = ss.maneuver_t0_s;
+                    node.t0_abs_s    = ss.elapsed_simulation_s + ss.maneuver_t0_s;
+                    node.prograde_dv = ss.maneuver_prograde - ss.maneuver_ref_prograde;
+                    node.radial_dv   = ss.maneuver_radial   - ss.maneuver_ref_radial;
+                    node.normal_dv   = ss.maneuver_normal   - ss.maneuver_ref_normal;
+                    node.approved    = true;
+                    break;
+                }
+            }
+            ss.maneuver_mode = false;
+            ss.paused        = false;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel"))
+        {
+            // Remove the pending unapproved node
+            auto& mnv = sc.maneuvers;
+            mnv.erase(std::remove_if(mnv.begin(), mnv.end(),
+                          [](ManeuverNode const& n){ return !n.approved; }), mnv.end());
+            ss.maneuver_mode = false;
+            ss.paused        = false;
+        }
+    }
+    ImGui::End();
+
+    if (!open)
+    {
+        // Window X-closed = cancel
+        auto& mnv = sc.maneuvers;
+        mnv.erase(std::remove_if(mnv.begin(), mnv.end(),
+                      [](ManeuverNode const& n){ return !n.approved; }), mnv.end());
+        ss.maneuver_mode = false;
+        ss.paused        = false;
+    }
+}
+
+static void createActiveManeuversHud(SolarSystem& ss)
+{
+    // Count active approved maneuvers across all spacecraft
+    bool any_active = false;
+    for (auto const& sc : ss.spacecraft_states)
+        for (auto const& node : sc.maneuvers)
+            if (node.approved && !node.completed) { any_active = true; break; }
+    if (!any_active) return;
+
+    ImGui::SetNextWindowPos(ImVec2(10, 800), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(400, 200), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Active Maneuvers");
+
+    for (int j = 0; j < static_cast<int>(ss.spacecraft_states.size()); ++j)
+    {
+        auto&       sc  = ss.spacecraft_states[j];
+        auto const& def = ss.spacecraft_defs[j];
+
+        for (int ni = static_cast<int>(sc.maneuvers.size()) - 1; ni >= 0; --ni)
+        {
+            auto& node = sc.maneuvers[ni];
+            if (!node.approved || node.completed) continue;
+
+            ImGui::PushID(j * 100 + ni);
+
+            double t_until = node.t0_abs_s - ss.elapsed_simulation_s;
+            double dv_mag  = glm::length(node.delta_v_world);
+            bool   burning = (t_until <= 0.0 && sc.thrust_level > 0.0);
+
+            int abs_s = static_cast<int>(std::abs(t_until));
+            int hrs   = abs_s / 3600;
+            int mins  = (abs_s % 3600) / 60;
+            int secs  = abs_s % 60;
+
+            ImGui::PushStyleColor(ImGuiCol_Text, burning
+                ? ImVec4(1.0f, 0.4f, 0.0f, 1.0f)
+                : ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+            ImGui::Text("[%s]  T%s%02d:%02d:%02d  |Δv| %.3f km/s",
+                def.name,
+                (t_until >= 0 ? "-" : "+"),
+                hrs, mins, secs,
+                dv_mag);
+            ImGui::PopStyleColor();
+
+            ImGui::Text("  pg: %+.3f  rd: %+.3f  nm: %+.3f",
+                node.prograde_dv, node.radial_dv, node.normal_dv);
+
+            if (dv_mag > 0.0 && node.accumulated_dv > 0.0)
+            {
+                float prog = static_cast<float>(node.accumulated_dv / dv_mag);
+                ImGui::ProgressBar(prog, ImVec2(-1, 0));
+                ImGui::Text("  Remaining: %.4f km/s", dv_mag - node.accumulated_dv);
+            }
+            else if (t_until <= 30.0 && t_until > 0.0)
+            {
+                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.0f, 1.0f), ">>> BURN IMMINENT <<<");
+            }
+
+            ImGui::Checkbox("Lock attitude to burn direction", &node.lock_attitude);
+            if (ImGui::Button("Cancel maneuver"))
+                sc.maneuvers.erase(sc.maneuvers.begin() + ni);
+
+            ImGui::Separator();
+            ImGui::PopID();
+        }
+    }
     ImGui::End();
 }
 
@@ -1090,6 +1294,8 @@ void createGui(RenderingState const& core, Application& application, SolarSystem
         createSolarSystemGui(*solar_system, application.scene.camera);
         drawPlanetLabels(*solar_system, application.scene.camera);
         createSpacecraftGui(*solar_system, application.scene.camera);
+        createManeuverPlannerGui(*solar_system);
+        createActiveManeuversHud(*solar_system);
     }
 
     ImGui::Begin("Vulkan rendering engine", nullptr, ImGuiWindowFlags_MenuBar);

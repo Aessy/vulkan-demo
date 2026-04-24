@@ -17,6 +17,7 @@ set(SRC src/VulkanRenderSystem.cpp
         src/SolarSystem.cpp
         src/SolarSystemScene.cpp
         src/Spacecraft.cpp
+        src/Maneuver.cpp
         src/RenderPass/ShadowMap.cpp
         src/RenderPass/SceneRenderPass.cpp
         src/Pipelines/GeneralPurpuse.cpp

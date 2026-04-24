@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Model.h"
+#include "Maneuver.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <vector>
@@ -11,7 +12,7 @@ struct SolarSystem;
 struct SpacecraftDef {
     const char* name{"Spacecraft-1"};
     double      mass_kg{10000.0};         // kg
-    double      thrust_N{10000000.0};      // max thrust in Newtons
+    double      thrust_N{200000.0};       // max thrust in Newtons (200 kN → ~20 m/s² for 10t craft)
     double      visual_scale_km{0.005};   // uniform scale: 1 unit = 5m → craft is 5m × 30m × 5m
     glm::vec3   color{1.0f, 0.9f, 0.2f}; // golden yellow
 };
@@ -24,6 +25,14 @@ struct SpacecraftState {
     double     thrust_level{0.0};                   // [0, 1] fraction of max thrust
     double     time_accumulator{0.0};               // simulation seconds pending integration
     int        scene_object_index{-1};
+
+    // SOI tracking
+    int  dominant_body_idx{3};   // index into ss.states (3 = Earth by default)
+    bool dominant_is_moon{false};
+    int  dominant_moon_idx{-1};  // index into ss.moon_states if dominant_is_moon
+
+    // Approved maneuver queue
+    std::vector<ManeuverNode> maneuvers;
 };
 
 // A flat box mesh: 2 wide (X) × 4 long (Y = forward/nose) × 0.5 thick (Z).
