@@ -117,7 +117,7 @@ void updateSpacecrafts(std::vector<SpacecraftDef> const& defs,
                        SolarSystem const&                 ss,
                        double                             scaled_dt)
 {
-    constexpr double SC_DT       = 30.0;
+    constexpr double SC_DT       = 1.0;
     constexpr double PLANET_STEP = 3600.0;
 
     for (std::size_t i = 0; i < defs.size(); ++i)
