@@ -25,6 +25,7 @@ struct MoonState {
     glm::dvec3 position_km{0.0};
     glm::dvec3 prev_position_km{0.0};
     glm::dvec3 velocity_km{0.0};
+    glm::dvec3 prev_velocity_km{0.0};
     double rotation_angle{0.0};
     double prev_rotation_angle{0.0};
     int scene_object_index{-1};
@@ -61,6 +62,7 @@ struct PlanetState {
     glm::dvec3 position_km{0.0};
     glm::dvec3 prev_position_km{0.0};   // position at start of current physics step
     glm::dvec3 velocity_km{0.0};
+    glm::dvec3 prev_velocity_km{0.0};
     double rotation_angle{0.0};
     double prev_rotation_angle{0.0};    // rotation at start of current physics step
     int    scene_object_index{-1};
@@ -145,6 +147,12 @@ Model createUVSphere(float radius, int stacks, int slices);
 {
     auto const& state = ss.states[idx];
     return glm::mix(state.prev_position_km, state.position_km, ss.render_alpha);
+}
+
+[[nodiscard]] inline glm::dvec3 interpolatedVelocity(SolarSystem const& ss, std::size_t idx)
+{
+    auto const& state = ss.states[idx];
+    return glm::mix(state.prev_velocity_km, state.velocity_km, ss.render_alpha);
 }
 
 // Extrapolated position for a spacecraft: advances from the last physics step

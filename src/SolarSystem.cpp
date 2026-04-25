@@ -116,6 +116,7 @@ void updateSolarSystem(SolarSystem& ss, double delta_seconds)
         for (auto&& [def, state] : std::views::zip(ss.defs, ss.states))
         {
             state.prev_position_km    = state.position_km;
+            state.prev_velocity_km    = state.velocity_km;
             state.prev_rotation_angle = state.rotation_angle;
 
             if (def.semi_major_axis_km <= 0.0) continue; // Sun is stationary
@@ -130,6 +131,7 @@ void updateSolarSystem(SolarSystem& ss, double delta_seconds)
         for (auto& moon : ss.moon_states)
         {
             moon.prev_position_km    = moon.position_km;
+            moon.prev_velocity_km    = moon.velocity_km;
             moon.prev_rotation_angle = moon.rotation_angle;
 
             auto const& parent_state = ss.states[moon.parent_planet_index];

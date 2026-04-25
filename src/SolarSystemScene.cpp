@@ -358,7 +358,7 @@ void initSpacecraftLines(RenderingState const& state, Scene& scene,
     Material const lines_mat{.name = {"Lines"}, .program = 3, .shader_data = {}};
     constexpr std::size_t earth_idx = 3;
 
-    glm::dvec3 earth_vel = ss.states[earth_idx].velocity_km;
+    glm::dvec3 earth_vel = interpolatedVelocity(ss, earth_idx);
 
     for (std::size_t i = 0; i < ss.spacecraft_states.size(); ++i)
     {
@@ -613,7 +613,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
     if (line_objs.sc_orbit_obj_ids.empty()) return;
 
     constexpr std::size_t earth_idx = 3;
-    glm::dvec3 const earth_vel = ss.states[earth_idx].velocity_km;
+    glm::dvec3 const earth_vel = interpolatedVelocity(ss, earth_idx);
 
     for (std::size_t i = 0; i < ss.spacecraft_states.size(); ++i)
     {
