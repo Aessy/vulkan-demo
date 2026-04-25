@@ -125,8 +125,7 @@ void updateSpacecrafts(std::vector<SpacecraftDef> const& defs,
         auto const& def = defs[i];
         auto&       sc  = states[i];
 
-        sc.prev_position_km  = sc.position_km;
-        sc.time_accumulator += scaled_dt;
+        sc.prev_position_km = sc.position_km;
 
         // Thrust: constant direction over each substep (orientation fixed per step).
         dvec3 fwd      = dvec3(glm::mat3_cast(glm::quat(sc.orientation)) * glm::vec3(0, 1, 0));
@@ -155,21 +154,33 @@ void updateSpacecrafts(std::vector<SpacecraftDef> const& defs,
 
         std::vector<Attractor> attractors(bodies.size());
 
-        while (sc.time_accumulator >= SC_DT)
+        if (sc.thrust_level > 0.0)
         {
-            // Where is the spacecraft within the current planet step?
-            // simulation_time_s is the elapsed time in the current planet step.
-            // time_accumulator is how far behind the current sim time we still are.
-            double alpha_begin = std::clamp((ss.simulation_time_s - sc.time_accumulator)          / PLANET_STEP, 0.0, 1.0);
-            double alpha_end   = std::clamp((ss.simulation_time_s - sc.time_accumulator + SC_DT)  / PLANET_STEP, 0.0, 1.0);
-
+            // During burn: step every frame so the orbit preview updates smoothly.
+            double alpha_begin = std::clamp((ss.simulation_time_s - scaled_dt) / PLANET_STEP, 0.0, 1.0);
+            double alpha_end   = std::clamp( ss.simulation_time_s              / PLANET_STEP, 0.0, 1.0);
             for (std::size_t k = 0; k < bodies.size(); ++k)
                 attractors[k] = {glm::mix(bodies[k].prev, bodies[k].curr, alpha_begin),
                                  glm::mix(bodies[k].prev, bodies[k].curr, alpha_end),
                                  bodies[k].GM};
+            leapfrogKDK(sc.position_km, sc.velocity_km, attractors, scaled_dt, thrust_a);
+        }
+        else
+        {
+            sc.time_accumulator += scaled_dt;
+            while (sc.time_accumulator >= SC_DT)
+            {
+                double alpha_begin = std::clamp((ss.simulation_time_s - sc.time_accumulator)         / PLANET_STEP, 0.0, 1.0);
+                double alpha_end   = std::clamp((ss.simulation_time_s - sc.time_accumulator + SC_DT) / PLANET_STEP, 0.0, 1.0);
 
-            leapfrogKDK(sc.position_km, sc.velocity_km, attractors, SC_DT, thrust_a);
-            sc.time_accumulator -= SC_DT;
+                for (std::size_t k = 0; k < bodies.size(); ++k)
+                    attractors[k] = {glm::mix(bodies[k].prev, bodies[k].curr, alpha_begin),
+                                     glm::mix(bodies[k].prev, bodies[k].curr, alpha_end),
+                                     bodies[k].GM};
+
+                leapfrogKDK(sc.position_km, sc.velocity_km, attractors, SC_DT, thrust_a);
+                sc.time_accumulator -= SC_DT;
+            }
         }
     }
 }

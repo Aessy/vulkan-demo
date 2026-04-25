@@ -12,7 +12,7 @@ struct SolarSystem;
 struct SpacecraftDef {
     const char* name{"Spacecraft-1"};
     double      mass_kg{10000.0};         // kg
-    double      thrust_N{200000.0};       // max thrust in Newtons (200 kN → ~20 m/s² for 10t craft)
+    double      thrust_N{400000.0};       // max thrust in Newtons (200 kN → ~20 m/s² for 10t craft)
     double      visual_scale_km{0.005};   // uniform scale: 1 unit = 5m → craft is 5m × 30m × 5m
     glm::vec3   color{1.0f, 0.9f, 0.2f}; // golden yellow
 };
