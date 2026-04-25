@@ -880,18 +880,60 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
 
                     if (glm::length(r_s - moon_r_s) < SOI_MOON_KM)
                     {
-                        entry_idx     = s;
-                        entry_tof     = tof;
-                        entry_r_earth = r_s;
-                        double const vr = std::sqrt(ref_GM / p_orb) * e_orb * std::sin(nu_w);
-                        double const vt = std::sqrt(ref_GM / p_orb) * (1.0 + e_orb * std::cos(nu_w));
-                        entry_v_earth = vr * glm::normalize(r_s) +
-                                       vt * glm::normalize(glm::cross(post_orbit.h_hat, r_s));
+                        entry_idx = s;
                         break;
                     }
                 }
 
                 if (entry_idx < 0) continue;
+
+                // Bisect between the last outside-SOI sample and the first inside-SOI
+                // sample to find a continuously-varying entry nu (eliminates the per-sample
+                // teleport jumps that appear at high time_scale).
+                {
+                    double nu_lo = nu_burn + (2.0 * M_PI * std::max(entry_idx - 1, 0)) / N_SCAN;
+                    double nu_hi = nu_burn + (2.0 * M_PI * entry_idx) / N_SCAN;
+
+                    for (int b = 0; b < 24; ++b)
+                    {
+                        double const nu_mid  = 0.5 * (nu_lo + nu_hi);
+                        double const nu_w_m  = std::fmod(nu_mid + 10.0 * M_PI, 2.0 * M_PI) - M_PI;
+
+                        double const E_m = toEccentric(nu_w_m);
+                        double       M_m = E_m - e_orb * std::sin(E_m);
+                        if (M_m < M_burn) M_m += 2.0 * M_PI;
+                        double const tof_m   = (M_m - M_burn) / n_orb;
+
+                        double     const r_m_mag = p_orb / (1.0 + e_orb * std::cos(nu_w_m));
+                        glm::dvec3 const r_m     = r_m_mag *
+                            (std::cos(nu_w_m) * post_orbit.e_hat +
+                             std::sin(nu_w_m) * post_orbit.q_hat);
+
+                        auto [moon_r_m, moon_v_m] =
+                            keplerPropagate(moon_r_t0, moon_v_t0, ref_GM, tof_m);
+
+                        if (glm::length(r_m - moon_r_m) < SOI_MOON_KM)
+                            nu_hi = nu_mid;
+                        else
+                            nu_lo = nu_mid;
+                    }
+
+                    double const nu_w_r  = std::fmod(nu_hi + 10.0 * M_PI, 2.0 * M_PI) - M_PI;
+                    double const E_r     = toEccentric(nu_w_r);
+                    double       M_r     = E_r - e_orb * std::sin(E_r);
+                    if (M_r < M_burn) M_r += 2.0 * M_PI;
+                    entry_tof     = (M_r - M_burn) / n_orb;
+
+                    double const r_r_mag = p_orb / (1.0 + e_orb * std::cos(nu_w_r));
+                    entry_r_earth = r_r_mag *
+                        (std::cos(nu_w_r) * post_orbit.e_hat +
+                         std::sin(nu_w_r) * post_orbit.q_hat);
+
+                    double const vr = std::sqrt(ref_GM / p_orb) * e_orb * std::sin(nu_w_r);
+                    double const vt = std::sqrt(ref_GM / p_orb) * (1.0 + e_orb * std::cos(nu_w_r));
+                    entry_v_earth = vr * glm::normalize(entry_r_earth) +
+                                   vt * glm::normalize(glm::cross(post_orbit.h_hat, entry_r_earth));
+                }
 
                 auto [moon_r_enc, moon_v_enc] =
                     keplerPropagate(moon_r_t0, moon_v_t0, ref_GM, entry_tof);
