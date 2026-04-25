@@ -2,6 +2,7 @@
 
 #include "Object.h"
 #include "Material.h"
+#include "Physics.h"
 #include "Pipelines/Planet.h"
 #include "Spacecraft.h"
 #include "Maneuver.h"
@@ -29,40 +30,13 @@ static Buffer createLineVertexBuffer(RenderingState const& state,
     return {std::move(buf), std::move(mem)};
 }
 
-// Osculating Keplerian orbit derived from a state vector (position + velocity).
-// Vertices will be in km, centred on the Sun (focus), in the correct 3D orbital plane.
-struct KeplerOrbit {
-    double      a;      // semi-major axis (km)
-    double      e;      // eccentricity
-    glm::dvec3  e_hat;  // unit vector toward periapsis
-    glm::dvec3  q_hat;  // unit vector 90° ahead of periapsis in orbital plane
-};
-
-static constexpr double GM_SUN_SCENE   = 1.32712440018e11; // km^3 / s^2
-static constexpr double GM_EARTH_SCENE = 3.986e5;          // km^3 / s^2
-
-static KeplerOrbit computeOsculatingOrbit(glm::dvec3 r, glm::dvec3 v, double GM)
-{
-    double const r_mag  = glm::length(r);
-    double const v_sq   = glm::dot(v, v);
-    double const energy = v_sq / 2.0 - GM / r_mag;
-    double const a      = -GM / (2.0 * energy);
-
-    glm::dvec3 const h      = glm::cross(r, v);
-    double     const h_mag  = glm::length(h);
-    glm::dvec3 const e_vec  = glm::cross(v, h) / GM - r / r_mag;
-    double     const e      = glm::length(e_vec);
-
-    glm::dvec3 const e_hat = (e > 1e-10) ? e_vec / e : glm::dvec3(1.0, 0.0, 0.0);
-    glm::dvec3 const n_hat = h / h_mag;
-    glm::dvec3 const q_hat = glm::cross(n_hat, e_hat);
-
-    return { a, e, e_hat, q_hat };
-}
+static constexpr double GM_SUN_SCENE   = 1.32712440018e11;
+static constexpr double GM_EARTH_SCENE = 3.986e5;
+static constexpr double G_KM3          = 6.674e-20;
 
 // Keplerian ellipse in 3D, vertices in km relative to Sun (focus). N LINE_LIST segments.
 static std::pair<std::vector<LineVertex>, std::vector<uint32_t>>
-makeOrbitEllipseGeometry(KeplerOrbit const& orbit, glm::vec4 color, int N = 1024)
+makeOrbitEllipseGeometry(OsculatingOrbit const& orbit, glm::vec4 color, int N = 1024)
 {
     std::vector<LineVertex> verts(N);
     double const b_frac = std::sqrt(1.0 - orbit.e * orbit.e); // b/a = sqrt(1-e^2)
@@ -115,7 +89,7 @@ makeUnitCircleGeometry(glm::vec4 color, int N = 1024)
 // Build a 4x4 model matrix that transforms the unit circle (XZ plane, radius 1)
 // into a Keplerian ellipse. The focus (e.g. Earth) is at the matrix origin.
 // obj.position should be set to the focus position in camera-relative space.
-static glm::mat4 orbitRingMatrix(KeplerOrbit const& orbit)
+static glm::mat4 orbitRingMatrix(OsculatingOrbit const& orbit)
 {
     float const a_f = static_cast<float>(orbit.a);
     float const b_f = static_cast<float>(orbit.a * std::sqrt(1.0 - orbit.e * orbit.e));
@@ -248,7 +222,7 @@ SolarSystemLineObjects initOrbitLines(RenderingState const& state, Scene& scene,
         if (ss.defs[i].semi_major_axis_km <= 0.0) continue;
 
         // Derive true ellipse from initial state vectors (position + velocity).
-        KeplerOrbit const orbit = computeOsculatingOrbit(
+        OsculatingOrbit const orbit = computeOsculatingOrbit(
             ss.states[i].position_km, ss.states[i].velocity_km, GM_SUN_SCENE);
 
         glm::vec3 const col = ss.defs[i].albedo_color;
@@ -312,42 +286,102 @@ SolarSystemLineObjects initOrbitLines(RenderingState const& state, Scene& scene,
 // ---------------------------------------------------------------------------
 
 // Forward-integrate a copy of the solar system to build a spacecraft trajectory.
-// Returns positions in km relative to Earth at each recorded step.
+// Analytical Keplerian conic path relative to the spacecraft's dominant body.
+// Hyperbolic: samples from current true anomaly to SOI exit.
+// Elliptic: samples one full orbit (stopping at SOI boundary if applicable).
 static std::vector<glm::dvec3> buildSpacecraftPath(SolarSystem const& ss,
-                                                    int sc_idx, double duration_s)
+                                                    int sc_idx, double /*duration_s*/)
 {
-    SolarSystem copy = ss;
-    copy.time_scale  = 1.0;
-    for (auto& sc : copy.spacecraft_states)
-        sc.thrust_level = 0.0;
+    auto const& sc        = ss.spacecraft_states[sc_idx];
+    bool  const dom_is_moon  = sc.dominant_is_moon;
+    int   const dom_moon_idx = sc.dominant_moon_idx;
+    int   const dom_body_idx = sc.dominant_body_idx;
 
-    constexpr std::size_t earth_idx  = 3;
-    double const          earth_r    = copy.defs[earth_idx].radius_km;
-    constexpr double      step_s     = 30.0;
-    int const             steps      = static_cast<int>(duration_s / step_s);
+    double ref_radius_km;
+    double soi_exit_km;
+    double ref_GM;
+    glm::dvec3 ref_pos;
+    glm::dvec3 ref_vel;
 
+    if (dom_is_moon && dom_moon_idx >= 0 &&
+        dom_moon_idx < static_cast<int>(ss.moon_states.size()))
+    {
+        std::size_t const mi = static_cast<std::size_t>(dom_moon_idx);
+        auto const& ms       = ss.moon_states[mi];
+        auto const& moon_def = ss.defs[ms.parent_planet_index].moons[ms.moon_index];
+        ref_radius_km = moon_def.radius_km;
+        soi_exit_km   = SOI_MOON_KM;
+        ref_GM        = G_KM3 * moon_def.mass_kg;
+        ref_pos       = interpolatedMoonPosition(ss, mi);
+        ref_vel       = interpolatedMoonVelocity(ss, mi);
+    }
+    else if (dom_body_idx == 0)
+    {
+        ref_radius_km = ss.defs[0].radius_km;
+        soi_exit_km   = 1e13;
+        ref_GM        = G_KM3 * ss.defs[0].mass_kg;
+        ref_pos       = glm::dvec3(0.0);
+        ref_vel       = glm::dvec3(0.0);
+    }
+    else
+    {
+        std::size_t const bi = static_cast<std::size_t>(dom_body_idx);
+        ref_radius_km = ss.defs[bi].radius_km;
+        soi_exit_km   = (bi == 3) ? SOI_EARTH_KM : 1e13;
+        ref_GM        = G_KM3 * ss.defs[bi].mass_kg;
+        ref_pos       = interpolatedPosition(ss, bi);
+        ref_vel       = interpolatedVelocity(ss, bi);
+    }
+
+    glm::dvec3 const r_rel = sc.position_km - ref_pos;
+    glm::dvec3 const v_rel = sc.velocity_km - ref_vel;
+    OsculatingOrbit const orb = computeOsculatingOrbit(r_rel, v_rel, ref_GM);
+
+    double const p = orb.a * (1.0 - orb.e * orb.e);
+    if (p <= 0.0) return {};
+
+    double const nu0 = std::atan2(glm::dot(r_rel, orb.q_hat), glm::dot(r_rel, orb.e_hat));
+
+    auto sampleOrbit = [&](double nu) -> glm::dvec3 {
+        double const r = p / (1.0 + orb.e * std::cos(nu));
+        return r * (std::cos(nu) * orb.e_hat + std::sin(nu) * orb.q_hat);
+    };
+
+    constexpr int N = 300;
     std::vector<glm::dvec3> positions;
-    positions.reserve(steps + 1);
+    positions.reserve(N + 1);
 
-    // Record current position first so the path starts at the spacecraft.
+    if (orb.e >= 1.0)
     {
-        glm::dvec3 ep0 = interpolatedPosition(copy, earth_idx);
-        positions.push_back(copy.spacecraft_states[sc_idx].position_km - ep0);
+        // Hyperbolic: nu0 → outgoing SOI exit angle (positive side of hyperbola).
+        // r(nu) = p/(1+e*cos(nu)) = soi_exit => cos(nu_exit) = (p/soi_exit - 1)/e
+        double const cos_nu_exit = std::clamp((p / soi_exit_km - 1.0) / orb.e, -1.0, 1.0);
+        double const nu_exit     = std::acos(cos_nu_exit);
+        if (nu_exit - nu0 < 1e-9) return {};
+
+        for (int k = 0; k <= N; ++k)
+        {
+            double const    nu = nu0 + (nu_exit - nu0) * k / N;
+            glm::dvec3 const pt = sampleOrbit(nu);
+            if (glm::length(pt) < ref_radius_km) break;
+            positions.push_back(pt);
+        }
+    }
+    else
+    {
+        // Elliptic: one full orbit, stopping if the path exits SOI or hits the surface.
+        double const nu_end = nu0 + 2.0 * M_PI;
+        for (int k = 0; k <= N; ++k)
+        {
+            double const    nu   = nu0 + (nu_end - nu0) * k / N;
+            glm::dvec3 const pt   = sampleOrbit(nu);
+            double     const dist = glm::length(pt);
+            if (dist < ref_radius_km) break;
+            if (dist > soi_exit_km)   break;
+            positions.push_back(pt);
+        }
     }
 
-    for (int i = 0; i < steps; ++i)
-    {
-        updateSolarSystem(copy, step_s);
-        glm::dvec3 earth_pos = interpolatedPosition(copy, earth_idx);
-        glm::dvec3 sc_pos    = copy.spacecraft_states[sc_idx].position_km;
-        glm::dvec3 rel       = sc_pos - earth_pos;
-
-        double dist = glm::length(rel);
-        positions.push_back(rel);
-
-        if (dist < earth_r) break;              // crashed
-        if (dist > 2e6)     break;              // escaped Earth sphere of influence
-    }
     return positions;
 }
 
@@ -369,7 +403,7 @@ void initSpacecraftLines(RenderingState const& state, Scene& scene,
         glm::dvec3 earth_pos_render = interpolatedPosition(ss, earth_idx);
         glm::dvec3 r_rel = sc.position_km - earth_pos_phys;
         glm::dvec3 v_rel = sc.velocity_km  - earth_vel;
-        KeplerOrbit orbit = computeOsculatingOrbit(r_rel, v_rel, GM_EARTH_SCENE);
+        OsculatingOrbit orbit = computeOsculatingOrbit(r_rel, v_rel, GM_EARTH_SCENE);
 
         auto [ring_v, ring_i] = makeUnitCircleGeometry(glm::vec4(1.0f, 0.9f, 0.3f, 1.0f));
 
@@ -620,29 +654,61 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         if (i >= line_objs.sc_orbit_obj_ids.size()) break;
         auto const& sc = ss.spacecraft_states[i];
 
-        // Physics-time Earth position: consistent with sc.position_km for orbit shape.
-        // Render-time Earth position: where the ring object is anchored in the scene.
-        glm::dvec3 const earth_pos_phys = planetPositionAtSpacecraftTime(ss, earth_idx, i);
+        // Earth anchor (used by predicted path and maneuver visuals, which are Earth-relative).
         glm::dvec3 const earth_pos_render = interpolatedPosition(ss, earth_idx);
         glm::vec3  const earth_crr = glm::vec3(earth_pos_render - scene.camera.pos_d);
 
-        // --- Osculating orbit ring (model-matrix driven, no geometry rebuild) ---
-        glm::dvec3 r_rel = sc.position_km - earth_pos_phys;
-        glm::dvec3 v_rel = sc.velocity_km  - earth_vel;
-        KeplerOrbit orbit = computeOsculatingOrbit(r_rel, v_rel, GM_EARTH_SCENE);
+        // --- Dominant-body reference for the osculating orbit ring ---
+        glm::dvec3 ref_pos_phys;
+        glm::dvec3 ref_pos_render;
+        glm::dvec3 ref_vel;
+        double     ref_GM;
+
+        if (sc.dominant_is_moon && sc.dominant_moon_idx >= 0 &&
+            sc.dominant_moon_idx < static_cast<int>(ss.moon_states.size()))
+        {
+            std::size_t const mk = static_cast<std::size_t>(sc.dominant_moon_idx);
+            auto const& ms       = ss.moon_states[mk];
+            auto const& moon_def = ss.defs[ms.parent_planet_index].moons[ms.moon_index];
+            ref_pos_phys   = moonPositionAtSpacecraftTime(ss, mk, i);
+            ref_pos_render = interpolatedMoonPosition(ss, mk);
+            ref_vel        = interpolatedMoonVelocity(ss, mk);
+            ref_GM         = G_KM3 * moon_def.mass_kg;
+        }
+        else if (sc.dominant_body_idx == 0)
+        {
+            ref_pos_phys   = glm::dvec3(0.0);
+            ref_pos_render = glm::dvec3(0.0);
+            ref_vel        = glm::dvec3(0.0);
+            ref_GM         = GM_SUN_SCENE;
+        }
+        else
+        {
+            std::size_t const bi = static_cast<std::size_t>(sc.dominant_body_idx);
+            ref_pos_phys   = planetPositionAtSpacecraftTime(ss, bi, i);
+            ref_pos_render = interpolatedPosition(ss, bi);
+            ref_vel        = interpolatedVelocity(ss, bi);
+            ref_GM         = G_KM3 * ss.defs[bi].mass_kg;
+        }
+
+        glm::vec3  const ref_crr = glm::vec3(ref_pos_render - scene.camera.pos_d);
+        glm::dvec3 const r_rel   = sc.position_km - ref_pos_phys;
+        glm::dvec3 const v_rel   = sc.velocity_km - ref_vel;
+        OsculatingOrbit orbit = computeOsculatingOrbit(r_rel, v_rel, ref_GM);
 
         auto& ring_obj           = scene.objs[line_objs.sc_orbit_obj_ids[i]];
-        ring_obj.position        = earth_crr;
+        ring_obj.position        = ref_crr;
         ring_obj.rotation_override = orbitRingMatrix(orbit);
         ring_obj.line_width      = ss.spacecraft_orbit_line_width;
         ring_obj.line_alpha      = ss.spacecraft_orbit_opacity;
         ring_obj.visible         = ss.show_spacecraft_orbit && orbit.e < 1.0 && orbit.a > 0.0;
 
-        // --- Predicted N-body path ---
+        // --- Predicted N-body path (relative to dominant body) ---
         auto& path_obj = scene.objs[line_objs.sc_path_obj_ids[i]];
-        path_obj.position = earth_crr;
+        path_obj.position = ref_crr;
 
-        bool path_active = ss.show_spacecraft_path;
+        bool const is_hyperbolic = orbit.e >= 1.0 || orbit.a <= 0.0;
+        bool path_active = ss.show_spacecraft_path || is_hyperbolic;
         path_obj.visible  = path_active;
 
         if (path_active && ss.spacecraft_path_dirty)
@@ -734,7 +800,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                     node.delta_v_world  = dv;
                 }
 
-                KeplerOrbit const post_orbit = computeOsculatingOrbit(br, bv_post, GM_EARTH_SCENE);
+                OsculatingOrbit const post_orbit = computeOsculatingOrbit(br, bv_post, GM_EARTH_SCENE);
                 double const dv_mag = glm::length(dv);
                 mo.position          = earth_crr;
                 mo.rotation_override = orbitRingMatrix(post_orbit);
@@ -750,7 +816,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                     if (!node.approved || node.completed) continue;
                     if (glm::length(node.delta_v_world) < 1e-12) continue;
                     glm::dvec3 bv_post = node.burn_vel_rel + node.delta_v_world;
-                    KeplerOrbit const aorbit = computeOsculatingOrbit(
+                    OsculatingOrbit const aorbit = computeOsculatingOrbit(
                         node.burn_pos_rel, bv_post, GM_EARTH_SCENE);
                     if (aorbit.a > 0.0 && aorbit.e < 1.0)
                     {

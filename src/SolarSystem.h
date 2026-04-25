@@ -116,7 +116,7 @@ struct SolarSystem {
     float spacecraft_orbit_opacity{0.6f};
 
     // Spacecraft predicted N-body path (forward integration)
-    bool   show_spacecraft_path{false};
+    bool   show_spacecraft_path{true};
     double spacecraft_path_duration_s{8800.0}; // ~1.6 LEO orbits
     bool   spacecraft_path_dirty{true};
 
@@ -181,4 +181,20 @@ Model createUVSphere(float radius, int stacks, int slices);
 {
     auto const& s = ss.moon_states[moon_idx];
     return glm::mix(s.prev_position_km, s.position_km, ss.render_alpha);
+}
+
+[[nodiscard]] inline glm::dvec3 interpolatedMoonVelocity(SolarSystem const& ss, std::size_t moon_idx)
+{
+    auto const& s = ss.moon_states[moon_idx];
+    return glm::mix(s.prev_velocity_km, s.velocity_km, ss.render_alpha);
+}
+
+// Moon position at the same physics time as a given spacecraft's last step.
+[[nodiscard]] inline glm::dvec3 moonPositionAtSpacecraftTime(
+    SolarSystem const& ss, std::size_t moon_idx, std::size_t sc_idx)
+{
+    auto const& sc   = ss.spacecraft_states[sc_idx];
+    auto const& moon = ss.moon_states[moon_idx];
+    double alpha = glm::clamp((ss.simulation_time_s - sc.time_accumulator) / 3600.0, 0.0, 1.0);
+    return glm::mix(moon.prev_position_km, moon.position_km, alpha);
 }

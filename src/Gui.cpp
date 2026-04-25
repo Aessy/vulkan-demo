@@ -14,6 +14,8 @@
 #include "Material.h"
 #include "Scene.h"
 #include "height_map.h"
+#include "Physics.h"
+#include "Maneuver.h"
 
 #include "Application.h"
 #include <spdlog/spdlog.h>
@@ -1051,13 +1053,78 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
     ImGui::Text("  X: %+.3e   Y: %+.3e   Z: %+.3e",
         sc.position_km.x, sc.position_km.y, sc.position_km.z);
 
-    // Altitude above Earth
+    // SOI + orbital information
     {
-        constexpr std::size_t earth_idx = 3;
-        glm::dvec3 earth_pos = interpolatedPosition(ss, earth_idx);
-        double dist_km  = glm::length(interpolatedSpacecraftPosition(ss, static_cast<std::size_t>(ss.selected_spacecraft)) - earth_pos);
-        double alt_km   = dist_km - ss.defs[earth_idx].radius_km;
-        ImGui::Text("Altitude (Earth): %.1f km", alt_km);
+        constexpr double G_KM3_GUI  = 6.674e-20;
+        constexpr double GM_SUN_GUI = 1.32712440018e11;
+        std::size_t const sci = static_cast<std::size_t>(ss.selected_spacecraft);
+
+        // Determine dominant body name, position, velocity, radius, GM
+        const char* dom_name = "Sun";
+        glm::dvec3  dom_pos{0.0};
+        glm::dvec3  dom_vel{0.0};
+        double      dom_radius_km = ss.defs[0].radius_km;
+        double      dom_GM        = GM_SUN_GUI;
+
+        if (sc.dominant_is_moon && sc.dominant_moon_idx >= 0 &&
+            sc.dominant_moon_idx < static_cast<int>(ss.moon_states.size()))
+        {
+            std::size_t const mk = static_cast<std::size_t>(sc.dominant_moon_idx);
+            auto const& ms       = ss.moon_states[mk];
+            auto const& mdef     = ss.defs[ms.parent_planet_index].moons[ms.moon_index];
+            dom_name      = mdef.name;
+            dom_pos       = interpolatedMoonPosition(ss, mk);
+            dom_vel       = interpolatedMoonVelocity(ss, mk);
+            dom_radius_km = mdef.radius_km;
+            dom_GM        = G_KM3_GUI * mdef.mass_kg;
+        }
+        else if (sc.dominant_body_idx > 0 &&
+                 sc.dominant_body_idx < static_cast<int>(ss.defs.size()))
+        {
+            std::size_t const bi = static_cast<std::size_t>(sc.dominant_body_idx);
+            dom_name      = ss.defs[bi].name;
+            dom_pos       = interpolatedPosition(ss, bi);
+            dom_vel       = interpolatedVelocity(ss, bi);
+            dom_radius_km = ss.defs[bi].radius_km;
+            dom_GM        = G_KM3_GUI * ss.defs[bi].mass_kg;
+        }
+
+        glm::dvec3 const sc_pos = interpolatedSpacecraftPosition(ss, sci);
+        double const dist_km    = glm::length(sc_pos - dom_pos);
+        double const alt_km     = dist_km - dom_radius_km;
+
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "SOI: %s", dom_name);
+        ImGui::Text("Distance: %.1f km", dist_km);
+        ImGui::Text("Altitude: %.1f km", alt_km);
+
+        // Osculating orbit relative to dominant body
+        glm::dvec3 const r_rel = sc.position_km - dom_pos;
+        glm::dvec3 const v_rel = sc.velocity_km  - dom_vel;
+        if (glm::length(r_rel) > 1e-6 && glm::length(v_rel) > 1e-12)
+        {
+            OsculatingOrbit const orb = computeOsculatingOrbit(r_rel, v_rel, dom_GM);
+            ImGui::Separator();
+            if (orb.e < 1.0 && orb.a > 0.0)
+            {
+                ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.5f, 1.0f), "Elliptic orbit");
+                double const peri_alt = orb.periapsis_km() - dom_radius_km;
+                double const apo_alt  = orb.apoapsis_km()  - dom_radius_km;
+                ImGui::Text("Eccentricity: %.4f", orb.e);
+                ImGui::Text("Semi-major axis: %.1f km", orb.a);
+                ImGui::Text("Periapsis alt: %.1f km", peri_alt);
+                ImGui::Text("Apoapsis alt:  %.1f km", apo_alt);
+            }
+            else
+            {
+                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.2f, 1.0f), "Hyperbolic - not captured");
+                double const peri_km  = orb.periapsis_km();
+                double const peri_alt = peri_km - dom_radius_km;
+                ImGui::Text("Eccentricity: %.4f", orb.e);
+                ImGui::Text("Closest approach: %.1f km alt", peri_alt);
+            }
+        }
+        ImGui::Separator();
     }
 
     // Velocity

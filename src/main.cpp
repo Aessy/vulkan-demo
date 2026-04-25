@@ -462,9 +462,17 @@ int main()
         // Per-frame SOI update and accumulated dV tracking
         for (std::size_t sci = 0; sci < solar_system.spacecraft_states.size(); ++sci)
         {
+            auto& sc = solar_system.spacecraft_states[sci];
+            int  const prev_dom_body = sc.dominant_body_idx;
+            bool const prev_dom_moon = sc.dominant_is_moon;
+            int  const prev_moon_idx = sc.dominant_moon_idx;
+
             updateSpacecraftSOI(solar_system, sci);
 
-            auto&       sc  = solar_system.spacecraft_states[sci];
+            if (sc.dominant_body_idx != prev_dom_body ||
+                sc.dominant_is_moon  != prev_dom_moon  ||
+                sc.dominant_moon_idx != prev_moon_idx)
+                solar_system.spacecraft_path_dirty = true;
             auto const& def = solar_system.spacecraft_defs[sci];
             double const burn_rate = def.thrust_N / def.mass_kg * 1e-3; // km/s²
 

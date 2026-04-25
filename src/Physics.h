@@ -2,6 +2,39 @@
 
 #include <glm/glm.hpp>
 #include <span>
+#include <cmath>
+
+struct OsculatingOrbit {
+    double     a;      // semi-major axis (km); negative for hyperbolic
+    double     e;      // eccentricity
+    glm::dvec3 e_hat;  // unit vector toward periapsis
+    glm::dvec3 q_hat;  // 90° ahead in orbital plane
+    glm::dvec3 h_hat;  // orbit normal (angular momentum direction)
+
+    // Periapsis distance from body centre (valid for both elliptic and hyperbolic).
+    [[nodiscard]] double periapsis_km() const { return a * (1.0 - e); }
+    // Apoapsis distance — only meaningful when e < 1.
+    [[nodiscard]] double apoapsis_km()  const { return a * (1.0 + e); }
+};
+
+inline OsculatingOrbit computeOsculatingOrbit(glm::dvec3 r, glm::dvec3 v, double GM)
+{
+    double const r_mag  = glm::length(r);
+    double const v_sq   = glm::dot(v, v);
+    double const energy = v_sq / 2.0 - GM / r_mag;
+    double const a      = -GM / (2.0 * energy);
+
+    glm::dvec3 const h     = glm::cross(r, v);
+    double     const h_mag = glm::length(h);
+    glm::dvec3 const e_vec = glm::cross(v, h) / GM - r / r_mag;
+    double     const e     = glm::length(e_vec);
+
+    glm::dvec3 const e_hat = (e > 1e-10) ? e_vec / e : glm::dvec3(1.0, 0.0, 0.0);
+    glm::dvec3 const h_hat = (h_mag > 1e-10) ? h / h_mag : glm::dvec3(0.0, 1.0, 0.0);
+    glm::dvec3 const q_hat = glm::cross(h_hat, e_hat);
+
+    return { a, e, e_hat, q_hat, h_hat };
+}
 
 struct Attractor {
     glm::dvec3 pos_begin;
