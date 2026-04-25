@@ -815,8 +815,11 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                                     double dt_moon) -> bool
         {
             if (!(i < line_objs.sc_encounter_path_obj_ids.size())) return false;
-            if (!(post_orbit.a > 0.0 && post_orbit.e < 1.0 && dv_mag > 1e-9)) return false;
-            if (sc.dominant_is_moon || sc.dominant_body_idx <= 0) return false;
+            auto& enc_obj_early = scene.objs[line_objs.sc_encounter_path_obj_ids[i]];
+            if (!(post_orbit.a > 0.0 && post_orbit.e < 1.0 && dv_mag > 1e-9))
+                { enc_obj_early.visible = false; return false; }
+            if (sc.dominant_is_moon || sc.dominant_body_idx <= 0)
+                { enc_obj_early.visible = false; return false; }
 
             int const dom_idx = sc.dominant_body_idx;
             bool found = false;
