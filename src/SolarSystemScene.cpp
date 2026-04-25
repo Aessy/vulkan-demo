@@ -251,6 +251,44 @@ SolarSystemLineObjects initOrbitLines(RenderingState const& state, Scene& scene,
         result.orbit_ring_ibufs.push_back(std::move(ibuf));
     }
 
+    // Moon orbit rings (unit circle + model matrix, like spacecraft orbit rings)
+    for (std::size_t k = 0; k < ss.moon_states.size(); ++k)
+    {
+        auto const& moon     = ss.moon_states[k];
+        std::size_t const pi = static_cast<std::size_t>(moon.parent_planet_index);
+        double const parent_GM = G_KM3 * ss.defs[pi].mass_kg;
+
+        glm::dvec3 const r_moon = moon.position_km - ss.states[pi].position_km;
+        glm::dvec3 const v_moon = moon.velocity_km  - ss.states[pi].velocity_km;
+        OsculatingOrbit const morb = computeOsculatingOrbit(r_moon, v_moon, parent_GM);
+
+        glm::vec3 const pcol = ss.defs[pi].albedo_color;
+        auto [mv, mi] = makeUnitCircleGeometry(glm::vec4(pcol * 0.6f + glm::vec3(0.4f), 1.0f), 512);
+
+        auto vbuf = createLineVertexBuffer(state, mv);
+        auto ibuf = createIndexBuffer(state, mi);
+
+        Object obj{};
+        obj.vertex_buffer     = vbuf.buffer;
+        obj.index_buffer      = ibuf.buffer;
+        obj.indices_size      = static_cast<uint32_t>(mi.size());
+        obj.position          = glm::vec3(ss.states[pi].position_km - cam.pos_d);
+        obj.rotation          = glm::vec3(0.0f, 1.0f, 0.0f);
+        obj.angel             = 0.0f;
+        obj.scale             = 1.0f;
+        obj.rotation_override = orbitRingMatrix(morb);
+        obj.material          = lines_material;
+        obj.line_width        = ss.orbit_line_width;
+        obj.line_alpha        = ss.orbit_opacity;
+        obj.dash_count        = 0.0f;
+        obj.visible           = ss.show_orbits;
+
+        result.moon_orbit_obj_ids.push_back(static_cast<int>(scene.objs.size()));
+        addObject(scene, obj);
+        result.moon_orbit_vbufs.push_back(std::move(vbuf));
+        result.moon_orbit_ibufs.push_back(std::move(ibuf));
+    }
+
     // Ecliptic grid
     auto [grid_verts, grid_indices] = makeGridGeometry(
         glm::vec4(0.5f, 0.5f, 0.65f, 1.0f),
@@ -608,6 +646,26 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         obj.visible    = ss.show_orbits;
     }
 
+    // Moon orbit rings — recompute osculating orbit each frame so precession is visible
+    for (std::size_t k = 0; k < ss.moon_states.size() &&
+                            k < line_objs.moon_orbit_obj_ids.size(); ++k)
+    {
+        auto const& moon     = ss.moon_states[k];
+        std::size_t const pi = static_cast<std::size_t>(moon.parent_planet_index);
+        double const parent_GM = G_KM3 * ss.defs[pi].mass_kg;
+
+        glm::dvec3 const r_moon = interpolatedMoonPosition(ss, k) - interpolatedPosition(ss, pi);
+        glm::dvec3 const v_moon = interpolatedMoonVelocity(ss, k) - interpolatedVelocity(ss, pi);
+        OsculatingOrbit const morb = computeOsculatingOrbit(r_moon, v_moon, parent_GM);
+
+        auto& obj             = scene.objs[line_objs.moon_orbit_obj_ids[k]];
+        obj.position          = glm::vec3(interpolatedPosition(ss, pi) - scene.camera.pos_d);
+        obj.rotation_override = orbitRingMatrix(morb);
+        obj.line_width        = ss.orbit_line_width;
+        obj.line_alpha        = ss.orbit_opacity;
+        obj.visible           = ss.show_orbits;
+    }
+
     // Ecliptic grid
     {
         auto& obj      = scene.objs[line_objs.grid_obj_id];
@@ -646,23 +704,18 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
     // Spacecraft orbit rings and predicted paths
     if (line_objs.sc_orbit_obj_ids.empty()) return;
 
-    constexpr std::size_t earth_idx = 3;
-    glm::dvec3 const earth_vel = interpolatedVelocity(ss, earth_idx);
-
     for (std::size_t i = 0; i < ss.spacecraft_states.size(); ++i)
     {
         if (i >= line_objs.sc_orbit_obj_ids.size()) break;
         auto const& sc = ss.spacecraft_states[i];
-
-        // Earth anchor (used by predicted path and maneuver visuals, which are Earth-relative).
-        glm::dvec3 const earth_pos_render = interpolatedPosition(ss, earth_idx);
-        glm::vec3  const earth_crr = glm::vec3(earth_pos_render - scene.camera.pos_d);
 
         // --- Dominant-body reference for the osculating orbit ring ---
         glm::dvec3 ref_pos_phys;
         glm::dvec3 ref_pos_render;
         glm::dvec3 ref_vel;
         double     ref_GM;
+        double     ref_radius_km;
+        double     soi_exit_km;
 
         if (sc.dominant_is_moon && sc.dominant_moon_idx >= 0 &&
             sc.dominant_moon_idx < static_cast<int>(ss.moon_states.size()))
@@ -674,6 +727,8 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
             ref_pos_render = interpolatedMoonPosition(ss, mk);
             ref_vel        = interpolatedMoonVelocity(ss, mk);
             ref_GM         = G_KM3 * moon_def.mass_kg;
+            ref_radius_km  = moon_def.radius_km;
+            soi_exit_km    = SOI_MOON_KM;
         }
         else if (sc.dominant_body_idx == 0)
         {
@@ -681,6 +736,8 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
             ref_pos_render = glm::dvec3(0.0);
             ref_vel        = glm::dvec3(0.0);
             ref_GM         = GM_SUN_SCENE;
+            ref_radius_km  = ss.defs[0].radius_km;
+            soi_exit_km    = 1e13;
         }
         else
         {
@@ -689,11 +746,28 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
             ref_pos_render = interpolatedPosition(ss, bi);
             ref_vel        = interpolatedVelocity(ss, bi);
             ref_GM         = G_KM3 * ss.defs[bi].mass_kg;
+            ref_radius_km  = ss.defs[bi].radius_km;
+            soi_exit_km    = (sc.dominant_body_idx == 3) ? SOI_EARTH_KM : 1e13;
         }
 
         glm::vec3  const ref_crr = glm::vec3(ref_pos_render - scene.camera.pos_d);
-        glm::dvec3 const r_rel   = sc.position_km - ref_pos_phys;
-        glm::dvec3 const v_rel   = sc.velocity_km - ref_vel;
+        // Render-interpolated relative position: keeps orbit ring smooth between
+        // the 1s spacecraft physics steps instead of jumping each step.
+        glm::dvec3 const sc_render_pos = interpolatedSpacecraftPosition(ss, i);
+        glm::dvec3 const r_rel         = sc_render_pos - ref_pos_render;
+        // Physics-time relative position: used for maneuver propagation only.
+        glm::dvec3 const r_phys        = sc.position_km - ref_pos_phys;
+        // Extrapolate velocity forward by the same fractional step used for r_rel so that
+        // (r_rel, v_render) form a physically consistent pair at render time.  Without this,
+        // r changes every frame while v stays fixed for a full 1 s step, making the computed
+        // orbital energy oscillate at frame rate → the ring jitters when zoomed in close.
+        glm::dvec3 v_render = sc.velocity_km;
+        double const r_phys_mag = glm::length(r_phys);
+        if (r_phys_mag > 1e-6) {
+            glm::dvec3 const acc = -(ref_GM / (r_phys_mag * r_phys_mag * r_phys_mag)) * r_phys;
+            v_render += acc * sc.time_accumulator;
+        }
+        glm::dvec3 const v_rel         = v_render - ref_vel;
         OsculatingOrbit orbit = computeOsculatingOrbit(r_rel, v_rel, ref_GM);
 
         auto& ring_obj           = scene.objs[line_objs.sc_orbit_obj_ids[i]];
@@ -703,38 +777,78 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         ring_obj.line_alpha      = ss.spacecraft_orbit_opacity;
         ring_obj.visible         = ss.show_spacecraft_orbit && orbit.e < 1.0 && orbit.a > 0.0;
 
-        // --- Predicted N-body path (relative to dominant body) ---
+        // --- Predicted path (analytical Keplerian, rebuilt every frame for smoothness) ---
+        // Using the same consistent (r_rel, v_rel) as the orbit ring avoids any
+        // time_accumulator-based drift or oscillation.
         auto& path_obj = scene.objs[line_objs.sc_path_obj_ids[i]];
         path_obj.position = ref_crr;
 
         bool const is_hyperbolic = orbit.e >= 1.0 || orbit.a <= 0.0;
-        bool path_active = ss.show_spacecraft_path || is_hyperbolic;
-        path_obj.visible  = path_active;
+        bool const path_active = ss.show_spacecraft_path || is_hyperbolic;
+        path_obj.visible = path_active;
 
-        if (path_active && ss.spacecraft_path_dirty)
+        if (path_active)
         {
-            auto pts = buildSpacecraftPath(ss, static_cast<int>(i),
-                                           ss.spacecraft_path_duration_s);
-
-            // Indices are pre-allocated as 0,1,2,3,... (sequential pairs for LINE_LIST).
-            // Only the vertex buffer (host-visible) needs updating.
-            int const max_segs = (SolarSystemLineObjects::MAX_PATH_VERTS / 2) - 1;
-            int const n        = std::min(static_cast<int>(pts.size()) - 1, max_segs);
-
+            double const p_path = orbit.a * (1.0 - orbit.e * orbit.e);
             std::vector<LineVertex> pv;
-            pv.reserve(n * 2);
 
-            for (int s = 0; s < n; ++s)
+            if (p_path > 0.0)
             {
-                float t   = static_cast<float>(s) / static_cast<float>(std::max(n - 1, 1));
-                glm::vec4 col = glm::mix(glm::vec4(1.0f, 0.9f, 0.3f, 0.9f),
-                                         glm::vec4(0.5f, 0.45f, 0.15f, 0.15f), t);
-                pv.push_back({glm::vec3(pts[s]),     col, t});
-                pv.push_back({glm::vec3(pts[s + 1]), col, t});
+                double const nu0 = std::atan2(glm::dot(r_rel, orbit.q_hat),
+                                              glm::dot(r_rel, orbit.e_hat));
+                auto sampleOrbit = [&](double nu) -> glm::dvec3 {
+                    double const r = p_path / (1.0 + orbit.e * std::cos(nu));
+                    return r * (std::cos(nu) * orbit.e_hat + std::sin(nu) * orbit.q_hat);
+                };
+
+                constexpr int N = 300;
+                std::vector<glm::dvec3> pts;
+                pts.reserve(N + 1);
+
+                if (orbit.e >= 1.0)
+                {
+                    double const cos_nu_exit = std::clamp((p_path / soi_exit_km - 1.0) / orbit.e,
+                                                          -1.0, 1.0);
+                    double const nu_exit = std::acos(cos_nu_exit);
+                    if (nu_exit - nu0 >= 1e-9)
+                    {
+                        for (int k = 0; k <= N; ++k)
+                        {
+                            double const    nu = nu0 + (nu_exit - nu0) * k / N;
+                            glm::dvec3 const pt = sampleOrbit(nu);
+                            if (glm::length(pt) < ref_radius_km) break;
+                            pts.push_back(pt);
+                        }
+                    }
+                }
+                else
+                {
+                    double const nu_end = nu0 + 2.0 * M_PI;
+                    for (int k = 0; k <= N; ++k)
+                    {
+                        double const    nu   = nu0 + (nu_end - nu0) * k / N;
+                        glm::dvec3 const pt   = sampleOrbit(nu);
+                        double     const dist = glm::length(pt);
+                        if (dist < ref_radius_km) break;
+                        if (dist > soi_exit_km)   break;
+                        pts.push_back(pt);
+                    }
+                }
+
+                int const max_segs = (SolarSystemLineObjects::MAX_PATH_VERTS / 2) - 1;
+                int const n        = std::min(static_cast<int>(pts.size()) - 1, max_segs);
+                pv.reserve(n * 2);
+                for (int s = 0; s < n; ++s)
+                {
+                    float t   = static_cast<float>(s) / static_cast<float>(std::max(n - 1, 1));
+                    glm::vec4 col = glm::mix(glm::vec4(1.0f, 0.9f, 0.3f, 0.9f),
+                                             glm::vec4(0.5f, 0.45f, 0.15f, 0.15f), t);
+                    pv.push_back({glm::vec3(pts[s]),     col, t});
+                    pv.push_back({glm::vec3(pts[s + 1]), col, t});
+                }
             }
 
-            path_obj.indices_size = static_cast<uint32_t>(pv.size()); // sequential indices
-
+            path_obj.indices_size = static_cast<uint32_t>(pv.size());
             if (!pv.empty())
             {
                 auto& pvbuf = line_objs.sc_path_vbufs[i];
@@ -743,8 +857,6 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                 std::memcpy(vptr, pv.data(), static_cast<std::size_t>(vsz));
                 pvbuf.memory.unmapMemory();
             }
-
-            const_cast<SolarSystem&>(ss).spacecraft_path_dirty = false;
         }
 
         // --- Maneuver visuals (ghost, post-burn ring, node marker) ---
@@ -756,8 +868,8 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
             auto& mo = scene.objs[line_objs.sc_maneuver_orbit_obj_ids[i]];
             if (is_maneuver_sc)
             {
-                // Propagate orbit to burn time (relative to Earth)
-                auto [br, bv] = keplerPropagate(r_rel, v_rel, GM_EARTH_SCENE,
+                // Propagate orbit to burn time relative to DOMINANT body
+                auto [br, bv] = keplerPropagate(r_phys, v_rel, ref_GM,
                                                 ss.maneuver_t0_s);
 
                 // Decompose reference velocity at t0 into PRN frame
@@ -768,9 +880,8 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                 glm::dvec3 const nm_hat = glm::normalize(glm::cross(br, bv));
                 double const ref_pg = glm::dot(bv, pg_hat);
                 double const ref_rd = glm::dot(bv, rd_hat);
-                double const ref_nm = glm::dot(bv, nm_hat); // ≈ 0
+                double const ref_nm = glm::dot(bv, nm_hat);
 
-                // Publish reference so GUI can display it; seed targets on first frame
                 auto& ss_mut = const_cast<SolarSystem&>(ss);
                 ss_mut.maneuver_ref_prograde = ref_pg;
                 ss_mut.maneuver_ref_radial   = ref_rd;
@@ -783,26 +894,24 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                     ss_mut.maneuver_targets_initialized = true;
                 }
 
-                // Actual Δv = target velocity − reference velocity
                 glm::dvec3 const dv = dvWorld(br, bv,
                     ss.maneuver_prograde - ref_pg,
                     ss.maneuver_radial   - ref_rd,
                     ss.maneuver_normal   - ref_nm);
                 glm::dvec3 const bv_post = bv + dv;
 
-                // Store burn state for HUD / approval
                 if (!ss_mut.spacecraft_states[i].maneuvers.empty() &&
                     !ss_mut.spacecraft_states[i].maneuvers.back().approved)
                 {
                     auto& node = ss_mut.spacecraft_states[i].maneuvers.back();
-                    node.burn_pos_rel   = br;
-                    node.burn_vel_rel   = bv;
-                    node.delta_v_world  = dv;
+                    node.burn_pos_rel  = br;
+                    node.burn_vel_rel  = bv;
+                    node.delta_v_world = dv;
                 }
 
-                OsculatingOrbit const post_orbit = computeOsculatingOrbit(br, bv_post, GM_EARTH_SCENE);
+                OsculatingOrbit const post_orbit = computeOsculatingOrbit(br, bv_post, ref_GM);
                 double const dv_mag = glm::length(dv);
-                mo.position          = earth_crr;
+                mo.position          = ref_crr;
                 mo.rotation_override = orbitRingMatrix(post_orbit);
                 mo.visible           = post_orbit.a > 0.0 && post_orbit.e < 1.0 && dv_mag > 0.0;
             }
@@ -817,20 +926,49 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                     if (glm::length(node.delta_v_world) < 1e-12) continue;
                     glm::dvec3 bv_post = node.burn_vel_rel + node.delta_v_world;
                     OsculatingOrbit const aorbit = computeOsculatingOrbit(
-                        node.burn_pos_rel, bv_post, GM_EARTH_SCENE);
+                        node.burn_pos_rel, bv_post, ref_GM);
                     if (aorbit.a > 0.0 && aorbit.e < 1.0)
                     {
-                        mo.position          = earth_crr;
+                        mo.position          = ref_crr;
                         mo.rotation_override = orbitRingMatrix(aorbit);
                         mo.visible           = true;
                         shown = true;
                     }
-                    break; // one maneuver ring per spacecraft
+                    break;
                 }
                 if (!shown) mo.visible = false;
             }
         }
     }
+
+    // Helper: compute dominant body (pos_phys, pos_render, vel, GM) for any spacecraft.
+    auto scDomRef = [&](std::size_t sci) {
+        auto const& sc2 = ss.spacecraft_states[sci];
+        struct Ref { glm::dvec3 pos_phys, pos_render, vel; double gm; };
+        if (sc2.dominant_is_moon && sc2.dominant_moon_idx >= 0 &&
+            sc2.dominant_moon_idx < static_cast<int>(ss.moon_states.size()))
+        {
+            std::size_t const mk = static_cast<std::size_t>(sc2.dominant_moon_idx);
+            auto const& ms  = ss.moon_states[mk];
+            auto const& mdf = ss.defs[ms.parent_planet_index].moons[ms.moon_index];
+            return Ref{moonPositionAtSpacecraftTime(ss, mk, sci),
+                       interpolatedMoonPosition(ss, mk),
+                       interpolatedMoonVelocity(ss, mk),
+                       G_KM3 * mdf.mass_kg};
+        }
+        else if (sc2.dominant_body_idx == 0)
+        {
+            return Ref{glm::dvec3(0.0), glm::dvec3(0.0), glm::dvec3(0.0), GM_SUN_SCENE};
+        }
+        else
+        {
+            std::size_t const bi = static_cast<std::size_t>(sc2.dominant_body_idx);
+            return Ref{planetPositionAtSpacecraftTime(ss, bi, sci),
+                       interpolatedPosition(ss, bi),
+                       interpolatedVelocity(ss, bi),
+                       G_KM3 * ss.defs[bi].mass_kg};
+        }
+    };
 
     // Burn node marker — visible during planning AND for approved nodes
     if (line_objs.maneuver_node_obj_id >= 0)
@@ -841,27 +979,24 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         if (ss.maneuver_mode && ss.maneuver_sc_idx >= 0 &&
             ss.maneuver_sc_idx < static_cast<int>(ss.spacecraft_states.size()))
         {
-            // Planning: propagate to current t0
-            std::size_t const sci  = static_cast<std::size_t>(ss.maneuver_sc_idx);
-            auto const& sc2        = ss.spacecraft_states[sci];
-            glm::dvec3 earth_pos_p = planetPositionAtSpacecraftTime(ss, earth_idx, sci);
-            glm::dvec3 earth_pos_r = interpolatedPosition(ss, earth_idx);
-            glm::dvec3 r2          = sc2.position_km - earth_pos_p;
-            glm::dvec3 v2          = sc2.velocity_km - earth_vel;
-            auto [br, bv]          = keplerPropagate(r2, v2, GM_EARTH_SCENE, ss.maneuver_t0_s);
-            no.position  = glm::vec3(earth_pos_r + br - scene.camera.pos_d);
-            no.visible   = true;
+            std::size_t const sci = static_cast<std::size_t>(ss.maneuver_sc_idx);
+            auto const& sc2 = ss.spacecraft_states[sci];
+            auto ref = scDomRef(sci);
+            glm::dvec3 r2 = sc2.position_km - ref.pos_phys;
+            glm::dvec3 v2 = sc2.velocity_km - ref.vel;
+            auto [br, bv] = keplerPropagate(r2, v2, ref.gm, ss.maneuver_t0_s);
+            no.position = glm::vec3(ref.pos_render + br - scene.camera.pos_d);
+            no.visible  = true;
         }
         else
         {
-            // Approved: show at stored burn position for first active maneuver found
             for (std::size_t sci = 0; sci < ss.spacecraft_states.size(); ++sci)
             {
                 for (auto const& node : ss.spacecraft_states[sci].maneuvers)
                 {
                     if (!node.approved || node.completed) continue;
-                    glm::dvec3 earth_pos_r = interpolatedPosition(ss, earth_idx);
-                    no.position = glm::vec3(earth_pos_r + node.burn_pos_rel - scene.camera.pos_d);
+                    auto ref = scDomRef(sci);
+                    no.position = glm::vec3(ref.pos_render + node.burn_pos_rel - scene.camera.pos_d);
                     no.visible  = true;
                     goto node_done;
                 }
@@ -877,15 +1012,13 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         if (ss.maneuver_mode && ss.maneuver_sc_idx >= 0 &&
             ss.maneuver_sc_idx < static_cast<int>(ss.spacecraft_states.size()))
         {
-            std::size_t const sci  = static_cast<std::size_t>(ss.maneuver_sc_idx);
-            auto const& sc2        = ss.spacecraft_states[sci];
-            glm::dvec3 earth_pos_p = planetPositionAtSpacecraftTime(ss, earth_idx, sci);
-            glm::dvec3 earth_pos_r = interpolatedPosition(ss, earth_idx);
-            glm::dvec3 r2          = sc2.position_km - earth_pos_p;
-            glm::dvec3 v2          = sc2.velocity_km - earth_vel;
-            auto [br, bv]          = keplerPropagate(r2, v2, GM_EARTH_SCENE, ss.maneuver_t0_s);
-            glm::vec3  ghost_crr   = glm::vec3(earth_pos_r + br - scene.camera.pos_d);
-            go.position          = ghost_crr;
+            std::size_t const sci = static_cast<std::size_t>(ss.maneuver_sc_idx);
+            auto const& sc2 = ss.spacecraft_states[sci];
+            auto ref = scDomRef(sci);
+            glm::dvec3 r2 = sc2.position_km - ref.pos_phys;
+            glm::dvec3 v2 = sc2.velocity_km - ref.vel;
+            auto [br, bv] = keplerPropagate(r2, v2, ref.gm, ss.maneuver_t0_s);
+            go.position          = glm::vec3(ref.pos_render + br - scene.camera.pos_d);
             go.scale             = static_cast<float>(ss.spacecraft_defs[sci].visual_scale_km);
             go.rotation_override = scene.objs[sc2.scene_object_index].rotation_override;
             go.visible           = true;

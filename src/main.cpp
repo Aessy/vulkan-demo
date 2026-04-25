@@ -548,22 +548,38 @@ int main()
                 glm::mat3 rot{right_f, fwd_f, up_f};
                 sc.orientation = glm::dquat(glm::quat_cast(rot));
             }
-            else if (solar_system.spacecraft_follow_orbit)
+            else if (solar_system.spacecraft_follow_orbit ||
+                     solar_system.spacecraft_follow_orbit_retrograde)
             {
-                // Auto-align nose (+Y) to orbital velocity relative to Earth
-                constexpr std::size_t earth_idx = 3;
-                glm::dvec3 earth_pos = glm::mix(solar_system.states[earth_idx].prev_position_km,
-                                                solar_system.states[earth_idx].position_km,
-                                                solar_system.render_alpha);
-                glm::dvec3 earth_vel = solar_system.states[earth_idx].velocity_km;
-                glm::dvec3 vel_rel   = sc.velocity_km - earth_vel;
+                // Auto-align nose (+Y) to prograde (or retrograde) relative to dominant body
+                glm::dvec3 dom_pos{0.0}, dom_vel{0.0};
+                if (sc.dominant_is_moon && sc.dominant_moon_idx >= 0 &&
+                    sc.dominant_moon_idx < static_cast<int>(solar_system.moon_states.size()))
+                {
+                    std::size_t const mk = static_cast<std::size_t>(sc.dominant_moon_idx);
+                    dom_pos = interpolatedMoonPosition(solar_system, mk);
+                    dom_vel = interpolatedMoonVelocity(solar_system, mk);
+                }
+                else if (sc.dominant_body_idx > 0)
+                {
+                    std::size_t const bi = static_cast<std::size_t>(sc.dominant_body_idx);
+                    dom_pos = glm::mix(solar_system.states[bi].prev_position_km,
+                                       solar_system.states[bi].position_km,
+                                       solar_system.render_alpha);
+                    dom_vel = solar_system.states[bi].velocity_km;
+                }
+
+                glm::dvec3 vel_rel = sc.velocity_km - dom_vel;
                 double speed = glm::length(vel_rel);
                 if (speed > 1e-10)
                 {
-                    glm::dvec3 fwd    = vel_rel / speed;
-                    glm::dvec3 radial = glm::normalize(sc.position_km - earth_pos);
-                    glm::dvec3 right  = glm::normalize(glm::cross(fwd, radial));
-                    glm::dvec3 up     = glm::cross(right, fwd);
+                    glm::dvec3 fwd = vel_rel / speed;
+                    if (solar_system.spacecraft_follow_orbit_retrograde) fwd = -fwd;
+                    glm::dvec3 radial = glm::length(sc.position_km - dom_pos) > 1e-10
+                        ? glm::normalize(sc.position_km - dom_pos)
+                        : glm::dvec3(0.0, 1.0, 0.0);
+                    glm::dvec3 right = glm::normalize(glm::cross(fwd, radial));
+                    glm::dvec3 up    = glm::cross(right, fwd);
                     glm::vec3 fwd_f{fwd}, right_f{right}, up_f{up};
                     glm::mat3 rot{right_f, fwd_f, up_f};
                     sc.orientation = glm::dquat(glm::quat_cast(rot));

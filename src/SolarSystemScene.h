@@ -38,6 +38,11 @@ struct SolarSystemLineObjects
 
     // Ghost spacecraft shown at burn position
     int    maneuver_ghost_obj_id{-1};
+
+    // Moon orbit rings (unit circle + model matrix, one per moon)
+    std::vector<Buffer> moon_orbit_vbufs;
+    std::vector<Buffer> moon_orbit_ibufs;
+    std::vector<int>    moon_orbit_obj_ids;
 };
 
 // Add one sphere Object per solar-system body to the scene (program 2).

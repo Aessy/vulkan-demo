@@ -1032,8 +1032,24 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
         }
     }
 
-    ImGui::Checkbox("Follow orbit (auto-align nose to velocity)", &ss.spacecraft_follow_orbit);
-    if (!ss.spacecraft_follow_orbit)
+    {
+        bool pg = ss.spacecraft_follow_orbit;
+        bool rg = ss.spacecraft_follow_orbit_retrograde;
+        if (ImGui::Checkbox("Prograde", &pg))
+        {
+            ss.spacecraft_follow_orbit            = pg;
+            ss.spacecraft_follow_orbit_retrograde = false;
+        }
+        ImGui::SameLine();
+        if (ImGui::Checkbox("Retrograde", &rg))
+        {
+            ss.spacecraft_follow_orbit_retrograde = rg;
+            ss.spacecraft_follow_orbit            = false;
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("(auto-align)");
+    }
+    if (!ss.spacecraft_follow_orbit && !ss.spacecraft_follow_orbit_retrograde)
         ImGui::SliderFloat("Rotation rate (deg/s)", &ss.spacecraft_rotation_rate, 5.0f, 180.0f);
 
     if (ss.selected_spacecraft < 0 ||
