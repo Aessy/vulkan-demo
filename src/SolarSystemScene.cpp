@@ -513,6 +513,31 @@ void initSpacecraftLines(RenderingState const& state, Scene& scene,
         addObject(scene, mro);
         line_objs.sc_maneuver_orbit_vbufs.push_back(std::move(mv));
         line_objs.sc_maneuver_orbit_ibufs.push_back(std::move(mi));
+
+        // --- Encounter hyperbolic arc (pre-allocated, initially hidden) ---
+        std::vector<LineVertex> enc_empty(SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
+        std::vector<uint32_t>   enc_idx(SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
+        std::iota(enc_idx.begin(), enc_idx.end(), 0u);
+
+        auto ev = createLineVertexBuffer(state, enc_empty);
+        auto ei = createIndexBuffer(state, enc_idx);
+
+        Object eo{};
+        eo.vertex_buffer = ev.buffer;
+        eo.index_buffer  = ei.buffer;
+        eo.indices_size  = 0;
+        eo.position      = glm::vec3(0.0f);
+        eo.scale         = 1.0f;
+        eo.rotation      = glm::vec3(0.0f, 1.0f, 0.0f);
+        eo.material      = lines_mat;
+        eo.line_width    = 2.0f;
+        eo.line_alpha    = 1.0f;
+        eo.visible       = false;
+
+        line_objs.sc_encounter_path_obj_ids.push_back(static_cast<int>(scene.objs.size()));
+        addObject(scene, eo);
+        line_objs.sc_encounter_path_vbufs.push_back(std::move(ev));
+        line_objs.sc_encounter_path_ibufs.push_back(std::move(ei));
     }
 
     // --- Burn node cross marker (one shared, hidden until planning) ---
@@ -863,6 +888,155 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         bool const is_maneuver_sc = ss.maneuver_mode &&
                                     ss.maneuver_sc_idx == static_cast<int>(i);
 
+        // Lambda: compute and upload the encounter arc given burn-point state.
+        // dt_moon = seconds from current sim state to burn (Moon propagation offset).
+        // Returns true if an arc was found and uploaded; hides the object if false.
+        auto drawEncounterArc = [&](glm::dvec3 const& br,
+                                    OsculatingOrbit const& post_orbit,
+                                    double dv_mag,
+                                    double dt_moon) -> bool
+        {
+            if (!(i < line_objs.sc_encounter_path_obj_ids.size())) return false;
+            if (!(post_orbit.a > 0.0 && post_orbit.e < 1.0 && dv_mag > 1e-9)) return false;
+            if (sc.dominant_is_moon || sc.dominant_body_idx <= 0) return false;
+
+            int const dom_idx = sc.dominant_body_idx;
+            bool found = false;
+
+            for (std::size_t mk = 0; mk < ss.moon_states.size() && !found; ++mk)
+            {
+                auto const& ms = ss.moon_states[mk];
+                if (ms.parent_planet_index != dom_idx) continue;
+
+                auto const& moon_def =
+                    ss.defs[static_cast<std::size_t>(dom_idx)]
+                           .moons[static_cast<std::size_t>(ms.moon_index)];
+                double const GM_moon = G_KM3 * moon_def.mass_kg;
+
+                glm::dvec3 const moon_world   = moonPositionAtSpacecraftTime(ss, mk, i);
+                glm::dvec3 const moon_v_world = interpolatedMoonVelocity(ss, mk);
+                glm::dvec3 const moon_r0 = moon_world - ref_pos_phys;
+                glm::dvec3 const moon_v0 = moon_v_world - ref_vel;
+
+                auto [moon_r_t0, moon_v_t0] =
+                    keplerPropagate(moon_r0, moon_v0, ref_GM, dt_moon);
+
+                double const a_orb = post_orbit.a;
+                double const e_orb = post_orbit.e;
+                double const p_orb = a_orb * (1.0 - e_orb * e_orb);
+                double const n_orb = std::sqrt(ref_GM / (a_orb * a_orb * a_orb));
+
+                double const nu_burn = std::atan2(glm::dot(post_orbit.q_hat, br),
+                                                  glm::dot(post_orbit.e_hat, br));
+
+                auto toEccentric = [&](double nu) {
+                    return 2.0 * std::atan(
+                        std::sqrt((1.0 - e_orb) / (1.0 + e_orb)) * std::tan(nu / 2.0));
+                };
+                double const E_burn = toEccentric(nu_burn);
+                double const M_burn = E_burn - e_orb * std::sin(E_burn);
+
+                constexpr int N_SCAN = 360;
+                int    entry_idx   = -1;
+                double entry_tof   = 0.0;
+                glm::dvec3 entry_r_earth{};
+                glm::dvec3 entry_v_earth{};
+
+                for (int s = 0; s < N_SCAN; ++s)
+                {
+                    double const nu   = nu_burn + (2.0 * M_PI * s) / N_SCAN;
+                    double const nu_w = std::fmod(nu + 10.0 * M_PI, 2.0 * M_PI) - M_PI;
+
+                    double const E_s = toEccentric(nu_w);
+                    double       M_s = E_s - e_orb * std::sin(E_s);
+                    if (M_s < M_burn) M_s += 2.0 * M_PI;
+                    double const tof = (M_s - M_burn) / n_orb;
+
+                    double     const r_s_mag = p_orb / (1.0 + e_orb * std::cos(nu_w));
+                    glm::dvec3 const r_s     = r_s_mag *
+                        (std::cos(nu_w) * post_orbit.e_hat +
+                         std::sin(nu_w) * post_orbit.q_hat);
+
+                    auto [moon_r_s, moon_v_s] =
+                        keplerPropagate(moon_r_t0, moon_v_t0, ref_GM, tof);
+
+                    if (glm::length(r_s - moon_r_s) < SOI_MOON_KM)
+                    {
+                        entry_idx     = s;
+                        entry_tof     = tof;
+                        entry_r_earth = r_s;
+                        double const vr = std::sqrt(ref_GM / p_orb) * e_orb * std::sin(nu_w);
+                        double const vt = std::sqrt(ref_GM / p_orb) * (1.0 + e_orb * std::cos(nu_w));
+                        entry_v_earth = vr * glm::normalize(r_s) +
+                                       vt * glm::normalize(glm::cross(post_orbit.h_hat, r_s));
+                        break;
+                    }
+                }
+
+                if (entry_idx < 0) continue;
+
+                auto [moon_r_enc, moon_v_enc] =
+                    keplerPropagate(moon_r_t0, moon_v_t0, ref_GM, entry_tof);
+
+                glm::dvec3 const sc_r_moon = entry_r_earth - moon_r_enc;
+                glm::dvec3 const sc_v_moon = entry_v_earth - moon_v_enc;
+
+                OsculatingOrbit const hyp =
+                    computeOsculatingOrbit(sc_r_moon, sc_v_moon, GM_moon);
+                if (hyp.e <= 1.0) continue;
+
+                double const nu_max = std::acos(-1.0 / hyp.e) - 1e-4;
+                double const p_hyp  = hyp.a * (1.0 - hyp.e * hyp.e);
+
+                double const nu_entry_h = std::atan2(glm::dot(hyp.q_hat, sc_r_moon),
+                                                      glm::dot(hyp.e_hat, sc_r_moon));
+                double const nu_step =
+                    (nu_entry_h <= 0.0 ? 1.0 : -1.0) *
+                    (2.0 * nu_max) /
+                    static_cast<double>(SolarSystemLineObjects::MAX_ENCOUNTER_VERTS - 1);
+
+                std::vector<LineVertex> enc_verts;
+                enc_verts.reserve(SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
+
+                double nu_h = nu_entry_h;
+                for (int v = 0; v < SolarSystemLineObjects::MAX_ENCOUNTER_VERTS; ++v)
+                {
+                    double const r_h_mag = p_hyp / (1.0 + hyp.e * std::cos(nu_h));
+                    if (r_h_mag > SOI_MOON_KM || r_h_mag <= 0.0) break;
+
+                    glm::dvec3 const r_h =
+                        r_h_mag * (std::cos(nu_h) * hyp.e_hat +
+                                   std::sin(nu_h) * hyp.q_hat);
+                    glm::dvec3 const r_planet = moon_r_enc + r_h;
+
+                    float const t = static_cast<float>(v) /
+                        static_cast<float>(SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
+                    glm::vec4 const col{1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f};
+
+                    enc_verts.push_back({glm::vec3(r_planet), col});
+                    nu_h += nu_step;
+                }
+
+                if (enc_verts.size() < 2) continue;
+
+                auto& evbuf  = line_objs.sc_encounter_path_vbufs[i];
+                vk::DeviceSize const vsz = sizeof(LineVertex) * enc_verts.size();
+                void* vptr = evbuf.memory.mapMemory(0, vsz).value;
+                std::memcpy(vptr, enc_verts.data(), static_cast<std::size_t>(vsz));
+                evbuf.memory.unmapMemory();
+
+                auto& enc_obj        = scene.objs[line_objs.sc_encounter_path_obj_ids[i]];
+                enc_obj.indices_size = static_cast<uint32_t>(enc_verts.size());
+                enc_obj.position     = ref_crr;
+                enc_obj.visible      = true;
+                found = true;
+            }
+
+            if (!found)
+                scene.objs[line_objs.sc_encounter_path_obj_ids[i]].visible = false;
+            return found;
+        };
+
         if (i < line_objs.sc_maneuver_orbit_obj_ids.size())
         {
             auto& mo = scene.objs[line_objs.sc_maneuver_orbit_obj_ids[i]];
@@ -914,6 +1088,8 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                 mo.position          = ref_crr;
                 mo.rotation_override = orbitRingMatrix(post_orbit);
                 mo.visible           = post_orbit.a > 0.0 && post_orbit.e < 1.0 && dv_mag > 0.0;
+
+                drawEncounterArc(br, post_orbit, dv_mag, ss.maneuver_t0_s);
             }
             else
             {
@@ -937,6 +1113,30 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                     break;
                 }
                 if (!shown) mo.visible = false;
+
+                // Keep encounter arc visible for approved maneuver, using stored burn state
+                if (shown)
+                {
+                    // sc2 and node are still in scope from the loop above
+                    for (auto const& node2 : sc2.maneuvers)
+                    {
+                        if (!node2.approved || node2.completed) continue;
+                        if (glm::length(node2.delta_v_world) < 1e-12) break;
+                        glm::dvec3 const bv2_post = node2.burn_vel_rel + node2.delta_v_world;
+                        OsculatingOrbit const aorbit2 = computeOsculatingOrbit(
+                            node2.burn_pos_rel, bv2_post, ref_GM);
+                        double const dt_to_burn =
+                            node2.t0_abs_s - ss.elapsed_simulation_s;
+                        drawEncounterArc(node2.burn_pos_rel, aorbit2,
+                                         glm::length(node2.delta_v_world),
+                                         std::max(dt_to_burn, 0.0));
+                        break;
+                    }
+                }
+                else if (i < line_objs.sc_encounter_path_obj_ids.size())
+                {
+                    scene.objs[line_objs.sc_encounter_path_obj_ids[i]].visible = false;
+                }
             }
         }
     }

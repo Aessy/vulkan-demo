@@ -31,6 +31,12 @@ struct SolarSystemLineObjects
     std::vector<Buffer> sc_maneuver_orbit_ibufs;
     std::vector<int>    sc_maneuver_orbit_obj_ids;
 
+    // Per-spacecraft: hyperbolic encounter arc inside a body's SOI
+    static constexpr int MAX_ENCOUNTER_VERTS = 500;
+    std::vector<Buffer> sc_encounter_path_vbufs;
+    std::vector<Buffer> sc_encounter_path_ibufs;
+    std::vector<int>    sc_encounter_path_obj_ids;
+
     // Single burn node marker (small cross shown on current orbit ring)
     std::optional<Buffer> maneuver_node_vbuf;
     std::optional<Buffer> maneuver_node_ibuf;
