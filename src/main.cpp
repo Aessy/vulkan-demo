@@ -483,7 +483,10 @@ int main()
                 if (target <= 0.0) continue;
                 node.accumulated_dv += sc.thrust_level * burn_rate * static_cast<double>(delta);
                 if (node.accumulated_dv >= target)
+                {
                     node.accumulated_dv = target;
+                    node.completed = true;
+                }
             }
         }
 

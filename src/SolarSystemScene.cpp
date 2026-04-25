@@ -9,6 +9,7 @@
 
 #include <glm/gtc/quaternion.hpp>
 
+#include <algorithm>
 #include <numbers>
 #include <numeric>
 #include <cstring>
@@ -802,94 +803,11 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         ring_obj.line_alpha      = ss.spacecraft_orbit_opacity;
         ring_obj.visible         = ss.show_spacecraft_orbit && orbit.e < 1.0 && orbit.a > 0.0;
 
-        // --- Predicted path (analytical Keplerian, rebuilt every frame for smoothness) ---
-        // Using the same consistent (r_rel, v_rel) as the orbit ring avoids any
-        // time_accumulator-based drift or oscillation.
-        auto& path_obj = scene.objs[line_objs.sc_path_obj_ids[i]];
-        path_obj.position = ref_crr;
-
-        bool const is_hyperbolic = orbit.e >= 1.0 || orbit.a <= 0.0;
-        bool const path_active = ss.show_spacecraft_path || is_hyperbolic;
-        path_obj.visible = path_active;
-
-        if (path_active)
-        {
-            double const p_path = orbit.a * (1.0 - orbit.e * orbit.e);
-            std::vector<LineVertex> pv;
-
-            if (p_path > 0.0)
-            {
-                double const nu0 = std::atan2(glm::dot(r_rel, orbit.q_hat),
-                                              glm::dot(r_rel, orbit.e_hat));
-                auto sampleOrbit = [&](double nu) -> glm::dvec3 {
-                    double const r = p_path / (1.0 + orbit.e * std::cos(nu));
-                    return r * (std::cos(nu) * orbit.e_hat + std::sin(nu) * orbit.q_hat);
-                };
-
-                constexpr int N = 300;
-                std::vector<glm::dvec3> pts;
-                pts.reserve(N + 1);
-
-                if (orbit.e >= 1.0)
-                {
-                    double const cos_nu_exit = std::clamp((p_path / soi_exit_km - 1.0) / orbit.e,
-                                                          -1.0, 1.0);
-                    double const nu_exit = std::acos(cos_nu_exit);
-                    if (nu_exit - nu0 >= 1e-9)
-                    {
-                        for (int k = 0; k <= N; ++k)
-                        {
-                            double const    nu = nu0 + (nu_exit - nu0) * k / N;
-                            glm::dvec3 const pt = sampleOrbit(nu);
-                            if (glm::length(pt) < ref_radius_km) break;
-                            pts.push_back(pt);
-                        }
-                    }
-                }
-                else
-                {
-                    double const nu_end = nu0 + 2.0 * M_PI;
-                    for (int k = 0; k <= N; ++k)
-                    {
-                        double const    nu   = nu0 + (nu_end - nu0) * k / N;
-                        glm::dvec3 const pt   = sampleOrbit(nu);
-                        double     const dist = glm::length(pt);
-                        if (dist < ref_radius_km) break;
-                        if (dist > soi_exit_km)   break;
-                        pts.push_back(pt);
-                    }
-                }
-
-                int const max_segs = (SolarSystemLineObjects::MAX_PATH_VERTS / 2) - 1;
-                int const n        = std::min(static_cast<int>(pts.size()) - 1, max_segs);
-                pv.reserve(n * 2);
-                for (int s = 0; s < n; ++s)
-                {
-                    float t   = static_cast<float>(s) / static_cast<float>(std::max(n - 1, 1));
-                    glm::vec4 col = glm::mix(glm::vec4(1.0f, 0.9f, 0.3f, 0.9f),
-                                             glm::vec4(0.5f, 0.45f, 0.15f, 0.15f), t);
-                    pv.push_back({glm::vec3(pts[s]),     col, t});
-                    pv.push_back({glm::vec3(pts[s + 1]), col, t});
-                }
-            }
-
-            path_obj.indices_size = static_cast<uint32_t>(pv.size());
-            if (!pv.empty())
-            {
-                auto& pvbuf = line_objs.sc_path_vbufs[i];
-                vk::DeviceSize vsz = sizeof(LineVertex) * pv.size();
-                void* vptr = pvbuf.memory.mapMemory(0, vsz).value;
-                std::memcpy(vptr, pv.data(), static_cast<std::size_t>(vsz));
-                pvbuf.memory.unmapMemory();
-            }
-        }
-
-        // --- Maneuver visuals (ghost, post-burn ring, node marker) ---
         bool const is_maneuver_sc = ss.maneuver_mode &&
                                     ss.maneuver_sc_idx == static_cast<int>(i);
 
         // Lambda: compute and upload the encounter arc given burn-point state.
-        // dt_moon = seconds from current sim state to burn (Moon propagation offset).
+        // dt_moon = seconds from current sim state to the "burn epoch" for Moon propagation.
         // Returns true if an arc was found and uploaded; hides the object if false.
         auto drawEncounterArc = [&](glm::dvec3 const& br,
                                     OsculatingOrbit const& post_orbit,
@@ -1037,6 +955,101 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
             return found;
         };
 
+        // Whether any approved-but-unexecuted maneuver is pending for this spacecraft.
+        // Used to decide whether the live path or the maneuver block owns the encounter arc.
+        bool const has_pending_maneuver = is_maneuver_sc ||
+            std::any_of(sc.maneuvers.begin(), sc.maneuvers.end(),
+                        [](ManeuverNode const& n){ return n.approved && !n.completed; });
+
+        // --- Predicted path (analytical Keplerian, rebuilt every frame for smoothness) ---
+        // Using the same consistent (r_rel, v_rel) as the orbit ring avoids any
+        // time_accumulator-based drift or oscillation.
+        auto& path_obj = scene.objs[line_objs.sc_path_obj_ids[i]];
+        path_obj.position = ref_crr;
+
+        bool const is_hyperbolic = orbit.e >= 1.0 || orbit.a <= 0.0;
+        bool const path_active = ss.show_spacecraft_path || is_hyperbolic;
+        path_obj.visible = path_active;
+
+        if (path_active)
+        {
+            double const p_path = orbit.a * (1.0 - orbit.e * orbit.e);
+            std::vector<LineVertex> pv;
+
+            if (p_path > 0.0)
+            {
+                double const nu0 = std::atan2(glm::dot(r_rel, orbit.q_hat),
+                                              glm::dot(r_rel, orbit.e_hat));
+                auto sampleOrbit = [&](double nu) -> glm::dvec3 {
+                    double const r = p_path / (1.0 + orbit.e * std::cos(nu));
+                    return r * (std::cos(nu) * orbit.e_hat + std::sin(nu) * orbit.q_hat);
+                };
+
+                constexpr int N = 300;
+                std::vector<glm::dvec3> pts;
+                pts.reserve(N + 1);
+
+                if (orbit.e >= 1.0)
+                {
+                    double const cos_nu_exit = std::clamp((p_path / soi_exit_km - 1.0) / orbit.e,
+                                                          -1.0, 1.0);
+                    double const nu_exit = std::acos(cos_nu_exit);
+                    if (nu_exit - nu0 >= 1e-9)
+                    {
+                        for (int k = 0; k <= N; ++k)
+                        {
+                            double const    nu = nu0 + (nu_exit - nu0) * k / N;
+                            glm::dvec3 const pt = sampleOrbit(nu);
+                            if (glm::length(pt) < ref_radius_km) break;
+                            pts.push_back(pt);
+                        }
+                    }
+                }
+                else
+                {
+                    double const nu_end = nu0 + 2.0 * M_PI;
+                    for (int k = 0; k <= N; ++k)
+                    {
+                        double const    nu   = nu0 + (nu_end - nu0) * k / N;
+                        glm::dvec3 const pt   = sampleOrbit(nu);
+                        double     const dist = glm::length(pt);
+                        if (dist < ref_radius_km) break;
+                        if (dist > soi_exit_km)   break;
+                        pts.push_back(pt);
+                    }
+                }
+
+                int const max_segs = (SolarSystemLineObjects::MAX_PATH_VERTS / 2) - 1;
+                int const n        = std::min(static_cast<int>(pts.size()) - 1, max_segs);
+                pv.reserve(n * 2);
+                for (int s = 0; s < n; ++s)
+                {
+                    float t   = static_cast<float>(s) / static_cast<float>(std::max(n - 1, 1));
+                    glm::vec4 col = glm::mix(glm::vec4(1.0f, 0.9f, 0.3f, 0.9f),
+                                             glm::vec4(0.5f, 0.45f, 0.15f, 0.15f), t);
+                    pv.push_back({glm::vec3(pts[s]),     col, t});
+                    pv.push_back({glm::vec3(pts[s + 1]), col, t});
+                }
+            }
+
+            path_obj.indices_size = static_cast<uint32_t>(pv.size());
+            if (!pv.empty())
+            {
+                auto& pvbuf = line_objs.sc_path_vbufs[i];
+                vk::DeviceSize vsz = sizeof(LineVertex) * pv.size();
+                void* vptr = pvbuf.memory.mapMemory(0, vsz).value;
+                std::memcpy(vptr, pv.data(), static_cast<std::size_t>(vsz));
+                pvbuf.memory.unmapMemory();
+            }
+        }
+
+        // Live encounter arc: show on current orbit when no maneuver is pending.
+        // The maneuver block below will overwrite this when a maneuver is active.
+        if (!has_pending_maneuver)
+            drawEncounterArc(r_rel, orbit, 1.0, 0.0);
+
+        // --- Maneuver visuals (ghost, post-burn ring, node marker) ---
+
         if (i < line_objs.sc_maneuver_orbit_obj_ids.size())
         {
             auto& mo = scene.objs[line_objs.sc_maneuver_orbit_obj_ids[i]];
@@ -1133,8 +1146,10 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                         break;
                     }
                 }
-                else if (i < line_objs.sc_encounter_path_obj_ids.size())
+                else if (has_pending_maneuver && i < line_objs.sc_encounter_path_obj_ids.size())
                 {
+                    // Approved maneuver exists but post-burn orbit is non-elliptic: hide arc.
+                    // (Live block didn't run since has_pending_maneuver was true.)
                     scene.objs[line_objs.sc_encounter_path_obj_ids[i]].visible = false;
                 }
             }
