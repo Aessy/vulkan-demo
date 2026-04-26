@@ -176,8 +176,7 @@ Model createUVSphere(float radius, int stacks, int slices);
 {
     auto const& sc    = ss.spacecraft_states[sc_idx];
     auto const& state = ss.states[planet_idx];
-    double alpha = glm::clamp((ss.simulation_time_s - sc.time_accumulator) / 3600.0, 0.0, 1.0);
-    return glm::mix(state.prev_position_km, state.position_km, alpha);
+    return glm::mix(state.prev_position_km, state.position_km, ss.render_alpha);
 }
 
 // Render-interpolated world position for a moon.
