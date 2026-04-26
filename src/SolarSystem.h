@@ -69,6 +69,8 @@ struct PlanetState {
     int    atm_scene_object_index{-1};
 };
 
+enum class PhysicsMode { NBody, PatchedConic };
+
 struct SolarSystem {
     std::vector<PlanetDef>   defs;
     std::vector<PlanetState> states;
@@ -80,6 +82,7 @@ struct SolarSystem {
     double render_alpha{0.0};        // interpolation fraction in [0, 1) for this frame
     double time_scale{1};
     bool paused{false};
+    PhysicsMode physics_mode{PhysicsMode::NBody};
 
     // Orbit ring rendering
     bool  show_orbits{true};

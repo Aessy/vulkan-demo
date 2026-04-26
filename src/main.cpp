@@ -82,6 +82,7 @@
 #include "SolarSystemScene.h"
 #include "Spacecraft.h"
 #include "Maneuver.h"
+#include "PatchedConic.h"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -457,7 +458,12 @@ int main()
 
         // Advance simulation
         if (!first_frame && !solar_system.paused)
-            updateSolarSystem(solar_system, static_cast<double>(delta));
+        {
+            if (solar_system.physics_mode == PhysicsMode::NBody)
+                updateSolarSystem(solar_system, static_cast<double>(delta));
+            else
+                updateSolarSystemPatchedConic(solar_system, static_cast<double>(delta));
+        }
 
         // Per-frame SOI update and accumulated dV tracking
         for (std::size_t sci = 0; sci < solar_system.spacecraft_states.size(); ++sci)

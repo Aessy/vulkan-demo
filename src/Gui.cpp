@@ -731,6 +731,14 @@ void createSolarSystemGui(SolarSystem& solar_system, Camera& cam)
         updateCameraFromOrbit(cam);
     }
 
+    {
+        int mode = static_cast<int>(solar_system.physics_mode);
+        ImGui::RadioButton("N-body", &mode, 0);
+        ImGui::SameLine();
+        ImGui::RadioButton("Patched Conic", &mode, 1);
+        solar_system.physics_mode = static_cast<PhysicsMode>(mode);
+    }
+
     ImGui::Separator();
 
     // Simulation date — J2000 epoch + elapsed seconds
