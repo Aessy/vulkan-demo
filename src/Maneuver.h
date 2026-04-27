@@ -5,10 +5,6 @@
 
 struct SolarSystem;
 
-// Hill sphere radii (km)
-constexpr double SOI_EARTH_KM = 925000.0;
-constexpr double SOI_MOON_KM  =  66200.0;
-
 struct ManeuverNode {
     double t0_s{0.0};            // sim-seconds from approval until burn start
     double t0_abs_s{0.0};        // elapsed_simulation_s at approval + t0_s

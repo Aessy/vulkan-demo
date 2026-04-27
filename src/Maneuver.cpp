@@ -96,35 +96,37 @@ void updateSpacecraftSOI(SolarSystem& ss, std::size_t sc_idx)
     if (sc_idx >= ss.spacecraft_states.size()) return;
     auto& sc = ss.spacecraft_states[sc_idx];
 
-    constexpr std::size_t earth_idx = 3;
-
-    // Check Moon first (tighter SOI)
+    // Check moons first (smallest SOIs take priority)
     for (std::size_t k = 0; k < ss.moon_states.size(); ++k)
     {
-        auto const& ms = ss.moon_states[k];
-        if (ms.parent_planet_index != static_cast<int>(earth_idx)) continue;
-        glm::dvec3 moon_pos = glm::mix(ms.prev_position_km, ms.position_km, ss.render_alpha);
-        double dist = glm::length(sc.position_km - moon_pos);
-        if (dist < SOI_MOON_KM)
+        auto const& ms       = ss.moon_states[k];
+        auto const& par_def  = ss.defs[static_cast<std::size_t>(ms.parent_planet_index)];
+        auto const& moon_def = par_def.moons[static_cast<std::size_t>(ms.moon_index)];
+        if (moon_def.soi_km <= 0.0) continue;
+        glm::dvec3 const moon_pos = glm::mix(ms.prev_position_km, ms.position_km, ss.render_alpha);
+        if (glm::length(sc.position_km - moon_pos) < moon_def.soi_km)
         {
-            sc.dominant_body_idx  = static_cast<int>(earth_idx); // moon's parent
-            sc.dominant_is_moon   = true;
-            sc.dominant_moon_idx  = static_cast<int>(k);
+            sc.dominant_body_idx = ms.parent_planet_index;
+            sc.dominant_is_moon  = true;
+            sc.dominant_moon_idx = static_cast<int>(k);
             return;
         }
     }
 
-    // Check Earth
-    glm::dvec3 earth_pos = glm::mix(ss.states[earth_idx].prev_position_km,
-                                    ss.states[earth_idx].position_km,
-                                    ss.render_alpha);
-    double dist_earth = glm::length(sc.position_km - earth_pos);
-    if (dist_earth < SOI_EARTH_KM)
+    // Check planets (skip Sun at index 0)
+    for (std::size_t i = 1; i < ss.defs.size(); ++i)
     {
-        sc.dominant_body_idx = static_cast<int>(earth_idx);
-        sc.dominant_is_moon  = false;
-        sc.dominant_moon_idx = -1;
-        return;
+        auto const& def = ss.defs[i];
+        if (def.soi_km <= 0.0) continue;
+        glm::dvec3 const planet_pos = glm::mix(ss.states[i].prev_position_km,
+                                                ss.states[i].position_km, ss.render_alpha);
+        if (glm::length(sc.position_km - planet_pos) < def.soi_km)
+        {
+            sc.dominant_body_idx = static_cast<int>(i);
+            sc.dominant_is_moon  = false;
+            sc.dominant_moon_idx = -1;
+            return;
+        }
     }
 
     // Default: Sun

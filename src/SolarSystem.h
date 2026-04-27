@@ -19,6 +19,7 @@ struct MoonDef {
     glm::vec3  albedo_color{0.45f, 0.45f, 0.45f};
     glm::dvec3 init_position_relative{};  // km, relative to parent planet
     glm::dvec3 init_velocity_relative{};  // km/s, relative to parent planet
+    double soi_km{0.0};                   // Hill sphere radius, computed at init
 };
 
 struct MoonState {
@@ -55,6 +56,7 @@ struct PlanetDef {
     glm::dvec3 init_position;
     glm::dvec3 init_velocity;
     std::vector<MoonDef> moons{};
+    double soi_km{0.0};  // Hill sphere radius, computed at init
 };
 
 struct PlanetState {

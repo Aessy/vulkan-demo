@@ -96,6 +96,24 @@ SolarSystem createSolarSystem()
     }
     ss.show_moon_label.resize(ss.moon_states.size(), false);
 
+    // Laplace Hill-sphere radii: SOI = a * (m_body / m_parent)^(2/5)
+    static constexpr double M_SUN_KG = GM_SUN / G_km;
+    for (auto& def : ss.defs)
+    {
+        if (def.semi_major_axis_km > 0.0)
+            def.soi_km = def.semi_major_axis_km *
+                std::pow(def.mass_kg / M_SUN_KG, 2.0 / 5.0);
+    }
+    for (auto& pdef : ss.defs)
+    {
+        for (auto& mdef : pdef.moons)
+        {
+            double const r = glm::length(mdef.init_position_relative);
+            if (r > 0.0)
+                mdef.soi_km = r * std::pow(mdef.mass_kg / pdef.mass_kg, 2.0 / 5.0);
+        }
+    }
+
     return ss;
 }
 

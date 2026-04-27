@@ -349,7 +349,7 @@ static std::vector<glm::dvec3> buildSpacecraftPath(SolarSystem const& ss,
         auto const& ms       = ss.moon_states[mi];
         auto const& moon_def = ss.defs[ms.parent_planet_index].moons[ms.moon_index];
         ref_radius_km = moon_def.radius_km;
-        soi_exit_km   = SOI_MOON_KM;
+        soi_exit_km   = moon_def.soi_km;
         ref_GM        = G_KM3 * moon_def.mass_kg;
         ref_pos       = interpolatedMoonPosition(ss, mi);
         ref_vel       = interpolatedMoonVelocity(ss, mi);
@@ -366,7 +366,7 @@ static std::vector<glm::dvec3> buildSpacecraftPath(SolarSystem const& ss,
     {
         std::size_t const bi = static_cast<std::size_t>(dom_body_idx);
         ref_radius_km = ss.defs[bi].radius_km;
-        soi_exit_km   = (bi == 3) ? SOI_EARTH_KM : 1e13;
+        soi_exit_km   = ss.defs[bi].soi_km > 0.0 ? ss.defs[bi].soi_km : 1e13;
         ref_GM        = G_KM3 * ss.defs[bi].mass_kg;
         ref_pos       = interpolatedPosition(ss, bi);
         ref_vel       = interpolatedVelocity(ss, bi);
@@ -754,7 +754,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
             ref_vel        = interpolatedMoonVelocity(ss, mk);
             ref_GM         = G_KM3 * moon_def.mass_kg;
             ref_radius_km  = moon_def.radius_km;
-            soi_exit_km    = SOI_MOON_KM;
+            soi_exit_km    = moon_def.soi_km;
         }
         else if (sc.dominant_body_idx == 0)
         {
@@ -773,7 +773,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
             ref_vel        = interpolatedVelocity(ss, bi);
             ref_GM         = G_KM3 * ss.defs[bi].mass_kg;
             ref_radius_km  = ss.defs[bi].radius_km;
-            soi_exit_km    = (sc.dominant_body_idx == 3) ? SOI_EARTH_KM : 1e13;
+            soi_exit_km    = ss.defs[bi].soi_km > 0.0 ? ss.defs[bi].soi_km : 1e13;
         }
 
         glm::vec3  const ref_crr = glm::vec3(ref_pos_render - scene.camera.pos_d);
@@ -807,18 +807,152 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                                     ss.maneuver_sc_idx == static_cast<int>(i);
 
         // Lambda: compute and upload the encounter arc given burn-point state.
-        // dt_moon = seconds from current sim state to the "burn epoch" for Moon propagation.
+        // dt_burn = seconds from current sim state to the burn epoch (0 for live orbit).
         // Returns true if an arc was found and uploaded; hides the object if false.
         auto drawEncounterArc = [&](glm::dvec3 const& br,
                                     OsculatingOrbit const& post_orbit,
                                     double dv_mag,
-                                    double dt_moon) -> bool
+                                    double dt_burn) -> bool
         {
             if (!(i < line_objs.sc_encounter_path_obj_ids.size())) return false;
             auto& enc_obj_early = scene.objs[line_objs.sc_encounter_path_obj_ids[i]];
-            if (!(post_orbit.a > 0.0 && post_orbit.e < 1.0 && dv_mag > 1e-9))
+            if (dv_mag < 1e-9) { enc_obj_early.visible = false; return false; }
+
+            // Helper: upload vertices and make the encounter arc object visible.
+            auto uploadArc = [&](std::vector<LineVertex> const& verts,
+                                 glm::vec3 const& body_crr) -> bool
+            {
+                if (verts.size() < 2) { enc_obj_early.visible = false; return false; }
+                auto& evbuf = line_objs.sc_encounter_path_vbufs[i];
+                vk::DeviceSize const vsz = sizeof(LineVertex) * verts.size();
+                void* vptr = evbuf.memory.mapMemory(0, vsz).value;
+                std::memcpy(vptr, verts.data(), static_cast<std::size_t>(vsz));
+                evbuf.memory.unmapMemory();
+                enc_obj_early.indices_size = static_cast<uint32_t>(verts.size());
+                enc_obj_early.position     = body_crr;
+                enc_obj_early.visible      = true;
+                return true;
+            };
+
+            // ----------------------------------------------------------------
+            // Case 1: Orbiting a moon — show trajectory in parent's frame
+            //         after hyperbolic SOI exit.
+            // ----------------------------------------------------------------
+            if (sc.dominant_is_moon && sc.dominant_moon_idx >= 0)
+            {
+                if (!(post_orbit.e >= 1.0 && post_orbit.a < 0.0))
+                    { enc_obj_early.visible = false; return false; }
+
+                std::size_t const mk     = static_cast<std::size_t>(sc.dominant_moon_idx);
+                auto const& ms           = ss.moon_states[mk];
+                std::size_t const par_idx = static_cast<std::size_t>(ms.parent_planet_index);
+                auto const& par_def      = ss.defs[par_idx];
+                auto const& moon_def_hyp = par_def.moons[static_cast<std::size_t>(ms.moon_index)];
+                double const GM_par      = G_KM3 * par_def.mass_kg;
+                double const moon_soi    = moon_def_hyp.soi_km;
+
+                double const e = post_orbit.e;
+                double const a = post_orbit.a;   // negative
+                double const p = a * (1.0 - e * e); // positive: |a|(e²-1)
+
+                // True anomaly at SOI exit: r(nu) = soi
+                double const cos_nu_exit = (p / moon_soi - 1.0) / e;
+                if (cos_nu_exit >= 1.0) { enc_obj_early.visible = false; return false; }
+                double const nu_exit = std::acos(std::clamp(cos_nu_exit, -1.0, 1.0));
+
+                // Position and velocity at exit, in Moon's frame
+                glm::dvec3 const r_exit =
+                    moon_soi * (std::cos(nu_exit) * post_orbit.e_hat +
+                                std::sin(nu_exit) * post_orbit.q_hat);
+                double const sqrt_gm_p  = std::sqrt(ref_GM / p);
+                double const vr_exit    = sqrt_gm_p * e * std::sin(nu_exit);
+                double const vt_exit    = sqrt_gm_p * (1.0 + e * std::cos(nu_exit));
+                glm::dvec3 const r_exit_hat = glm::normalize(r_exit);
+                glm::dvec3 const t_exit_hat =
+                    glm::normalize(glm::cross(post_orbit.h_hat, r_exit));
+                glm::dvec3 const v_exit = vr_exit * r_exit_hat + vt_exit * t_exit_hat;
+
+                // Hyperbolic TOF: M = e*sinh(F) - F, F = 2*arctanh(k*tan(nu/2))
+                double const k = std::sqrt((e - 1.0) / (e + 1.0));
+                auto hypM = [&](double nu) {
+                    double const F = 2.0 * std::atanh(k * std::tan(nu / 2.0));
+                    return e * std::sinh(F) - F;
+                };
+                double const n_hyp   = std::sqrt(ref_GM / ((-a) * (-a) * (-a)));
+                double const nu_burn = std::atan2(glm::dot(post_orbit.q_hat, br),
+                                                   glm::dot(post_orbit.e_hat, br));
+                double const tof = (hypM(nu_exit) - hypM(nu_burn)) / n_hyp;
+                if (tof <= 0.0) { enc_obj_early.visible = false; return false; }
+
+                // Moon's orbit relative to parent at physics time, advanced to burn + exit
+                glm::dvec3 const par_phys   = planetPositionAtSpacecraftTime(ss, par_idx, i);
+                glm::dvec3 const moon_r0    = ref_pos_phys - par_phys;
+                glm::dvec3 const moon_v0    = ref_vel - interpolatedVelocity(ss, par_idx);
+                auto [moon_r_burn, moon_v_burn] =
+                    keplerPropagate(moon_r0, moon_v0, GM_par, dt_burn);
+                auto [moon_r_exit, moon_v_exit] =
+                    keplerPropagate(moon_r_burn, moon_v_burn, GM_par, tof);
+
+                // Spacecraft state in parent's frame at Moon SOI exit
+                glm::dvec3 const r_sc_par = r_exit + moon_r_exit;
+                glm::dvec3 const v_sc_par = v_exit + moon_v_exit;
+
+                OsculatingOrbit const par_orbit =
+                    computeOsculatingOrbit(r_sc_par, v_sc_par, GM_par);
+                double const p_par = par_orbit.a * (1.0 - par_orbit.e * par_orbit.e);
+                if (p_par <= 0.0) { enc_obj_early.visible = false; return false; }
+
+                double const par_soi =
+                    par_def.soi_km > 0.0 ? par_def.soi_km : 1e15;
+                double const nu0_par =
+                    std::atan2(glm::dot(r_sc_par, par_orbit.q_hat),
+                               glm::dot(r_sc_par, par_orbit.e_hat));
+
+                // Arc span: full orbit (elliptic) or to parent SOI exit (hyperbolic)
+                double nu_span;
+                if (par_orbit.e >= 1.0)
+                {
+                    double const cos_ne = std::clamp(
+                        (p_par / par_soi - 1.0) / par_orbit.e, -1.0, 1.0);
+                    nu_span = std::acos(cos_ne) - nu0_par;
+                }
+                else
+                {
+                    nu_span = 2.0 * std::numbers::pi_v<double>;
+                }
+                if (nu_span <= 0.0) { enc_obj_early.visible = false; return false; }
+
+                constexpr int N_ARC = SolarSystemLineObjects::MAX_ENCOUNTER_VERTS - 1;
+                std::vector<LineVertex> enc_verts;
+                enc_verts.reserve(SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
+
+                for (int v = 0; v <= N_ARC; ++v)
+                {
+                    double const nu = nu0_par + nu_span * v / N_ARC;
+                    double const r_mag = p_par / (1.0 + par_orbit.e * std::cos(nu));
+                    if (r_mag > par_soi || r_mag < par_def.radius_km) break;
+                    glm::dvec3 const r =
+                        r_mag * (std::cos(nu) * par_orbit.e_hat +
+                                 std::sin(nu) * par_orbit.q_hat);
+                    float const t = static_cast<float>(v) / static_cast<float>(N_ARC);
+                    enc_verts.push_back({glm::vec3(r), {1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f}});
+                }
+
+                glm::vec3 const par_crr =
+                    glm::vec3(interpolatedPosition(ss, par_idx) - scene.camera.pos_d);
+                return uploadArc(enc_verts, par_crr);
+            }
+
+            // ----------------------------------------------------------------
+            // Case 2: In Sun's SOI — planet encounter arcs not yet implemented.
+            // ----------------------------------------------------------------
+            if (sc.dominant_body_idx <= 0)
                 { enc_obj_early.visible = false; return false; }
-            if (sc.dominant_is_moon || sc.dominant_body_idx <= 0)
+
+            // ----------------------------------------------------------------
+            // Case 3: Orbiting a planet — scan for moon SOI entries.
+            // ----------------------------------------------------------------
+            if (!(post_orbit.a > 0.0 && post_orbit.e < 1.0))
                 { enc_obj_early.visible = false; return false; }
 
             int const dom_idx = sc.dominant_body_idx;
@@ -832,7 +966,9 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                 auto const& moon_def =
                     ss.defs[static_cast<std::size_t>(dom_idx)]
                            .moons[static_cast<std::size_t>(ms.moon_index)];
-                double const GM_moon = G_KM3 * moon_def.mass_kg;
+                if (moon_def.soi_km <= 0.0) continue;
+                double const GM_moon    = G_KM3 * moon_def.mass_kg;
+                double const target_soi = moon_def.soi_km;
 
                 glm::dvec3 const moon_world   = moonPositionAtSpacecraftTime(ss, mk, i);
                 glm::dvec3 const moon_v_world = interpolatedMoonVelocity(ss, mk);
@@ -840,7 +976,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                 glm::dvec3 const moon_v0 = moon_v_world - ref_vel;
 
                 auto [moon_r_t0, moon_v_t0] =
-                    keplerPropagate(moon_r0, moon_v0, ref_GM, dt_moon);
+                    keplerPropagate(moon_r0, moon_v0, ref_GM, dt_burn);
 
                 double const a_orb = post_orbit.a;
                 double const e_orb = post_orbit.e;
@@ -881,7 +1017,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                     auto [moon_r_s, moon_v_s] =
                         keplerPropagate(moon_r_t0, moon_v_t0, ref_GM, tof);
 
-                    if (glm::length(r_s - moon_r_s) < SOI_MOON_KM)
+                    if (glm::length(r_s - moon_r_s) < target_soi)
                     {
                         entry_idx = s;
                         break;
@@ -890,9 +1026,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
 
                 if (entry_idx < 0) continue;
 
-                // Bisect between the last outside-SOI sample and the first inside-SOI
-                // sample to find a continuously-varying entry nu (eliminates the per-sample
-                // teleport jumps that appear at high time_scale).
+                // Bisect to find a smoothly-varying entry point
                 {
                     double nu_lo = nu_burn + (2.0 * M_PI * std::max(entry_idx - 1, 0)) / N_SCAN;
                     double nu_hi = nu_burn + (2.0 * M_PI * entry_idx) / N_SCAN;
@@ -915,7 +1049,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                         auto [moon_r_m, moon_v_m] =
                             keplerPropagate(moon_r_t0, moon_v_t0, ref_GM, tof_m);
 
-                        if (glm::length(r_m - moon_r_m) < SOI_MOON_KM)
+                        if (glm::length(r_m - moon_r_m) < target_soi)
                             nu_hi = nu_mid;
                         else
                             nu_lo = nu_mid;
@@ -965,7 +1099,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                 for (int v = 0; v < SolarSystemLineObjects::MAX_ENCOUNTER_VERTS; ++v)
                 {
                     double const r_h_mag = p_hyp / (1.0 + hyp.e * std::cos(nu_h));
-                    if (r_h_mag > SOI_MOON_KM || r_h_mag <= 0.0) break;
+                    if (r_h_mag > target_soi || r_h_mag <= 0.0) break;
 
                     glm::dvec3 const r_h =
                         r_h_mag * (std::cos(nu_h) * hyp.e_hat +
@@ -974,25 +1108,11 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
 
                     float const t = static_cast<float>(v) /
                         static_cast<float>(SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
-                    glm::vec4 const col{1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f};
-
-                    enc_verts.push_back({glm::vec3(r_planet), col});
+                    enc_verts.push_back({glm::vec3(r_planet), {1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f}});
                     nu_h += nu_step;
                 }
 
-                if (enc_verts.size() < 2) continue;
-
-                auto& evbuf  = line_objs.sc_encounter_path_vbufs[i];
-                vk::DeviceSize const vsz = sizeof(LineVertex) * enc_verts.size();
-                void* vptr = evbuf.memory.mapMemory(0, vsz).value;
-                std::memcpy(vptr, enc_verts.data(), static_cast<std::size_t>(vsz));
-                evbuf.memory.unmapMemory();
-
-                auto& enc_obj        = scene.objs[line_objs.sc_encounter_path_obj_ids[i]];
-                enc_obj.indices_size = static_cast<uint32_t>(enc_verts.size());
-                enc_obj.position     = ref_crr;
-                enc_obj.visible      = true;
-                found = true;
+                found = uploadArc(enc_verts, ref_crr);
             }
 
             if (!found)
