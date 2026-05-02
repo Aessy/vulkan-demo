@@ -539,6 +539,31 @@ void initSpacecraftLines(RenderingState const& state, Scene& scene,
         addObject(scene, eo);
         line_objs.sc_encounter_path_vbufs.push_back(std::move(ev));
         line_objs.sc_encounter_path_ibufs.push_back(std::move(ei));
+
+        // --- Heliocentric transfer orbit arc (pre-allocated, initially hidden) ---
+        std::vector<LineVertex> helio_empty(SolarSystemLineObjects::MAX_HELIO_ORBIT_VERTS);
+        std::vector<uint32_t>   helio_idx(SolarSystemLineObjects::MAX_HELIO_ORBIT_VERTS);
+        std::iota(helio_idx.begin(), helio_idx.end(), 0u);
+
+        auto hv = createLineVertexBuffer(state, helio_empty);
+        auto hi = createIndexBuffer(state, helio_idx);
+
+        Object ho{};
+        ho.vertex_buffer = hv.buffer;
+        ho.index_buffer  = hi.buffer;
+        ho.indices_size  = 0;
+        ho.position      = glm::vec3(0.0f);
+        ho.scale         = 1.0f;
+        ho.rotation      = glm::vec3(0.0f, 1.0f, 0.0f);
+        ho.material      = lines_mat;
+        ho.line_width    = 2.0f;
+        ho.line_alpha    = 1.0f;
+        ho.visible       = false;
+
+        line_objs.sc_helio_orbit_obj_ids.push_back(static_cast<int>(scene.objs.size()));
+        addObject(scene, ho);
+        line_objs.sc_helio_orbit_vbufs.push_back(std::move(hv));
+        line_objs.sc_helio_orbit_ibufs.push_back(std::move(hi));
     }
 
     // --- Burn node cross marker (one shared, hidden until planning) ---
@@ -816,6 +841,8 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         {
             if (!(i < line_objs.sc_encounter_path_obj_ids.size())) return false;
             auto& enc_obj_early = scene.objs[line_objs.sc_encounter_path_obj_ids[i]];
+            if (i < line_objs.sc_helio_orbit_obj_ids.size())
+                scene.objs[line_objs.sc_helio_orbit_obj_ids[i]].visible = false;
             if (dv_mag < 1e-9) { enc_obj_early.visible = false; return false; }
 
             // Helper: upload vertices and make the encounter arc object visible.
@@ -950,8 +977,418 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                 { enc_obj_early.visible = false; return false; }
 
             // ----------------------------------------------------------------
-            // Case 3: Orbiting a planet — scan for moon SOI entries.
+            // Case 3: Orbiting a planet.
+            // Sub-case 3b: hyperbolic escape — show heliocentric transfer orbit
+            //              and scan for planet SOI encounters along it.
             // ----------------------------------------------------------------
+            if (!sc.dominant_is_moon && sc.dominant_body_idx > 0 &&
+                post_orbit.e >= 1.0 && post_orbit.a < 0.0)
+            {
+                if (!(i < line_objs.sc_helio_orbit_obj_ids.size()))
+                    { enc_obj_early.visible = false; return false; }
+                auto& helio_obj = scene.objs[line_objs.sc_helio_orbit_obj_ids[i]];
+
+                // 3b.1 — SOI exit geometry (same math as Case 1)
+                double const e = post_orbit.e;
+                double const a = post_orbit.a;           // negative
+                double const p = a * (1.0 - e * e);     // positive: |a|(e²-1)
+
+                double const cos_nu_exit = (p / soi_exit_km - 1.0) / e;
+                if (cos_nu_exit >= 1.0)
+                    { enc_obj_early.visible = false; return false; }
+                double const nu_exit =
+                    std::acos(std::clamp(cos_nu_exit, -1.0, 1.0));
+
+                glm::dvec3 const r_exit =
+                    soi_exit_km * (std::cos(nu_exit) * post_orbit.e_hat +
+                                   std::sin(nu_exit) * post_orbit.q_hat);
+                double const sqrt_gm_p = std::sqrt(ref_GM / p);
+                double const vr_exit   = sqrt_gm_p * e * std::sin(nu_exit);
+                double const vt_exit   = sqrt_gm_p * (1.0 + e * std::cos(nu_exit));
+                glm::dvec3 const r_exit_hat = glm::normalize(r_exit);
+                glm::dvec3 const t_exit_hat =
+                    glm::normalize(glm::cross(post_orbit.h_hat, r_exit));
+                glm::dvec3 const v_exit =
+                    vr_exit * r_exit_hat + vt_exit * t_exit_hat;
+
+                // 3b.2 — Hyperbolic TOF from burn to SOI exit (same as Case 1)
+                double const k_esc = std::sqrt((e - 1.0) / (e + 1.0));
+                auto hypM_esc = [&](double nu) {
+                    double const F = 2.0 * std::atanh(k_esc * std::tan(nu / 2.0));
+                    return e * std::sinh(F) - F;
+                };
+                double const n_hyp_esc =
+                    std::sqrt(ref_GM / ((-a) * (-a) * (-a)));
+                double const nu_burn_esc =
+                    std::atan2(glm::dot(post_orbit.q_hat, br),
+                               glm::dot(post_orbit.e_hat, br));
+                double const tof_esc =
+                    (hypM_esc(nu_exit) - hypM_esc(nu_burn_esc)) / n_hyp_esc;
+                if (tof_esc <= 0.0)
+                    { enc_obj_early.visible = false; return false; }
+
+                // 3b.3 — Propagate planet heliocentric state to burn epoch then exit epoch
+                auto [planet_r_burn, planet_v_burn] =
+                    keplerPropagate(ref_pos_phys, ref_vel, GM_SUN_SCENE, dt_burn);
+                auto [planet_r_exit, planet_v_exit] =
+                    keplerPropagate(planet_r_burn, planet_v_burn, GM_SUN_SCENE, tof_esc);
+
+                // 3b.4 — Heliocentric state at SOI exit
+                glm::dvec3 const r_sc_sun = r_exit + planet_r_exit;
+                glm::dvec3 const v_sc_sun = v_exit + planet_v_exit;
+
+                OsculatingOrbit const helio =
+                    computeOsculatingOrbit(r_sc_sun, v_sc_sun, GM_SUN_SCENE);
+                double const p_helio = helio.a * (1.0 - helio.e * helio.e);
+                if (p_helio <= 0.0)
+                    { enc_obj_early.visible = false; return false; }
+
+                // 3b.5 — Sample and upload heliocentric arc (light blue, Sun-centred)
+                {
+                    double const nu0_h =
+                        std::atan2(glm::dot(r_sc_sun, helio.q_hat),
+                                   glm::dot(r_sc_sun, helio.e_hat));
+
+                    double nu_span_h;
+                    if (helio.e >= 1.0)
+                    {
+                        double const nu_max_h =
+                            std::acos(std::clamp(-1.0 / helio.e, -1.0, 1.0)) - 1e-4;
+                        nu_span_h = nu_max_h - nu0_h;
+                    }
+                    else
+                    {
+                        nu_span_h = 2.0 * std::numbers::pi_v<double>;
+                    }
+
+                    if (nu_span_h > 0.0)
+                    {
+                        constexpr int N_H =
+                            SolarSystemLineObjects::MAX_HELIO_ORBIT_VERTS - 1;
+                        std::vector<LineVertex> hverts;
+                        hverts.reserve(SolarSystemLineObjects::MAX_HELIO_ORBIT_VERTS);
+
+                        for (int v = 0; v <= N_H; ++v)
+                        {
+                            double const nu  = nu0_h + nu_span_h * v / N_H;
+                            double const r_h =
+                                p_helio / (1.0 + helio.e * std::cos(nu));
+                            if (r_h <= 0.0) break;
+                            glm::dvec3 const rp =
+                                r_h * (std::cos(nu) * helio.e_hat +
+                                       std::sin(nu) * helio.q_hat);
+                            float const t =
+                                static_cast<float>(v) / static_cast<float>(N_H);
+                            hverts.push_back(
+                                {glm::vec3(rp),
+                                 {0.3f, 0.85f, 1.0f, 1.0f - 0.7f * t}});
+                        }
+
+                        if (hverts.size() >= 2)
+                        {
+                            auto& hvbuf = line_objs.sc_helio_orbit_vbufs[i];
+                            vk::DeviceSize const hvsz =
+                                sizeof(LineVertex) * hverts.size();
+                            void* hvptr =
+                                hvbuf.memory.mapMemory(0, hvsz).value;
+                            std::memcpy(hvptr, hverts.data(),
+                                        static_cast<std::size_t>(hvsz));
+                            hvbuf.memory.unmapMemory();
+                            helio_obj.indices_size =
+                                static_cast<uint32_t>(hverts.size());
+                            helio_obj.position =
+                                glm::vec3(-scene.camera.pos_d);
+                            helio_obj.visible = true;
+                        }
+                    }
+                }
+
+                // 3b.6 — Planet encounter scan along the heliocentric orbit
+                // Same algorithm as Case 3's moon scan, one level up.
+                {
+                    int const dom_idx = sc.dominant_body_idx;
+
+                    double const a_h  = helio.a;
+                    double const e_h  = helio.e;
+                    double const p_h  = p_helio;
+                    double const n_h  = (e_h < 1.0)
+                        ? std::sqrt(GM_SUN_SCENE / (a_h * a_h * a_h))
+                        : 0.0;
+
+                    double const nu0_h =
+                        std::atan2(glm::dot(r_sc_sun, helio.q_hat),
+                                   glm::dot(r_sc_sun, helio.e_hat));
+
+                    auto toEccentricH = [&](double nu) {
+                        return 2.0 * std::atan(
+                            std::sqrt((1.0 - e_h) / (1.0 + e_h)) *
+                            std::tan(nu / 2.0));
+                    };
+
+                    double M_exit_h = 0.0;
+                    if (e_h < 1.0)
+                    {
+                        double const E0 = toEccentricH(nu0_h);
+                        M_exit_h = E0 - e_h * std::sin(E0);
+                    }
+
+                    // nu_max_scan for hyperbolic helio orbit
+                    double const nu_max_scan_h = (e_h >= 1.0)
+                        ? std::acos(std::clamp(-1.0 / e_h, -1.0, 1.0)) - 0.01
+                        : 0.0;
+
+                    double const k_h = (e_h >= 1.0)
+                        ? std::sqrt((e_h - 1.0) / (e_h + 1.0))
+                        : 0.0;
+                    double const n_hyp_h = (e_h >= 1.0)
+                        ? std::sqrt(GM_SUN_SCENE / ((-a_h) * (-a_h) * (-a_h)))
+                        : 0.0;
+                    double const M0_h = (e_h >= 1.0)
+                        ? [&]{ double const F = 2.0 * std::atanh(
+                                   k_h * std::tan(nu0_h / 2.0));
+                               return e_h * std::sinh(F) - F; }()
+                        : 0.0;
+
+                    bool found = false;
+
+                    for (std::size_t pi = 1;
+                         pi < ss.defs.size() && !found; ++pi)
+                    {
+                        if (static_cast<int>(pi) == dom_idx) continue;
+                        auto const& tgt_def = ss.defs[pi];
+                        if (tgt_def.soi_km <= 0.0) continue;
+
+                        double const GM_tgt     = G_KM3 * tgt_def.mass_kg;
+                        double const target_soi = tgt_def.soi_km;
+
+                        glm::dvec3 const tgt_pos0 =
+                            planetPositionAtSpacecraftTime(ss, pi, i);
+                        glm::dvec3 const tgt_vel0 =
+                            interpolatedVelocity(ss, pi);
+
+                        // Advance target to helio orbit start epoch
+                        // (dt_burn from physics time + tof_esc to planet SOI exit)
+                        auto [tgt_r_t0, tgt_v_t0] =
+                            keplerPropagate(tgt_pos0, tgt_vel0,
+                                            GM_SUN_SCENE, dt_burn + tof_esc);
+
+                        constexpr int N_SCAN_H = 360;
+                        int entry_idx = -1;
+
+                        for (int s = 0; s < N_SCAN_H; ++s)
+                        {
+                            double nu_s, tof_s;
+                            if (e_h < 1.0)
+                            {
+                                double const nu   =
+                                    nu0_h + (2.0 * M_PI * s) / N_SCAN_H;
+                                double const nu_w =
+                                    std::fmod(nu + 10.0 * M_PI, 2.0 * M_PI)
+                                    - M_PI;
+                                double const E_s  = toEccentricH(nu_w);
+                                double       M_s  = E_s - e_h * std::sin(E_s);
+                                if (M_s < M_exit_h) M_s += 2.0 * M_PI;
+                                tof_s = (M_s - M_exit_h) / n_h;
+                                nu_s  = nu_w;
+                            }
+                            else
+                            {
+                                double const nu =
+                                    nu0_h + (nu_max_scan_h - nu0_h) *
+                                    s / N_SCAN_H;
+                                double const F_s =
+                                    2.0 * std::atanh(k_h * std::tan(nu / 2.0));
+                                double const M_s =
+                                    e_h * std::sinh(F_s) - F_s;
+                                tof_s = (M_s - M0_h) / n_hyp_h;
+                                nu_s  = nu;
+                            }
+
+                            double const r_s_mag =
+                                p_h / (1.0 + e_h * std::cos(nu_s));
+                            if (r_s_mag <= 0.0) continue;
+                            glm::dvec3 const r_s =
+                                r_s_mag * (std::cos(nu_s) * helio.e_hat +
+                                           std::sin(nu_s) * helio.q_hat);
+
+                            auto [tgt_r_s, tgt_v_s] =
+                                keplerPropagate(tgt_r_t0, tgt_v_t0,
+                                                GM_SUN_SCENE, tof_s);
+
+                            if (glm::length(r_s - tgt_r_s) < target_soi)
+                            {
+                                entry_idx = s;
+                                break;
+                            }
+                        }
+
+                        if (entry_idx < 0) continue;
+
+                        // Bisect 24 iterations to refine encounter epoch
+                        double nu_lo_h, nu_hi_h;
+                        if (e_h < 1.0)
+                        {
+                            nu_lo_h = nu0_h + (2.0 * M_PI *
+                                std::max(entry_idx - 1, 0)) / N_SCAN_H;
+                            nu_hi_h = nu0_h + (2.0 * M_PI *
+                                entry_idx) / N_SCAN_H;
+                        }
+                        else
+                        {
+                            nu_lo_h = nu0_h + (nu_max_scan_h - nu0_h) *
+                                std::max(entry_idx - 1, 0) / N_SCAN_H;
+                            nu_hi_h = nu0_h + (nu_max_scan_h - nu0_h) *
+                                entry_idx / N_SCAN_H;
+                        }
+
+                        for (int b = 0; b < 24; ++b)
+                        {
+                            double const nu_mid = 0.5 * (nu_lo_h + nu_hi_h);
+                            double tof_m;
+                            double nu_m;
+
+                            if (e_h < 1.0)
+                            {
+                                double const nu_w_m =
+                                    std::fmod(nu_mid + 10.0 * M_PI,
+                                              2.0 * M_PI) - M_PI;
+                                double const E_m = toEccentricH(nu_w_m);
+                                double       M_m = E_m - e_h * std::sin(E_m);
+                                if (M_m < M_exit_h) M_m += 2.0 * M_PI;
+                                tof_m = (M_m - M_exit_h) / n_h;
+                                nu_m  = nu_w_m;
+                            }
+                            else
+                            {
+                                double const F_m =
+                                    2.0 * std::atanh(k_h * std::tan(nu_mid / 2.0));
+                                double const M_m =
+                                    e_h * std::sinh(F_m) - F_m;
+                                tof_m = (M_m - M0_h) / n_hyp_h;
+                                nu_m  = nu_mid;
+                            }
+
+                            double const r_m_mag =
+                                p_h / (1.0 + e_h * std::cos(nu_m));
+                            glm::dvec3 const r_m =
+                                r_m_mag * (std::cos(nu_m) * helio.e_hat +
+                                           std::sin(nu_m) * helio.q_hat);
+                            auto [tgt_r_m, tgt_v_m] =
+                                keplerPropagate(tgt_r_t0, tgt_v_t0,
+                                                GM_SUN_SCENE, tof_m);
+                            if (glm::length(r_m - tgt_r_m) < target_soi)
+                                nu_hi_h = nu_mid;
+                            else
+                                nu_lo_h = nu_mid;
+                        }
+
+                        // Recover refined encounter state on heliocentric orbit
+                        double nu_enc, entry_tof_h;
+                        if (e_h < 1.0)
+                        {
+                            double const nu_w_r =
+                                std::fmod(nu_hi_h + 10.0 * M_PI, 2.0 * M_PI)
+                                - M_PI;
+                            double const E_r = toEccentricH(nu_w_r);
+                            double       M_r = E_r - e_h * std::sin(E_r);
+                            if (M_r < M_exit_h) M_r += 2.0 * M_PI;
+                            entry_tof_h = (M_r - M_exit_h) / n_h;
+                            nu_enc = nu_w_r;
+                        }
+                        else
+                        {
+                            double const F_r =
+                                2.0 * std::atanh(k_h * std::tan(nu_hi_h / 2.0));
+                            double const M_r = e_h * std::sinh(F_r) - F_r;
+                            entry_tof_h = (M_r - M0_h) / n_hyp_h;
+                            nu_enc = nu_hi_h;
+                        }
+
+                        double const r_enc_mag =
+                            p_h / (1.0 + e_h * std::cos(nu_enc));
+                        glm::dvec3 const entry_r_sun =
+                            r_enc_mag * (std::cos(nu_enc) * helio.e_hat +
+                                         std::sin(nu_enc) * helio.q_hat);
+                        double const vr_enc =
+                            std::sqrt(GM_SUN_SCENE / p_h) * e_h *
+                            std::sin(nu_enc);
+                        double const vt_enc =
+                            std::sqrt(GM_SUN_SCENE / p_h) *
+                            (1.0 + e_h * std::cos(nu_enc));
+                        glm::dvec3 const entry_v_sun =
+                            vr_enc * glm::normalize(entry_r_sun) +
+                            vt_enc * glm::normalize(
+                                glm::cross(helio.h_hat, entry_r_sun));
+
+                        auto [tgt_r_enc, tgt_v_enc] =
+                            keplerPropagate(tgt_r_t0, tgt_v_t0,
+                                            GM_SUN_SCENE, entry_tof_h);
+
+                        glm::dvec3 const sc_r_tgt = entry_r_sun - tgt_r_enc;
+                        glm::dvec3 const sc_v_tgt = entry_v_sun - tgt_v_enc;
+
+                        OsculatingOrbit const hyp =
+                            computeOsculatingOrbit(sc_r_tgt, sc_v_tgt, GM_tgt);
+                        if (hyp.e <= 1.0) continue;
+
+                        double const nu_max_hyp =
+                            std::acos(std::clamp(-1.0 / hyp.e, -1.0, 1.0))
+                            - 1e-4;
+                        double const p_hyp_tgt =
+                            hyp.a * (1.0 - hyp.e * hyp.e);
+
+                        double const nu_entry_h =
+                            std::atan2(glm::dot(hyp.q_hat, sc_r_tgt),
+                                       glm::dot(hyp.e_hat, sc_r_tgt));
+                        double const nu_step_hyp =
+                            (nu_entry_h <= 0.0 ? 1.0 : -1.0) *
+                            (2.0 * nu_max_hyp) /
+                            static_cast<double>(
+                                SolarSystemLineObjects::MAX_ENCOUNTER_VERTS - 1);
+
+                        std::vector<LineVertex> enc_verts;
+                        enc_verts.reserve(
+                            SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
+
+                        double nu_hv = nu_entry_h;
+                        for (int v = 0;
+                             v < SolarSystemLineObjects::MAX_ENCOUNTER_VERTS;
+                             ++v)
+                        {
+                            double const r_h_mag =
+                                p_hyp_tgt /
+                                (1.0 + hyp.e * std::cos(nu_hv));
+                            if (r_h_mag > target_soi || r_h_mag <= 0.0) break;
+
+                            glm::dvec3 const r_h =
+                                r_h_mag * (std::cos(nu_hv) * hyp.e_hat +
+                                           std::sin(nu_hv) * hyp.q_hat);
+                            glm::dvec3 const r_world = tgt_r_enc + r_h;
+
+                            float const t =
+                                static_cast<float>(v) /
+                                static_cast<float>(
+                                    SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
+                            enc_verts.push_back(
+                                {glm::vec3(r_world),
+                                 {1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f}});
+                            nu_hv += nu_step_hyp;
+                        }
+
+                        glm::vec3 const tgt_crr =
+                            glm::vec3(interpolatedPosition(ss, pi) -
+                                      scene.camera.pos_d);
+                        found = uploadArc(enc_verts, tgt_crr);
+                    }
+
+                    if (!found)
+                        enc_obj_early.visible = false;
+                }
+
+                return helio_obj.visible;
+            }
+
+            // Sub-case 3a: elliptic orbit — scan for moon SOI entries.
             if (!(post_orbit.a > 0.0 && post_orbit.e < 1.0))
                 { enc_obj_early.visible = false; return false; }
 

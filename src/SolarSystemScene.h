@@ -37,6 +37,12 @@ struct SolarSystemLineObjects
     std::vector<Buffer> sc_encounter_path_ibufs;
     std::vector<int>    sc_encounter_path_obj_ids;
 
+    // Per-spacecraft: heliocentric transfer orbit arc after planet SOI escape
+    static constexpr int MAX_HELIO_ORBIT_VERTS = 500;
+    std::vector<Buffer> sc_helio_orbit_vbufs;
+    std::vector<Buffer> sc_helio_orbit_ibufs;
+    std::vector<int>    sc_helio_orbit_obj_ids;
+
     // Single burn node marker (small cross shown on current orbit ring)
     std::optional<Buffer> maneuver_node_vbuf;
     std::optional<Buffer> maneuver_node_ibuf;
