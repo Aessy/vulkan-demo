@@ -949,20 +949,28 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                 }
                 if (nu_span <= 0.0) { enc_obj_early.visible = false; return false; }
 
-                constexpr int N_ARC = SolarSystemLineObjects::MAX_ENCOUNTER_VERTS - 1;
-                std::vector<LineVertex> enc_verts;
-                enc_verts.reserve(SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
+                constexpr int N_ARC = SolarSystemLineObjects::MAX_ENCOUNTER_VERTS / 2;
+                std::vector<glm::dvec3> arc_pts;
+                arc_pts.reserve(N_ARC + 1);
 
                 for (int v = 0; v <= N_ARC; ++v)
                 {
                     double const nu = nu0_par + nu_span * v / N_ARC;
                     double const r_mag = p_par / (1.0 + par_orbit.e * std::cos(nu));
                     if (r_mag > par_soi || r_mag < par_def.radius_km) break;
-                    glm::dvec3 const r =
+                    arc_pts.push_back(
                         r_mag * (std::cos(nu) * par_orbit.e_hat +
-                                 std::sin(nu) * par_orbit.q_hat);
-                    float const t = static_cast<float>(v) / static_cast<float>(N_ARC);
-                    enc_verts.push_back({glm::vec3(r), {1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f}});
+                                 std::sin(nu) * par_orbit.q_hat));
+                }
+
+                std::vector<LineVertex> enc_verts;
+                enc_verts.reserve(arc_pts.size() * 2);
+                for (std::size_t v = 0; v + 1 < arc_pts.size(); ++v)
+                {
+                    float const t = static_cast<float>(v) /
+                        static_cast<float>(std::max(arc_pts.size() - 1, std::size_t{1}));
+                    enc_verts.push_back({glm::vec3(arc_pts[v]),     {1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f}, 0.0f});
+                    enc_verts.push_back({glm::vec3(arc_pts[v + 1]), {1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f}, 0.0f});
                 }
 
                 glm::vec3 const par_crr =
@@ -1064,9 +1072,9 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                     if (nu_span_h > 0.0)
                     {
                         constexpr int N_H =
-                            SolarSystemLineObjects::MAX_HELIO_ORBIT_VERTS - 1;
-                        std::vector<LineVertex> hverts;
-                        hverts.reserve(SolarSystemLineObjects::MAX_HELIO_ORBIT_VERTS);
+                            SolarSystemLineObjects::MAX_HELIO_ORBIT_VERTS / 2;
+                        std::vector<glm::dvec3> helio_pts;
+                        helio_pts.reserve(N_H + 1);
 
                         for (int v = 0; v <= N_H; ++v)
                         {
@@ -1074,14 +1082,21 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                             double const r_h =
                                 p_helio / (1.0 + helio.e * std::cos(nu));
                             if (r_h <= 0.0) break;
-                            glm::dvec3 const rp =
+                            helio_pts.push_back(
                                 r_h * (std::cos(nu) * helio.e_hat +
-                                       std::sin(nu) * helio.q_hat);
-                            float const t =
-                                static_cast<float>(v) / static_cast<float>(N_H);
-                            hverts.push_back(
-                                {glm::vec3(rp),
-                                 {0.3f, 0.85f, 1.0f, 1.0f - 0.7f * t}});
+                                       std::sin(nu) * helio.q_hat));
+                        }
+
+                        std::vector<LineVertex> hverts;
+                        hverts.reserve(helio_pts.size() * 2);
+                        for (std::size_t v = 0; v + 1 < helio_pts.size(); ++v)
+                        {
+                            float const t = static_cast<float>(v) /
+                                static_cast<float>(std::max(helio_pts.size() - 1, std::size_t{1}));
+                            hverts.push_back({glm::vec3(helio_pts[v]),
+                                              {0.3f, 0.85f, 1.0f, 1.0f - 0.7f * t}, 0.0f});
+                            hverts.push_back({glm::vec3(helio_pts[v + 1]),
+                                              {0.3f, 0.85f, 1.0f, 1.0f - 0.7f * t}, 0.0f});
                         }
 
                         if (hverts.size() >= 2)
@@ -1343,16 +1358,15 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                         double const nu_step_hyp =
                             (nu_entry_h <= 0.0 ? 1.0 : -1.0) *
                             (2.0 * nu_max_hyp) /
-                            static_cast<double>(
-                                SolarSystemLineObjects::MAX_ENCOUNTER_VERTS - 1);
+                            (SolarSystemLineObjects::MAX_ENCOUNTER_VERTS * 0.5);
 
-                        std::vector<LineVertex> enc_verts;
-                        enc_verts.reserve(
-                            SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
+                        std::vector<glm::dvec3> enc_pts;
+                        enc_pts.reserve(
+                            SolarSystemLineObjects::MAX_ENCOUNTER_VERTS / 2 + 1);
 
                         double nu_hv = nu_entry_h;
                         for (int v = 0;
-                             v < SolarSystemLineObjects::MAX_ENCOUNTER_VERTS;
+                             v <= SolarSystemLineObjects::MAX_ENCOUNTER_VERTS / 2;
                              ++v)
                         {
                             double const r_h_mag =
@@ -1360,19 +1374,23 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                                 (1.0 + hyp.e * std::cos(nu_hv));
                             if (r_h_mag > target_soi || r_h_mag <= 0.0) break;
 
-                            glm::dvec3 const r_h =
+                            enc_pts.push_back(
+                                tgt_r_enc +
                                 r_h_mag * (std::cos(nu_hv) * hyp.e_hat +
-                                           std::sin(nu_hv) * hyp.q_hat);
-                            glm::dvec3 const r_world = tgt_r_enc + r_h;
-
-                            float const t =
-                                static_cast<float>(v) /
-                                static_cast<float>(
-                                    SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
-                            enc_verts.push_back(
-                                {glm::vec3(r_world),
-                                 {1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f}});
+                                           std::sin(nu_hv) * hyp.q_hat));
                             nu_hv += nu_step_hyp;
+                        }
+
+                        std::vector<LineVertex> enc_verts;
+                        enc_verts.reserve(enc_pts.size() * 2);
+                        for (std::size_t v = 0; v + 1 < enc_pts.size(); ++v)
+                        {
+                            float const t = static_cast<float>(v) /
+                                static_cast<float>(std::max(enc_pts.size() - 1, std::size_t{1}));
+                            enc_verts.push_back({glm::vec3(enc_pts[v]),
+                                                 {1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f}, 0.0f});
+                            enc_verts.push_back({glm::vec3(enc_pts[v + 1]),
+                                                 {1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f}, 0.0f});
                         }
 
                         glm::vec3 const tgt_crr =
@@ -1527,26 +1545,32 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                 double const nu_step =
                     (nu_entry_h <= 0.0 ? 1.0 : -1.0) *
                     (2.0 * nu_max) /
-                    static_cast<double>(SolarSystemLineObjects::MAX_ENCOUNTER_VERTS - 1);
+                    (SolarSystemLineObjects::MAX_ENCOUNTER_VERTS * 0.5);
 
-                std::vector<LineVertex> enc_verts;
-                enc_verts.reserve(SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
+                std::vector<glm::dvec3> moon_enc_pts;
+                moon_enc_pts.reserve(SolarSystemLineObjects::MAX_ENCOUNTER_VERTS / 2 + 1);
 
                 double nu_h = nu_entry_h;
-                for (int v = 0; v < SolarSystemLineObjects::MAX_ENCOUNTER_VERTS; ++v)
+                for (int v = 0; v <= SolarSystemLineObjects::MAX_ENCOUNTER_VERTS / 2; ++v)
                 {
                     double const r_h_mag = p_hyp / (1.0 + hyp.e * std::cos(nu_h));
                     if (r_h_mag > target_soi || r_h_mag <= 0.0) break;
-
-                    glm::dvec3 const r_h =
-                        r_h_mag * (std::cos(nu_h) * hyp.e_hat +
-                                   std::sin(nu_h) * hyp.q_hat);
-                    glm::dvec3 const r_planet = moon_r_enc + r_h;
-
-                    float const t = static_cast<float>(v) /
-                        static_cast<float>(SolarSystemLineObjects::MAX_ENCOUNTER_VERTS);
-                    enc_verts.push_back({glm::vec3(r_planet), {1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f}});
+                    moon_enc_pts.push_back(
+                        moon_r_enc + r_h_mag * (std::cos(nu_h) * hyp.e_hat +
+                                                  std::sin(nu_h) * hyp.q_hat));
                     nu_h += nu_step;
+                }
+
+                std::vector<LineVertex> enc_verts;
+                enc_verts.reserve(moon_enc_pts.size() * 2);
+                for (std::size_t v = 0; v + 1 < moon_enc_pts.size(); ++v)
+                {
+                    float const t = static_cast<float>(v) /
+                        static_cast<float>(std::max(moon_enc_pts.size() - 1, std::size_t{1}));
+                    enc_verts.push_back({glm::vec3(moon_enc_pts[v]),
+                                         {1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f}, 0.0f});
+                    enc_verts.push_back({glm::vec3(moon_enc_pts[v + 1]),
+                                         {1.0f, 0.55f - 0.15f * t, 0.0f, 1.0f}, 0.0f});
                 }
 
                 found = uploadArc(enc_verts, ref_crr);
@@ -1705,6 +1729,72 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                 mo.visible           = post_orbit.a > 0.0 && post_orbit.e < 1.0 && dv_mag > 0.0;
 
                 drawEncounterArc(br, post_orbit, dv_mag, ss.maneuver_t0_s);
+
+                // When the planned burn escapes the current SOI, override the path
+                // buffer with the post-burn hyperbolic arc (burn point → SOI exit).
+                if (dv_mag > 0.0 && !sc.dominant_is_moon &&
+                    sc.dominant_body_idx > 0 &&
+                    post_orbit.e >= 1.0 && post_orbit.a < 0.0)
+                {
+                    double const e_esc = post_orbit.e;
+                    double const a_esc = post_orbit.a;
+                    double const p_esc = a_esc * (1.0 - e_esc * e_esc);
+                    double const cos_nue =
+                        std::clamp((p_esc / soi_exit_km - 1.0) / e_esc,
+                                   -1.0, 1.0);
+                    double const nu_exit_esc = std::acos(cos_nue);
+                    double const nu_burn_esc =
+                        std::atan2(glm::dot(post_orbit.q_hat, br),
+                                   glm::dot(post_orbit.e_hat, br));
+
+                    if (p_esc > 0.0 && nu_exit_esc > nu_burn_esc)
+                    {
+                        constexpr int N_ESC =
+                            SolarSystemLineObjects::MAX_PATH_VERTS / 2 - 1;
+                        std::vector<glm::dvec3> esc_pts;
+                        esc_pts.reserve(N_ESC + 1);
+
+                        for (int k = 0; k <= N_ESC; ++k)
+                        {
+                            double const nu = nu_burn_esc +
+                                (nu_exit_esc - nu_burn_esc) * k / N_ESC;
+                            double const r_m =
+                                p_esc / (1.0 + e_esc * std::cos(nu));
+                            if (r_m <= 0.0 || r_m > soi_exit_km * 1.01) break;
+                            esc_pts.push_back(
+                                r_m * (std::cos(nu) * post_orbit.e_hat +
+                                       std::sin(nu) * post_orbit.q_hat));
+                        }
+
+                        std::vector<LineVertex> esc_verts;
+                        esc_verts.reserve(esc_pts.size() * 2);
+                        int const n_seg = static_cast<int>(esc_pts.size()) - 1;
+                        for (int k = 0; k < n_seg; ++k)
+                        {
+                            float const t = static_cast<float>(k) /
+                                static_cast<float>(std::max(n_seg, 1));
+                            glm::vec4 const col = glm::mix(
+                                glm::vec4(1.0f, 0.9f, 0.3f, 0.9f),
+                                glm::vec4(0.5f, 0.45f, 0.15f, 0.15f), t);
+                            esc_verts.push_back({glm::vec3(esc_pts[k]),     col, t});
+                            esc_verts.push_back({glm::vec3(esc_pts[k + 1]), col, t});
+                        }
+
+                        if (!esc_verts.empty())
+                        {
+                            auto& pvbuf = line_objs.sc_path_vbufs[i];
+                            vk::DeviceSize const vsz =
+                                sizeof(LineVertex) * esc_verts.size();
+                            void* vptr = pvbuf.memory.mapMemory(0, vsz).value;
+                            std::memcpy(vptr, esc_verts.data(),
+                                        static_cast<std::size_t>(vsz));
+                            pvbuf.memory.unmapMemory();
+                            path_obj.indices_size =
+                                static_cast<uint32_t>(esc_verts.size());
+                            path_obj.visible = true;
+                        }
+                    }
+                }
             }
             else
             {
