@@ -1581,7 +1581,55 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
             return found;
         };
 
-        // Whether any approved-but-unexecuted maneuver is pending for this spacecraft.
+        // Build the escape hyperbola arc in planet-relative coordinates (Earth-centric).
+        // Vertices are the standard hyperbolic conic points relative to the dominant body.
+        // Caller sets path_obj.position to the planet's CRR position.
+        auto buildEscapeArc = [&](
+            OsculatingOrbit const& orb,
+            glm::dvec3 const&      br,
+            double                 planet_gm,
+            double                 soi_km) -> std::vector<LineVertex>
+        {
+            double const e = orb.e;
+            double const a = orb.a;
+            double const p = a * (1.0 - e * e);
+            if (p <= 0.0) return {};
+
+            double const cos_nue = std::clamp((p / soi_km - 1.0) / e, -1.0, 1.0);
+            double const nu_exit = std::acos(cos_nue);
+            double const nu_burn = std::atan2(glm::dot(orb.q_hat, br),
+                                              glm::dot(orb.e_hat, br));
+            if (nu_exit <= nu_burn) return {};
+
+            constexpr int N = SolarSystemLineObjects::MAX_PATH_VERTS / 2 - 1;
+            std::vector<glm::dvec3> pts;
+            pts.reserve(N + 1);
+
+            for (int k = 0; k <= N; ++k)
+            {
+                double const nu  = nu_burn + (nu_exit - nu_burn) * k / N;
+                double const r_m = p / (1.0 + e * std::cos(nu));
+                if (r_m <= 0.0 || r_m > soi_km * 1.01) break;
+                pts.push_back(r_m * (std::cos(nu) * orb.e_hat + std::sin(nu) * orb.q_hat));
+            }
+
+            std::vector<LineVertex> verts;
+            verts.reserve(pts.size() * 2);
+            int const n_seg = static_cast<int>(pts.size()) - 1;
+            for (int k = 0; k < n_seg; ++k)
+            {
+                float const t = static_cast<float>(k) /
+                    static_cast<float>(std::max(n_seg, 1));
+                glm::vec4 const col = glm::mix(
+                    glm::vec4(1.0f, 0.9f, 0.3f, 0.9f),
+                    glm::vec4(0.5f, 0.45f, 0.15f, 0.15f), t);
+                verts.push_back({glm::vec3(pts[k]),     col, t});
+                verts.push_back({glm::vec3(pts[k + 1]), col, t});
+            }
+            return verts;
+        };
+
+        // Whether any approved maneuver is pending for this spacecraft.
         // Used to decide whether the live path or the maneuver block owns the encounter arc.
         bool const has_pending_maneuver = is_maneuver_sc ||
             std::any_of(sc.maneuvers.begin(), sc.maneuvers.end(),
@@ -1734,68 +1782,26 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                 drawEncounterArc(br, post_orbit, dv_mag, ss.maneuver_t0_s);
 
                 // When the planned burn escapes the current SOI, override the path
-                // buffer with the post-burn hyperbolic arc (burn point → SOI exit).
+                // buffer with the post-burn hyperbolic arc (planet-relative).
                 if (dv_mag > 0.0 && !sc.dominant_is_moon &&
                     sc.dominant_body_idx > 0 &&
                     post_orbit.e >= 1.0 && post_orbit.a < 0.0)
                 {
-                    double const e_esc = post_orbit.e;
-                    double const a_esc = post_orbit.a;
-                    double const p_esc = a_esc * (1.0 - e_esc * e_esc);
-                    double const cos_nue =
-                        std::clamp((p_esc / soi_exit_km - 1.0) / e_esc,
-                                   -1.0, 1.0);
-                    double const nu_exit_esc = std::acos(cos_nue);
-                    double const nu_burn_esc =
-                        std::atan2(glm::dot(post_orbit.q_hat, br),
-                                   glm::dot(post_orbit.e_hat, br));
+                    auto esc_verts = buildEscapeArc(post_orbit, br, ref_GM, soi_exit_km);
 
-                    if (p_esc > 0.0 && nu_exit_esc > nu_burn_esc)
+                    if (!esc_verts.empty())
                     {
-                        constexpr int N_ESC =
-                            SolarSystemLineObjects::MAX_PATH_VERTS / 2 - 1;
-                        std::vector<glm::dvec3> esc_pts;
-                        esc_pts.reserve(N_ESC + 1);
-
-                        for (int k = 0; k <= N_ESC; ++k)
-                        {
-                            double const nu = nu_burn_esc +
-                                (nu_exit_esc - nu_burn_esc) * k / N_ESC;
-                            double const r_m =
-                                p_esc / (1.0 + e_esc * std::cos(nu));
-                            if (r_m <= 0.0 || r_m > soi_exit_km * 1.01) break;
-                            esc_pts.push_back(
-                                r_m * (std::cos(nu) * post_orbit.e_hat +
-                                       std::sin(nu) * post_orbit.q_hat));
-                        }
-
-                        std::vector<LineVertex> esc_verts;
-                        esc_verts.reserve(esc_pts.size() * 2);
-                        int const n_seg = static_cast<int>(esc_pts.size()) - 1;
-                        for (int k = 0; k < n_seg; ++k)
-                        {
-                            float const t = static_cast<float>(k) /
-                                static_cast<float>(std::max(n_seg, 1));
-                            glm::vec4 const col = glm::mix(
-                                glm::vec4(1.0f, 0.9f, 0.3f, 0.9f),
-                                glm::vec4(0.5f, 0.45f, 0.15f, 0.15f), t);
-                            esc_verts.push_back({glm::vec3(esc_pts[k]),     col, t});
-                            esc_verts.push_back({glm::vec3(esc_pts[k + 1]), col, t});
-                        }
-
-                        if (!esc_verts.empty())
-                        {
-                            auto& pvbuf = line_objs.sc_path_vbufs[i];
-                            vk::DeviceSize const vsz =
-                                sizeof(LineVertex) * esc_verts.size();
-                            void* vptr = pvbuf.memory.mapMemory(0, vsz).value;
-                            std::memcpy(vptr, esc_verts.data(),
-                                        static_cast<std::size_t>(vsz));
-                            pvbuf.memory.unmapMemory();
-                            path_obj.indices_size =
-                                static_cast<uint32_t>(esc_verts.size());
-                            path_obj.visible = true;
-                        }
+                        auto& pvbuf = line_objs.sc_path_vbufs[i];
+                        vk::DeviceSize const vsz =
+                            sizeof(LineVertex) * esc_verts.size();
+                        void* vptr = pvbuf.memory.mapMemory(0, vsz).value;
+                        std::memcpy(vptr, esc_verts.data(),
+                                    static_cast<std::size_t>(vsz));
+                        pvbuf.memory.unmapMemory();
+                        path_obj.indices_size =
+                            static_cast<uint32_t>(esc_verts.size());
+                        path_obj.position = ref_crr;
+                        path_obj.visible  = true;
                     }
                 }
             }
@@ -1900,68 +1906,47 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                     // the arc remains visible for escape trajectories.
                     double const dt_to_burn =
                         node.t0_abs_s - ss.elapsed_simulation_s;
+
+                    // For completed burns (dt_to_burn < 0), ref_pos_phys is the
+                    // planet's CURRENT position, but the lambda needs the planet's
+                    // position at the burn epoch as its starting point.  Propagate
+                    // backward so that passing dt_burn=0 lands exactly at burn time.
+                    if (dt_to_burn < 0.0 &&
+                        node.burn_dominant_body_idx > 0 &&
+                        !node.burn_dominant_is_moon)
+                    {
+                        auto [r_burn, v_burn] = keplerPropagate(
+                            ref_pos_phys, ref_vel, GM_SUN_SCENE, dt_to_burn);
+                        ref_pos_phys = r_burn;
+                        ref_vel      = v_burn;
+                    }
+
                     drawEncounterArc(node.burn_pos_rel, aorbit,
                                      glm::length(node.delta_v_world),
                                      std::max(dt_to_burn, 0.0));
 
-                    // For escape maneuvers: also keep the escape arc in the path buffer
+                    // For escape maneuvers: keep the escape arc in the path buffer,
+                    // rendered in heliocentric space so it connects to the helio orbit arc.
+                    // ref_pos_phys is already at burn epoch (backward-propagated above).
                     if (aorbit.e >= 1.0 && aorbit.a < 0.0 &&
                         !node.burn_dominant_is_moon && node.burn_dominant_body_idx > 0)
                     {
-                        double const e_esc = aorbit.e;
-                        double const a_esc = aorbit.a;
-                        double const p_esc = a_esc * (1.0 - e_esc * e_esc);
-                        double const cos_nue =
-                            std::clamp((p_esc / soi_exit_km - 1.0) / e_esc,
-                                       -1.0, 1.0);
-                        double const nu_exit_esc = std::acos(cos_nue);
-                        double const nu_burn_esc =
-                            std::atan2(glm::dot(aorbit.q_hat, node.burn_pos_rel),
-                                       glm::dot(aorbit.e_hat, node.burn_pos_rel));
+                        auto esc_verts = buildEscapeArc(
+                            aorbit, node.burn_pos_rel, ref_GM, soi_exit_km);
 
-                        if (p_esc > 0.0 && nu_exit_esc > nu_burn_esc)
+                        if (!esc_verts.empty())
                         {
-                            constexpr int N_ESC =
-                                SolarSystemLineObjects::MAX_PATH_VERTS / 2 - 1;
-                            std::vector<glm::dvec3> esc_pts;
-                            esc_pts.reserve(N_ESC + 1);
-                            for (int k = 0; k <= N_ESC; ++k)
-                            {
-                                double const nu = nu_burn_esc +
-                                    (nu_exit_esc - nu_burn_esc) * k / N_ESC;
-                                double const r_m =
-                                    p_esc / (1.0 + e_esc * std::cos(nu));
-                                if (r_m <= 0.0 || r_m > soi_exit_km * 1.01) break;
-                                esc_pts.push_back(
-                                    r_m * (std::cos(nu) * aorbit.e_hat +
-                                           std::sin(nu) * aorbit.q_hat));
-                            }
-                            std::vector<LineVertex> esc_verts;
-                            esc_verts.reserve(esc_pts.size() * 2);
-                            int const n_seg = static_cast<int>(esc_pts.size()) - 1;
-                            for (int k = 0; k < n_seg; ++k)
-                            {
-                                float const t = static_cast<float>(k) /
-                                    static_cast<float>(std::max(n_seg, 1));
-                                glm::vec4 const col = glm::mix(
-                                    glm::vec4(1.0f, 0.9f, 0.3f, 0.9f),
-                                    glm::vec4(0.5f, 0.45f, 0.15f, 0.15f), t);
-                                esc_verts.push_back({glm::vec3(esc_pts[k]),     col, t});
-                                esc_verts.push_back({glm::vec3(esc_pts[k + 1]), col, t});
-                            }
-                            if (!esc_verts.empty())
-                            {
-                                auto& pvbuf = line_objs.sc_path_vbufs[i];
-                                vk::DeviceSize const vsz =
-                                    sizeof(LineVertex) * esc_verts.size();
-                                void* vptr = pvbuf.memory.mapMemory(0, vsz).value;
-                                std::memcpy(vptr, esc_verts.data(),
-                                            static_cast<std::size_t>(vsz));
-                                pvbuf.memory.unmapMemory();
-                                path_obj.indices_size =
-                                    static_cast<uint32_t>(esc_verts.size());
-                                path_obj.visible = true;
-                            }
+                            auto& pvbuf = line_objs.sc_path_vbufs[i];
+                            vk::DeviceSize const vsz =
+                                sizeof(LineVertex) * esc_verts.size();
+                            void* vptr = pvbuf.memory.mapMemory(0, vsz).value;
+                            std::memcpy(vptr, esc_verts.data(),
+                                        static_cast<std::size_t>(vsz));
+                            pvbuf.memory.unmapMemory();
+                            path_obj.indices_size =
+                                static_cast<uint32_t>(esc_verts.size());
+                            path_obj.position = burn_ref_crr;
+                            path_obj.visible  = true;
                         }
                     }
 
