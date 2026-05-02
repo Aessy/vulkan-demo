@@ -1315,7 +1315,7 @@ static void createActiveManeuversHud(SolarSystem& ss)
     bool any_active = false;
     for (auto const& sc : ss.spacecraft_states)
         for (auto const& node : sc.maneuvers)
-            if (node.approved && !node.completed) { any_active = true; break; }
+            if (node.approved) { any_active = true; break; }
     if (!any_active) return;
 
     ImGui::SetNextWindowPos(ImVec2(10, 800), ImGuiCond_FirstUseEver);
@@ -1330,7 +1330,7 @@ static void createActiveManeuversHud(SolarSystem& ss)
         for (int ni = static_cast<int>(sc.maneuvers.size()) - 1; ni >= 0; --ni)
         {
             auto& node = sc.maneuvers[ni];
-            if (!node.approved || node.completed) continue;
+            if (!node.approved) continue;
 
             ImGui::PushID(j * 100 + ni);
 
@@ -1343,32 +1343,43 @@ static void createActiveManeuversHud(SolarSystem& ss)
             int mins  = (abs_s % 3600) / 60;
             int secs  = abs_s % 60;
 
-            ImGui::PushStyleColor(ImGuiCol_Text, burning
-                ? ImVec4(1.0f, 0.4f, 0.0f, 1.0f)
-                : ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-            ImGui::Text("[%s]  T%s%02d:%02d:%02d  |Δv| %.3f km/s",
-                def.name,
-                (t_until >= 0 ? "-" : "+"),
-                hrs, mins, secs,
-                dv_mag);
-            ImGui::PopStyleColor();
+            if (node.completed)
+            {
+                ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "[%s]  COMPLETED  |Δv| %.3f km/s",
+                    def.name, dv_mag);
+            }
+            else
+            {
+                ImGui::PushStyleColor(ImGuiCol_Text, burning
+                    ? ImVec4(1.0f, 0.4f, 0.0f, 1.0f)
+                    : ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+                ImGui::Text("[%s]  T%s%02d:%02d:%02d  |Δv| %.3f km/s",
+                    def.name,
+                    (t_until >= 0 ? "-" : "+"),
+                    hrs, mins, secs,
+                    dv_mag);
+                ImGui::PopStyleColor();
+            }
 
             ImGui::Text("  pg: %+.3f  rd: %+.3f  nm: %+.3f",
                 node.prograde_dv, node.radial_dv, node.normal_dv);
 
-            if (dv_mag > 0.0 && node.accumulated_dv > 0.0)
+            if (!node.completed)
             {
-                float prog = static_cast<float>(node.accumulated_dv / dv_mag);
-                ImGui::ProgressBar(prog, ImVec2(-1, 0));
-                ImGui::Text("  Remaining: %.4f km/s", dv_mag - node.accumulated_dv);
-            }
-            else if (t_until <= 30.0 && t_until > 0.0)
-            {
-                ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.0f, 1.0f), ">>> BURN IMMINENT <<<");
+                if (dv_mag > 0.0 && node.accumulated_dv > 0.0)
+                {
+                    float prog = static_cast<float>(node.accumulated_dv / dv_mag);
+                    ImGui::ProgressBar(prog, ImVec2(-1, 0));
+                    ImGui::Text("  Remaining: %.4f km/s", dv_mag - node.accumulated_dv);
+                }
+                else if (t_until <= 30.0 && t_until > 0.0)
+                {
+                    ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.0f, 1.0f), ">>> BURN IMMINENT <<<");
+                }
+                ImGui::Checkbox("Lock attitude to burn direction", &node.lock_attitude);
             }
 
-            ImGui::Checkbox("Lock attitude to burn direction", &node.lock_attitude);
-            if (ImGui::Button("Cancel maneuver"))
+            if (ImGui::Button(node.completed ? "Remove" : "Cancel maneuver"))
                 sc.maneuvers.erase(sc.maneuvers.begin() + ni);
 
             ImGui::Separator();

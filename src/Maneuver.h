@@ -20,6 +20,12 @@ struct ManeuverNode {
     glm::dvec3 burn_pos_rel{};   // pos at t0 relative to dominant body
     glm::dvec3 burn_vel_rel{};   // vel at t0 relative to dominant body
     glm::dvec3 delta_v_world{};  // world-space Δv vector
+
+    // Dominant body at approval time — needed to re-anchor arc rendering
+    // after the spacecraft has escaped to a different SOI.
+    int  burn_dominant_body_idx{0};
+    bool burn_dominant_is_moon{false};
+    int  burn_dominant_moon_idx{-1};
 };
 
 // Solve Kepler's equation M = E - e*sin(E) via Newton-Raphson.

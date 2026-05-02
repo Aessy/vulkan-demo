@@ -1585,7 +1585,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
         // Used to decide whether the live path or the maneuver block owns the encounter arc.
         bool const has_pending_maneuver = is_maneuver_sc ||
             std::any_of(sc.maneuvers.begin(), sc.maneuvers.end(),
-                        [](ManeuverNode const& n){ return n.approved && !n.completed; });
+                        [](ManeuverNode const& n){ return n.approved; });
 
         // --- Predicted path (analytical Keplerian, rebuilt every frame for smoothness) ---
         // Using the same consistent (r_rel, v_rel) as the orbit ring avoids any
@@ -1717,9 +1717,12 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                     !ss_mut.spacecraft_states[i].maneuvers.back().approved)
                 {
                     auto& node = ss_mut.spacecraft_states[i].maneuvers.back();
-                    node.burn_pos_rel  = br;
-                    node.burn_vel_rel  = bv;
-                    node.delta_v_world = dv;
+                    node.burn_pos_rel              = br;
+                    node.burn_vel_rel              = bv;
+                    node.delta_v_world             = dv;
+                    node.burn_dominant_body_idx    = sc.dominant_body_idx;
+                    node.burn_dominant_is_moon     = sc.dominant_is_moon;
+                    node.burn_dominant_moon_idx    = sc.dominant_moon_idx;
                 }
 
                 OsculatingOrbit const post_orbit = computeOsculatingOrbit(br, bv_post, ref_GM);
@@ -1798,51 +1801,194 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
             }
             else
             {
-                // Show approved (non-completed) maneuver orbit using stored burn state
+                // Show approved maneuver orbit and arcs using stored burn state
                 auto const& sc2 = ss.spacecraft_states[i];
-                bool shown = false;
+                bool has_node = false;
                 for (auto const& node : sc2.maneuvers)
                 {
-                    if (!node.approved || node.completed) continue;
+                    if (!node.approved) continue;
                     if (glm::length(node.delta_v_world) < 1e-12) continue;
-                    glm::dvec3 bv_post = node.burn_vel_rel + node.delta_v_world;
+                    has_node = true;
+
+                    // If the spacecraft has escaped the burn body's SOI, temporarily
+                    // restore the burn-time dominant body so drawEncounterArc routes
+                    // to the correct case and uses the correct GM / SOI radius.
+                    bool const soi_changed =
+                        (sc.dominant_body_idx != node.burn_dominant_body_idx) ||
+                        (sc.dominant_is_moon   != node.burn_dominant_is_moon);
+
+                    glm::dvec3 saved_ref_pos_phys  = ref_pos_phys;
+                    glm::dvec3 saved_ref_pos_render = ref_pos_render;
+                    glm::dvec3 saved_ref_vel        = ref_vel;
+                    double     saved_ref_GM         = ref_GM;
+                    double     saved_ref_radius_km  = ref_radius_km;
+                    double     saved_soi_exit_km    = soi_exit_km;
+                    int        saved_dom_body        = sc.dominant_body_idx;
+                    bool       saved_dom_is_moon     = sc.dominant_is_moon;
+                    int        saved_dom_moon        = sc.dominant_moon_idx;
+
+                    if (soi_changed)
+                    {
+                        if (node.burn_dominant_is_moon &&
+                            node.burn_dominant_moon_idx >= 0 &&
+                            node.burn_dominant_moon_idx <
+                                static_cast<int>(ss.moon_states.size()))
+                        {
+                            std::size_t const mk   =
+                                static_cast<std::size_t>(node.burn_dominant_moon_idx);
+                            auto const& ms_b       = ss.moon_states[mk];
+                            auto const& mdef_b     =
+                                ss.defs[ms_b.parent_planet_index]
+                                       .moons[ms_b.moon_index];
+                            ref_pos_phys   = moonPositionAtSpacecraftTime(ss, mk, i);
+                            ref_pos_render = interpolatedMoonPosition(ss, mk);
+                            ref_vel        = interpolatedMoonVelocity(ss, mk);
+                            ref_GM         = G_KM3 * mdef_b.mass_kg;
+                            ref_radius_km  = mdef_b.radius_km;
+                            soi_exit_km    = mdef_b.soi_km;
+                        }
+                        else if (node.burn_dominant_body_idx == 0)
+                        {
+                            ref_pos_phys   = glm::dvec3(0.0);
+                            ref_pos_render = glm::dvec3(0.0);
+                            ref_vel        = glm::dvec3(0.0);
+                            ref_GM         = GM_SUN_SCENE;
+                            ref_radius_km  = ss.defs[0].radius_km;
+                            soi_exit_km    = 1e13;
+                        }
+                        else
+                        {
+                            std::size_t const bi =
+                                static_cast<std::size_t>(node.burn_dominant_body_idx);
+                            ref_pos_phys   = planetPositionAtSpacecraftTime(ss, bi, i);
+                            ref_pos_render = interpolatedPosition(ss, bi);
+                            ref_vel        = interpolatedVelocity(ss, bi);
+                            ref_GM         = G_KM3 * ss.defs[bi].mass_kg;
+                            ref_radius_km  = ss.defs[bi].radius_km;
+                            soi_exit_km    =
+                                ss.defs[bi].soi_km > 0.0 ? ss.defs[bi].soi_km : 1e13;
+                        }
+                        // sc is a const& alias into spacecraft_states — override so
+                        // the lambda sees the correct case routing.
+                        auto& sc_mut2 = const_cast<SolarSystem&>(ss).spacecraft_states[i];
+                        sc_mut2.dominant_body_idx = node.burn_dominant_body_idx;
+                        sc_mut2.dominant_is_moon  = node.burn_dominant_is_moon;
+                        sc_mut2.dominant_moon_idx = node.burn_dominant_moon_idx;
+                    }
+
+                    glm::vec3 const burn_ref_crr =
+                        glm::vec3(ref_pos_render - scene.camera.pos_d);
+
+                    glm::dvec3 const bv_post = node.burn_vel_rel + node.delta_v_world;
                     OsculatingOrbit const aorbit = computeOsculatingOrbit(
                         node.burn_pos_rel, bv_post, ref_GM);
+
+                    // Orbit ring only for elliptic post-burn orbits
                     if (aorbit.a > 0.0 && aorbit.e < 1.0)
                     {
-                        mo.position          = ref_crr;
+                        mo.position          = burn_ref_crr;
                         mo.rotation_override = orbitRingMatrix(aorbit);
                         mo.visible           = true;
-                        shown = true;
                     }
+                    else
+                    {
+                        mo.visible = false;
+                    }
+
+                    // Always call drawEncounterArc regardless of orbit type so that
+                    // heliocentric arc position is updated each frame (CRR) and
+                    // the arc remains visible for escape trajectories.
+                    double const dt_to_burn =
+                        node.t0_abs_s - ss.elapsed_simulation_s;
+                    drawEncounterArc(node.burn_pos_rel, aorbit,
+                                     glm::length(node.delta_v_world),
+                                     std::max(dt_to_burn, 0.0));
+
+                    // For escape maneuvers: also keep the escape arc in the path buffer
+                    if (aorbit.e >= 1.0 && aorbit.a < 0.0 &&
+                        !node.burn_dominant_is_moon && node.burn_dominant_body_idx > 0)
+                    {
+                        double const e_esc = aorbit.e;
+                        double const a_esc = aorbit.a;
+                        double const p_esc = a_esc * (1.0 - e_esc * e_esc);
+                        double const cos_nue =
+                            std::clamp((p_esc / soi_exit_km - 1.0) / e_esc,
+                                       -1.0, 1.0);
+                        double const nu_exit_esc = std::acos(cos_nue);
+                        double const nu_burn_esc =
+                            std::atan2(glm::dot(aorbit.q_hat, node.burn_pos_rel),
+                                       glm::dot(aorbit.e_hat, node.burn_pos_rel));
+
+                        if (p_esc > 0.0 && nu_exit_esc > nu_burn_esc)
+                        {
+                            constexpr int N_ESC =
+                                SolarSystemLineObjects::MAX_PATH_VERTS / 2 - 1;
+                            std::vector<glm::dvec3> esc_pts;
+                            esc_pts.reserve(N_ESC + 1);
+                            for (int k = 0; k <= N_ESC; ++k)
+                            {
+                                double const nu = nu_burn_esc +
+                                    (nu_exit_esc - nu_burn_esc) * k / N_ESC;
+                                double const r_m =
+                                    p_esc / (1.0 + e_esc * std::cos(nu));
+                                if (r_m <= 0.0 || r_m > soi_exit_km * 1.01) break;
+                                esc_pts.push_back(
+                                    r_m * (std::cos(nu) * aorbit.e_hat +
+                                           std::sin(nu) * aorbit.q_hat));
+                            }
+                            std::vector<LineVertex> esc_verts;
+                            esc_verts.reserve(esc_pts.size() * 2);
+                            int const n_seg = static_cast<int>(esc_pts.size()) - 1;
+                            for (int k = 0; k < n_seg; ++k)
+                            {
+                                float const t = static_cast<float>(k) /
+                                    static_cast<float>(std::max(n_seg, 1));
+                                glm::vec4 const col = glm::mix(
+                                    glm::vec4(1.0f, 0.9f, 0.3f, 0.9f),
+                                    glm::vec4(0.5f, 0.45f, 0.15f, 0.15f), t);
+                                esc_verts.push_back({glm::vec3(esc_pts[k]),     col, t});
+                                esc_verts.push_back({glm::vec3(esc_pts[k + 1]), col, t});
+                            }
+                            if (!esc_verts.empty())
+                            {
+                                auto& pvbuf = line_objs.sc_path_vbufs[i];
+                                vk::DeviceSize const vsz =
+                                    sizeof(LineVertex) * esc_verts.size();
+                                void* vptr = pvbuf.memory.mapMemory(0, vsz).value;
+                                std::memcpy(vptr, esc_verts.data(),
+                                            static_cast<std::size_t>(vsz));
+                                pvbuf.memory.unmapMemory();
+                                path_obj.indices_size =
+                                    static_cast<uint32_t>(esc_verts.size());
+                                path_obj.visible = true;
+                            }
+                        }
+                    }
+
+                    // Restore ref vars and sc SOI fields if we temporarily overrode them.
+                    if (soi_changed)
+                    {
+                        ref_pos_phys   = saved_ref_pos_phys;
+                        ref_pos_render = saved_ref_pos_render;
+                        ref_vel        = saved_ref_vel;
+                        ref_GM         = saved_ref_GM;
+                        ref_radius_km  = saved_ref_radius_km;
+                        soi_exit_km    = saved_soi_exit_km;
+                        auto& sc_restore = const_cast<SolarSystem&>(ss).spacecraft_states[i];
+                        sc_restore.dominant_body_idx = saved_dom_body;
+                        sc_restore.dominant_is_moon  = saved_dom_is_moon;
+                        sc_restore.dominant_moon_idx = saved_dom_moon;
+                    }
+
                     break;
                 }
-                if (!shown) mo.visible = false;
-
-                // Keep encounter arc visible for approved maneuver, using stored burn state
-                if (shown)
+                if (!has_node)
                 {
-                    // sc2 and node are still in scope from the loop above
-                    for (auto const& node2 : sc2.maneuvers)
-                    {
-                        if (!node2.approved || node2.completed) continue;
-                        if (glm::length(node2.delta_v_world) < 1e-12) break;
-                        glm::dvec3 const bv2_post = node2.burn_vel_rel + node2.delta_v_world;
-                        OsculatingOrbit const aorbit2 = computeOsculatingOrbit(
-                            node2.burn_pos_rel, bv2_post, ref_GM);
-                        double const dt_to_burn =
-                            node2.t0_abs_s - ss.elapsed_simulation_s;
-                        drawEncounterArc(node2.burn_pos_rel, aorbit2,
-                                         glm::length(node2.delta_v_world),
-                                         std::max(dt_to_burn, 0.0));
-                        break;
-                    }
-                }
-                else if (has_pending_maneuver && i < line_objs.sc_encounter_path_obj_ids.size())
-                {
-                    // Approved maneuver exists but post-burn orbit is non-elliptic: hide arc.
-                    // (Live block didn't run since has_pending_maneuver was true.)
-                    scene.objs[line_objs.sc_encounter_path_obj_ids[i]].visible = false;
+                    mo.visible = false;
+                    if (i < line_objs.sc_encounter_path_obj_ids.size())
+                        scene.objs[line_objs.sc_encounter_path_obj_ids[i]].visible = false;
+                    if (i < line_objs.sc_helio_orbit_obj_ids.size())
+                        scene.objs[line_objs.sc_helio_orbit_obj_ids[i]].visible = false;
                 }
             }
         }
@@ -1901,7 +2047,7 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
             {
                 for (auto const& node : ss.spacecraft_states[sci].maneuvers)
                 {
-                    if (!node.approved || node.completed) continue;
+                    if (!node.approved) continue;
                     auto ref = scDomRef(sci);
                     no.position = glm::vec3(ref.pos_render + node.burn_pos_rel - scene.camera.pos_d);
                     no.visible  = true;
