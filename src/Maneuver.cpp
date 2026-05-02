@@ -3,6 +3,7 @@
 #include "Spacecraft.h"
 
 #include <glm/glm.hpp>
+#include <algorithm>
 #include <cmath>
 
 static constexpr double G_km3 = 6.674e-20; // km^3 / (kg * s^2)
@@ -23,18 +24,29 @@ double solveKepler(double M, double e)
     return E;
 }
 
+// Newton-Raphson for hyperbolic Kepler equation: M_H = e*sinh(F) - F
+static double solveKeplerHyp(double M_H, double e)
+{
+    double F = (std::abs(M_H) < 1.0)
+               ? M_H / (e - 1.0)
+               : std::copysign(std::log(2.0 * std::abs(M_H) / e + 1.8), M_H);
+    for (int i = 0; i < 50; ++i)
+    {
+        double const dF = (e * std::sinh(F) - F - M_H) / (e * std::cosh(F) - 1.0);
+        F -= dF;
+        if (std::abs(dF) < 1e-12) break;
+    }
+    return F;
+}
+
 std::pair<glm::dvec3, glm::dvec3>
 keplerPropagate(glm::dvec3 r, glm::dvec3 v, double GM, double dt)
 {
-    double const r_mag = glm::length(r);
-    double const v_sq  = glm::dot(v, v);
+    double const r_mag  = glm::length(r);
+    double const v_sq   = glm::dot(v, v);
     double const energy = v_sq / 2.0 - GM / r_mag;
 
-    if (energy >= 0.0)
-    {
-        // Hyperbolic/parabolic — just linear extrapolation as fallback
-        return {r + v * dt, v};
-    }
+    if (std::abs(energy) < 1e-30) return {r + v * dt, v}; // degenerate guard
 
     double const a = -GM / (2.0 * energy);
 
@@ -47,24 +59,43 @@ keplerPropagate(glm::dvec3 r, glm::dvec3 v, double GM, double dt)
     glm::dvec3 const n_hat = (h_mag > 1e-10) ? h / h_mag : glm::dvec3(0.0, 1.0, 0.0);
     glm::dvec3 const q_hat = glm::cross(n_hat, e_hat);
 
-    // True anomaly at current position, then convert to eccentric anomaly
-    double const nu0     = std::atan2(glm::dot(q_hat, r), glm::dot(e_hat, r));
-    double const E0_correct = 2.0 * std::atan(std::sqrt((1.0 - e) / (1.0 + e)) * std::tan(nu0 / 2.0));
+    double const nu0 = std::atan2(glm::dot(q_hat, r), glm::dot(e_hat, r));
 
-    double const n  = std::sqrt(GM / (a * a * a)); // mean motion
-    double const M0 = E0_correct - e * std::sin(E0_correct);
-    double const M1 = M0 + n * dt;
-    double const E1 = solveKepler(M1, e);
+    if (a < 0.0) // hyperbolic
+    {
+        double const k    = std::sqrt((e - 1.0) / (e + 1.0));
+        double const F0   = 2.0 * std::atanh(
+            std::clamp(k * std::tan(nu0 / 2.0), -1.0 + 1e-12, 1.0 - 1e-12));
+        double const M_H0 = e * std::sinh(F0) - F0;
+        double const n_h  = std::sqrt(GM / ((-a) * (-a) * (-a)));
+        double const F1   = solveKeplerHyp(M_H0 + n_h * dt, e);
 
-    // Position and velocity from E1
+        double const nu1    = 2.0 * std::atan(std::tanh(F1 / 2.0) / k);
+        double const p      = a * (1.0 - e * e); // positive: |a|(e²-1)
+        double const r1_mag = p / (1.0 + e * std::cos(nu1));
+
+        glm::dvec3 const r1     = r1_mag * (std::cos(nu1) * e_hat + std::sin(nu1) * q_hat);
+        double     const sqgmp  = std::sqrt(GM / p);
+        double     const vr1    = sqgmp * e * std::sin(nu1);
+        double     const vt1    = sqgmp * (1.0 + e * std::cos(nu1));
+        glm::dvec3 const t1_hat = glm::normalize(glm::cross(n_hat, r1));
+        glm::dvec3 const v1     = vr1 * glm::normalize(r1) + vt1 * t1_hat;
+
+        return {r1, v1};
+    }
+
+    // Elliptic (a > 0)
+    double const E0 = 2.0 * std::atan(std::sqrt((1.0 - e) / (1.0 + e)) * std::tan(nu0 / 2.0));
+    double const n  = std::sqrt(GM / (a * a * a));
+    double const M0 = E0 - e * std::sin(E0);
+    double const E1 = solveKepler(M0 + n * dt, e);
+
     double const cos_E1 = std::cos(E1);
     double const sin_E1 = std::sin(E1);
     double const r1_mag = a * (1.0 - e * cos_E1);
 
-    double const x1 = a * (cos_E1 - e);
-    double const y1 = a * std::sqrt(1.0 - e * e) * sin_E1;
-
-    glm::dvec3 const r1 = x1 * e_hat + y1 * q_hat;
+    glm::dvec3 const r1 = (a * (cos_E1 - e)) * e_hat +
+                          (a * std::sqrt(1.0 - e * e) * sin_E1) * q_hat;
 
     double const vx1 = -a * a * n * sin_E1                          / r1_mag;
     double const vy1 =  a * a * n * std::sqrt(1.0 - e * e) * cos_E1 / r1_mag;
