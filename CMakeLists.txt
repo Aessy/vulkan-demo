@@ -5,6 +5,20 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_C_COMPILER gcc.exe)
 set(CMAKE_C_COMPILER g++.exe)
 
+set(PHYSICS_CORE_SRC
+        src/Id.cpp
+        src/SolarSystem.cpp
+        src/Spacecraft.cpp
+        src/Maneuver.cpp
+        src/PatchedConic.cpp
+        )
+
+add_library(physics_core STATIC ${PHYSICS_CORE_SRC})
+target_compile_options(physics_core PUBLIC -g -std=c++23)
+target_compile_definitions(physics_core PUBLIC GLM_ENABLE_EXPERIMENTAL)
+target_include_directories(physics_core PUBLIC src)
+target_link_libraries(physics_core spdlog)
+
 set(SRC src/VulkanRenderSystem.cpp
         src/main.cpp
         src/PostProcessing.cpp
@@ -13,12 +27,7 @@ set(SRC src/VulkanRenderSystem.cpp
         src/Model.cpp
         src/Program.cpp
         src/Textures.cpp
-        src/Id.cpp
-        src/SolarSystem.cpp
         src/SolarSystemScene.cpp
-        src/Spacecraft.cpp
-        src/Maneuver.cpp
-        src/PatchedConic.cpp
         src/RenderPass/ShadowMap.cpp
         src/RenderPass/SceneRenderPass.cpp
         src/Pipelines/GeneralPurpuse.cpp
@@ -35,12 +44,19 @@ add_executable(vulkan-test ${SRC})
 target_compile_options(vulkan-test PUBLIC -g -std=c++23)
 target_compile_definitions(vulkan-test PUBLIC GLM_ENABLE_EXPERIMENTAL)
 target_include_directories(vulkan-test PUBLIC src)
+target_link_libraries(vulkan-test physics_core)
 
 IF(WIN32)
 target_link_libraries(vulkan-test vulkan-1 glfw3 libassimp)
 ELSEIF(LINUX)
 target_link_libraries(vulkan-test glfw vulkan X11 imgui assimp fmt spdlog)
 ENDIF()
+
+add_executable(physics-cli src/cli/main.cpp)
+target_compile_options(physics-cli PRIVATE -g -std=c++23)
+target_compile_definitions(physics-cli PRIVATE GLM_ENABLE_EXPERIMENTAL)
+target_include_directories(physics-cli PRIVATE src)
+target_link_libraries(physics-cli physics_core fmt spdlog)
 
 add_custom_target(shaders
                   COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders
