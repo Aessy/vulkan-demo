@@ -84,6 +84,7 @@ struct SolarSystem {
     double render_alpha{0.0};        // interpolation fraction in [0, 1) for this frame
     double time_scale{1};
     bool paused{false};
+    double pending_advance_s{0.0}; // set by GUI to request an instant skip forward
     PhysicsMode physics_mode{PhysicsMode::NBody};
 
     // Orbit ring rendering

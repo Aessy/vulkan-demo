@@ -1,10 +1,12 @@
 #include "Maneuver.h"
 #include "SolarSystem.h"
 #include "Spacecraft.h"
+#include "PatchedConic.h"
 
 #include <glm/glm.hpp>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 static constexpr double G_km3 = 6.674e-20; // km^3 / (kg * s^2)
 
@@ -164,4 +166,76 @@ void updateSpacecraftSOI(SolarSystem& ss, std::size_t sc_idx)
     sc.dominant_body_idx = 0;
     sc.dominant_is_moon  = false;
     sc.dominant_moon_idx = -1;
+}
+
+ClosestApproachResult predictClosestApproach(
+    SolarSystem ss, int sc_idx,
+    int target_body_idx, int target_moon_idx,
+    double scan_days)
+{
+    bool const is_moon = target_moon_idx >= 0;
+    double const soi_km = is_moon
+        ? ss.defs[target_body_idx].moons[target_moon_idx].soi_km
+        : ss.defs[target_body_idx].soi_km;
+
+    auto target_pos = [&](SolarSystem const& s) -> glm::dvec3 {
+        if (is_moon) return s.moon_states[target_moon_idx].position_km;
+        return s.states[target_body_idx].position_km;
+    };
+
+    double const scan_total  = scan_days * 86400.0;
+    double const coarse_step = 3600.0;
+
+    double min_dist       = std::numeric_limits<double>::max();
+    double elapsed_origin = ss.elapsed_simulation_s;
+    SolarSystem ss_chk    = ss;
+
+    double elapsed_scan = 0.0;
+    while (elapsed_scan < scan_total)
+    {
+        double const step = std::min(coarse_step, scan_total - elapsed_scan);
+        updateSolarSystemPatchedConic(ss, step);
+        updateSpacecraftSOI(ss, static_cast<std::size_t>(sc_idx));
+        elapsed_scan += step;
+
+        double const dist = glm::length(
+            ss.spacecraft_states[sc_idx].position_km - target_pos(ss));
+
+        if (dist < min_dist)
+        {
+            ss_chk   = ss;
+            min_dist = dist;
+        }
+    }
+
+    // Ternary-search refinement within ±2 coarse steps of the checkpoint
+    double lo = 0.0;
+    double hi = 2.0 * coarse_step;
+
+    auto dist_at = [&](double offset) -> double {
+        SolarSystem tmp = ss_chk;
+        updateSolarSystemPatchedConic(tmp, offset);
+        return glm::length(
+            tmp.spacecraft_states[sc_idx].position_km - target_pos(tmp));
+    };
+
+    for (int i = 0; i < 60 && (hi - lo) > 1.0; ++i)
+    {
+        double const m1 = lo + (hi - lo) / 3.0;
+        double const m2 = hi - (hi - lo) / 3.0;
+        if (dist_at(m1) < dist_at(m2)) hi = m2;
+        else                            lo = m1;
+    }
+
+    updateSolarSystemPatchedConic(ss_chk, (lo + hi) / 2.0);
+    double const refined_dist = glm::length(
+        ss_chk.spacecraft_states[sc_idx].position_km - target_pos(ss_chk));
+
+    ClosestApproachResult result;
+    result.min_distance_km   = refined_dist;
+    result.elapsed_s_at_min  = ss_chk.elapsed_simulation_s;
+    result.days_from_now     = (ss_chk.elapsed_simulation_s - elapsed_origin) / 86400.0;
+    result.soi_entered       = refined_dist < soi_km;
+    result.soi_radius_km     = soi_km;
+    return result;
 }

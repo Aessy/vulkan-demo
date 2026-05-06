@@ -43,3 +43,20 @@ glm::dvec3 dvWorld(glm::dvec3 r, glm::dvec3 v,
 // Update sc.dominant_body_idx / dominant_is_moon / dominant_moon_idx
 // for the spacecraft at sc_idx.  Call once per frame.
 void updateSpacecraftSOI(SolarSystem& ss, std::size_t sc_idx);
+
+struct ClosestApproachResult {
+    double min_distance_km{0.0};
+    double days_from_now{0.0};
+    double elapsed_s_at_min{0.0};
+    bool   soi_entered{false};
+    double soi_radius_km{0.0};
+};
+
+// Propagates a copy of ss (patched-conic) forward to find the closest approach
+// of spacecraft sc_idx to a planet or moon.  The copy is consumed.
+// Call with the spacecraft already at its post-burn state.
+// target_moon_idx >= 0 selects a moon; target_body_idx is then the parent planet.
+ClosestApproachResult predictClosestApproach(
+    SolarSystem ss, int sc_idx,
+    int target_body_idx, int target_moon_idx = -1,
+    double scan_days = 400.0);

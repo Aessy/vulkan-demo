@@ -457,7 +457,15 @@ int main()
         }
 
         // Advance simulation
-        if (!first_frame && !solar_system.paused)
+        if (solar_system.pending_advance_s > 0.0 &&
+            solar_system.physics_mode == PhysicsMode::PatchedConic)
+        {
+            updateSolarSystemPatchedConic(solar_system,
+                solar_system.pending_advance_s / solar_system.time_scale);
+            solar_system.pending_advance_s  = 0.0;
+            solar_system.spacecraft_path_dirty = true;
+        }
+        else if (!first_frame && !solar_system.paused)
         {
             if (solar_system.physics_mode == PhysicsMode::NBody)
                 updateSolarSystem(solar_system, static_cast<double>(delta));

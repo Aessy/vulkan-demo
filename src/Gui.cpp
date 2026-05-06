@@ -17,6 +17,7 @@
 #include "height_map.h"
 #include "Physics.h"
 #include "Maneuver.h"
+#include "PatchedConic.h"
 
 #include "Application.h"
 #include <spdlog/spdlog.h>
@@ -765,6 +766,24 @@ void createSolarSystemGui(SolarSystem& solar_system, Camera& cam)
     ImGui::SliderScalar("Time scale", ImGuiDataType_Double, &solar_system.time_scale, &ts_min, &ts_max, "%.0f x",
                         ImGuiSliderFlags_Logarithmic);
 
+    // Instant advance — patched conic only
+    {
+        static float advance_days = 30.0f;
+        bool const can_advance = solar_system.physics_mode == PhysicsMode::PatchedConic;
+        if (!can_advance) ImGui::BeginDisabled();
+        ImGui::SetNextItemWidth(120.0f);
+        ImGui::InputFloat("##adv_days", &advance_days, 1.0f, 10.0f, "%.1f d");
+        ImGui::SameLine();
+        if (ImGui::Button("Advance days") && advance_days > 0.0f)
+            solar_system.pending_advance_s = static_cast<double>(advance_days) * 86400.0;
+        if (!can_advance)
+        {
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextDisabled("(patched conic only)");
+        }
+    }
+
     // Object selection
     {
         // Build combo label
@@ -1363,6 +1382,102 @@ static void createManeuverPlannerGui(SolarSystem& ss)
         double const burn_rate = def.thrust_N / def.mass_kg * 1e-3; // km/s²
         double const burn_time = (burn_rate > 0.0) ? dv_mag / burn_rate : 0.0;
         ImGui::Text("Est. burn time: %.1f s", burn_time);
+
+        // ── Closest-approach predictor ─────────────────────────────────────
+        ImGui::Separator();
+        {
+            static int  target_body_idx{-1};
+            static int  target_moon_idx{-1};
+            static bool has_result{false};
+            static ClosestApproachResult ca_result{};
+
+            // Build combo label
+            const char* combo_label = "— none —";
+            if (target_moon_idx >= 0 &&
+                target_body_idx > 0 &&
+                target_moon_idx < static_cast<int>(
+                    ss.defs[target_body_idx].moons.size()))
+                combo_label = ss.defs[target_body_idx].moons[target_moon_idx].name;
+            else if (target_body_idx > 0 &&
+                     target_body_idx < static_cast<int>(ss.defs.size()))
+                combo_label = ss.defs[target_body_idx].name;
+
+            ImGui::SetNextItemWidth(140.0f);
+            if (ImGui::BeginCombo("Target##ca", combo_label))
+            {
+                if (ImGui::Selectable("— none —", target_body_idx < 0))
+                    { target_body_idx = -1; target_moon_idx = -1; }
+
+                for (int bi = 1; bi < static_cast<int>(ss.defs.size()); ++bi)
+                {
+                    bool sel = (target_body_idx == bi && target_moon_idx < 0);
+                    if (ImGui::Selectable(ss.defs[bi].name, sel))
+                        { target_body_idx = bi; target_moon_idx = -1; }
+                    if (sel) ImGui::SetItemDefaultFocus();
+
+                    // List moons under their parent planet
+                    for (int mi = 0; mi < static_cast<int>(ss.defs[bi].moons.size()); ++mi)
+                    {
+                        bool msel = (target_body_idx == bi && target_moon_idx == mi);
+                        std::string mlabel = std::string("  ") + ss.defs[bi].moons[mi].name;
+                        if (ImGui::Selectable(mlabel.c_str(), msel))
+                            { target_body_idx = bi; target_moon_idx = mi; }
+                        if (msel) ImGui::SetItemDefaultFocus();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+
+            bool const can_predict = target_body_idx > 0 &&
+                ss.physics_mode == PhysicsMode::PatchedConic;
+            if (!can_predict) ImGui::BeginDisabled();
+            if (ImGui::Button("Predict"))
+            {
+                // Find pending node
+                const ManeuverNode* pending = nullptr;
+                for (auto const& n : sc.maneuvers)
+                    if (!n.approved) { pending = &n; break; }
+
+                if (pending)
+                {
+                    // Copy sim state, advance to T0, apply burn
+                    SolarSystem ss_copy = ss;
+                    if (ss.maneuver_t0_s > 0.0)
+                        updateSolarSystemPatchedConic(ss_copy,
+                            ss.maneuver_t0_s / ss_copy.time_scale);
+                    ss_copy.spacecraft_states[ss.maneuver_sc_idx].velocity_km +=
+                        pending->delta_v_world;
+
+                    ca_result  = predictClosestApproach(
+                        std::move(ss_copy), ss.maneuver_sc_idx,
+                        target_body_idx, target_moon_idx);
+                    has_result = true;
+                }
+            }
+            if (!can_predict)
+            {
+                ImGui::EndDisabled();
+                if (ss.physics_mode != PhysicsMode::PatchedConic)
+                {
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(patched conic only)");
+                }
+            }
+
+            if (has_result)
+            {
+                ImGui::Text("Closest approach:  %.0f km", ca_result.min_distance_km);
+                ImGui::Text("SOI radius:        %.0f km", ca_result.soi_radius_km);
+                if (ca_result.soi_entered)
+                    ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.4f, 1.0f), "SOI entered        YES");
+                else
+                    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "SOI entered        NO");
+                ImGui::Text("Time of flight:    %.1f days", ca_result.days_from_now);
+                ImGui::Text("Arrival date:      %s",
+                    simDateString(ca_result.elapsed_s_at_min).c_str());
+            }
+        }
 
         ImGui::Separator();
         if (ImGui::Button("Approve"))
