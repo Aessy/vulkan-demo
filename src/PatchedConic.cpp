@@ -47,7 +47,14 @@ static void updateSpacecraftsPatchedConic(SolarSystem& ss, double scaled_dt)
         dvec3 const fwd      = dvec3(glm::mat3_cast(glm::quat(sc.orientation)) * glm::vec3(0, 1, 0));
         dvec3 const thrust_a = fwd * (sc.thrust_level * def.thrust_N / def.mass_kg * 1e-3);
 
+        // SOI check must use start-of-frame planet positions (render_alpha=0 → prev_position_km).
+        // After the planet update above, render_alpha=1, so planet_pos would be the end-of-frame
+        // position — for large dt (e.g. a 120-day CLI advance) that is far from the spacecraft's
+        // start-of-frame position and would incorrectly switch to Sun dominance.
+        double const saved_alpha = ss.render_alpha;
+        ss.render_alpha = 0.0;
         updateSpacecraftSOI(ss, i);
+        ss.render_alpha = saved_alpha;
         auto const  d     = dominantBodyState(ss, sc);
         dvec3 const r_rel = sc.position_km - d.pos_begin;
         dvec3 const v_rel = sc.velocity_km - d.vel_begin + thrust_a * scaled_dt;

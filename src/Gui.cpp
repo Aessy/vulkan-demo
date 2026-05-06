@@ -1252,6 +1252,14 @@ static void createManeuverPlannerGui(SolarSystem& ss)
         if (ImGui::DragFloat("Radial   (km/s)", &rd, 0.001f, -5.0f,  5.0f, "%.4f")) ss.maneuver_radial   = rd;
         if (ImGui::DragFloat("Normal   (km/s)", &nm, 0.001f, -5.0f,  5.0f, "%.4f")) ss.maneuver_normal   = nm;
 
+        // Per-component burn Δv (absolute slider value minus reference at T0)
+        double const dpg = ss.maneuver_prograde - ss.maneuver_ref_prograde;
+        double const drd = ss.maneuver_radial   - ss.maneuver_ref_radial;
+        double const dnm = ss.maneuver_normal   - ss.maneuver_ref_normal;
+        ImGui::Text("  Prograde: %+.4f km/s", dpg);
+        ImGui::Text("  Radial:   %+.4f km/s", drd);
+        ImGui::Text("  Normal:   %+.4f km/s", dnm);
+
         // Actual |Δv| from the pending node (updated by updateSceneFromSolarSystem before GUI runs)
         double dv_mag = 0.0;
         for (auto const& node : sc.maneuvers)

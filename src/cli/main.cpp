@@ -402,49 +402,59 @@ static DepartureOpt computeDepartureBurn(
     double const v_inf_m = glm::length(v_inf);
     double const v_esc   = std::sqrt(2.0 * GM_parent / R_LEO);
     double const v_hyp   = std::sqrt(v_esc*v_esc + v_inf_m*v_inf_m);
-    glm::dvec3 const n_orbit = glm::normalize(glm::cross(r_hat_0, v_hat_0));
+    // Hyperbolic eccentricity: e = 1 + R_LEO*v_inf²/GM  (= v_hyp/v_esc for pure in-plane)
+    double const e       = 1.0 + R_LEO * v_inf_m * v_inf_m / GM_parent;
+    glm::dvec3 const n_orbit  = glm::normalize(glm::cross(r_hat_0, v_hat_0));
+    glm::dvec3 const v_inf_dir = v_inf / v_inf_m;
 
-    auto eval = [&](double theta) -> double {
+    // The departure hyperbola's outgoing asymptote is at angle θ∞ = arccos(-1/e) from
+    // the periapsis direction.  For the asymptote to equal v_inf_dir we need:
+    //   dot(v_inf_dir, r_hat(θ)) = -1/e
+    // where r_hat(θ) = cos(θ)*r_hat_0 + sin(θ)*v_hat_0.
+    // This gives: c1*cos(θ) + c2*sin(θ) = -1/e  →  A*cos(θ - φ) = -1/e
+    double const c1  = glm::dot(v_inf_dir, r_hat_0);
+    double const c2  = glm::dot(v_inf_dir, v_hat_0);
+    double const A   = std::sqrt(c1*c1 + c2*c2);
+
+    auto burnAt = [&](double theta) -> DepartureOpt {
+        // theta may be any value; normalise to [0, 2π) for advance_s
+        double adv = std::fmod(theta, 2.0 * std::numbers::pi_v<double>);
+        if (adv < 0.0) adv += 2.0 * std::numbers::pi_v<double>;
         glm::dvec3 const r_hat = std::cos(theta)*r_hat_0 + std::sin(theta)*v_hat_0;
         glm::dvec3 const v_hat = -std::sin(theta)*r_hat_0 + std::cos(theta)*v_hat_0;
         glm::dvec3 const v_perp = v_inf - glm::dot(v_inf, r_hat) * r_hat;
-        if (glm::length(v_perp) < 1e-10) return 1e30;
-        glm::dvec3 const dv = v_hyp * glm::normalize(v_perp) - v_circ * v_hat;
-        return glm::dot(dv, dv);
+        glm::dvec3 const dv    = v_hyp * glm::normalize(v_perp) - v_circ * v_hat;
+        DepartureOpt opt;
+        opt.advance_s   = adv / omega;
+        opt.prograde_dv = glm::dot(dv, v_hat);
+        opt.normal_dv   = glm::dot(dv, n_orbit);
+        opt.dv_total    = glm::length(dv);
+        return opt;
     };
 
-    // Coarse scan
+    double const target = -1.0 / e;
+    if (A >= std::abs(target)) {
+        // Analytic solution: two candidate angles, pick the one with smaller |Δv|.
+        double const phi   = std::atan2(c2, c1);
+        double const delta = std::acos(std::clamp(target / A, -1.0, 1.0));
+        DepartureOpt o1 = burnAt(phi + delta);
+        DepartureOpt o2 = burnAt(phi - delta);
+        return (o1.dv_total <= o2.dv_total) ? o1 : o2;
+    }
+
+    // Fallback (v_inf mostly out-of-plane): scan for minimum |Δv|.
     int const N = 3600;
-    double best_theta = 0.0;
-    double best_val   = eval(0.0);
-    for (int k = 1; k < N; ++k) {
+    double best_theta = 0.0, best_val = 1e30;
+    for (int k = 0; k < N; ++k) {
         double const theta = k * 2.0 * std::numbers::pi_v<double> / N;
-        double const val = eval(theta);
+        glm::dvec3 const r_h = std::cos(theta)*r_hat_0 + std::sin(theta)*v_hat_0;
+        glm::dvec3 const v_h = -std::sin(theta)*r_hat_0 + std::cos(theta)*v_hat_0;
+        glm::dvec3 const vp  = v_inf - glm::dot(v_inf, r_h) * r_h;
+        if (glm::length(vp) < 1e-10) continue;
+        double const val = glm::length(v_hyp * glm::normalize(vp) - v_circ * v_h);
         if (val < best_val) { best_val = val; best_theta = theta; }
     }
-
-    // Ternary-search refinement
-    double lo = best_theta - 2.0 * std::numbers::pi_v<double> / N;
-    double hi = best_theta + 2.0 * std::numbers::pi_v<double> / N;
-    for (int i = 0; i < 60; ++i) {
-        double const m1 = lo + (hi - lo) / 3.0;
-        double const m2 = hi - (hi - lo) / 3.0;
-        if (eval(m1) < eval(m2)) hi = m2; else lo = m1;
-    }
-    best_theta = (lo + hi) / 2.0;
-    if (best_theta < 0.0) best_theta += 2.0 * std::numbers::pi_v<double>;
-
-    glm::dvec3 const r_hat  = glm::normalize(std::cos(best_theta)*r_hat_0 + std::sin(best_theta)*v_hat_0);
-    glm::dvec3 const v_hat  = glm::normalize(-std::sin(best_theta)*r_hat_0 + std::cos(best_theta)*v_hat_0);
-    glm::dvec3 const v_perp = v_inf - glm::dot(v_inf, r_hat) * r_hat;
-    glm::dvec3 const dv     = v_hyp * glm::normalize(v_perp) - v_circ * v_hat;
-
-    DepartureOpt opt;
-    opt.advance_s   = best_theta / omega;
-    opt.prograde_dv = glm::dot(dv, v_hat);
-    opt.normal_dv   = glm::dot(dv, n_orbit);
-    opt.dv_total    = glm::length(dv);
-    return opt;
+    return burnAt(best_theta);
 }
 
 static void cmd_find_transfer(CliContext& ctx, std::istringstream& args)
@@ -589,6 +599,167 @@ static void cmd_find_transfer(CliContext& ctx, std::istringstream& args)
                  best_prograde, best_normal);
 }
 
+// Find the minimum-dv transfer from the selected spacecraft (in LEO around Earth)
+// to any planet, using a porkchop grid over departure date and TOF.
+//
+// Two-pass epoch refinement corrects the departure-time mismatch that exists in
+// find_transfer: Lambert is first solved at the departure day, then re-solved at the
+// actual burn epoch (departure day + intra-orbit advance) so the trajectory is
+// consistent with where Earth and the spacecraft actually are at burn time.
+static void cmd_plan_transfer(CliContext& ctx, std::istringstream& args)
+{
+    if (ctx.selected_sc < 0) {
+        std::println(stderr, "ERROR: no spacecraft selected");
+        return;
+    }
+
+    std::string target_name;
+    args >> target_name;
+
+    double dep_max_days = 60.0;
+    double tof_min_days = 100.0;
+    double tof_max_days = 600.0;
+    {
+        std::string token;
+        while (args >> token) {
+            auto const eq = token.find('=');
+            if (eq == std::string::npos) continue;
+            std::string const key = token.substr(0, eq);
+            double const val = std::stod(token.substr(eq + 1));  // stod stops at 'd'
+            if      (key == "dep_max") dep_max_days = val;
+            else if (key == "tof_min") tof_min_days = val;
+            else if (key == "tof_max") tof_max_days = val;
+        }
+    }
+
+    int target_idx = -1;
+    for (std::size_t i = 0; i < ctx.ss.defs.size(); ++i)
+        if (ctx.ss.defs[i].name == target_name) { target_idx = static_cast<int>(i); break; }
+    if (target_idx < 0) {
+        std::println(stderr, "ERROR: planet '{}' not found", target_name);
+        return;
+    }
+    int earth_idx = -1;
+    for (std::size_t i = 0; i < ctx.ss.defs.size(); ++i)
+        if (ctx.ss.defs[i].name == "Earth") { earth_idx = static_cast<int>(i); break; }
+
+    static constexpr double GM_SUN = 1.32712440018e11;
+    static constexpr double G_km   = 6.674e-20;
+
+    glm::dvec3 const r_E0 = ctx.ss.states[earth_idx].position_km;
+    glm::dvec3 const v_E0 = ctx.ss.states[earth_idx].velocity_km;
+    glm::dvec3 const r_T0 = ctx.ss.states[target_idx].position_km;
+    glm::dvec3 const v_T0 = ctx.ss.states[target_idx].velocity_km;
+
+    auto const& sc      = ctx.ss.spacecraft_states[ctx.selected_sc];
+    glm::dvec3 const r_rel0 = sc.position_km - r_E0;
+    glm::dvec3 const v_rel0 = sc.velocity_km - v_E0;
+
+    double const GM_earth = G_km * ctx.ss.defs[earth_idx].mass_kg;
+    double const R_LEO    = ctx.ss.defs[earth_idx].radius_km + 400.0;
+    double const v_circ   = std::sqrt(GM_earth / R_LEO);
+    double const omega    = glm::length(v_rel0) / glm::length(r_rel0);
+
+    // Phase 1: porkchop grid over (departure offset, TOF).
+    // Rank by actual departure Δv from computeDepartureBurn so that solutions with
+    // large out-of-plane v_inf (which cost much more than the Oberth lower bound) are
+    // penalised correctly.  The spacecraft's LEO position is propagated once per
+    // departure day (outer loop) and reused for all TOF values.
+    double     best_dv     = std::numeric_limits<double>::max();
+    double     best_dep_s  = 0.0;
+    double     best_tof_s  = 0.0;
+    bool       best_branch = true;
+    glm::dvec3 best_v_inf{};
+    DepartureOpt best_opt1{};
+
+    double const dep_max_s = dep_max_days * 86400.0;
+    double const tof_min_s = tof_min_days * 86400.0;
+    double const tof_max_s = tof_max_days * 86400.0;
+
+    for (double dep_s = 0.0; dep_s <= dep_max_s; dep_s += 86400.0) {
+        auto const [r_sc_dep, v_sc_dep] = keplerPropagate(r_rel0, v_rel0, GM_earth, dep_s);
+        glm::dvec3 const r_hat_dep = glm::normalize(r_sc_dep);
+        glm::dvec3 const v_hat_dep = glm::normalize(v_sc_dep);
+
+        auto const [r_E_dep, v_E_dep] = keplerPropagate(r_E0, v_E0, GM_SUN, dep_s);
+
+        for (double tof_s = tof_min_s; tof_s <= tof_max_s; tof_s += 86400.0) {
+            glm::dvec3 const r_T_arr = keplerPropagate(r_T0, v_T0, GM_SUN, dep_s + tof_s).first;
+
+            for (bool pos_A : {true, false}) {
+                LambertSolution const sol = solveLambert(r_E_dep, r_T_arr, tof_s, GM_SUN, pos_A);
+                if (!sol.converged) continue;
+                if (glm::cross(r_E_dep, sol.v1).y >= 0.0) continue;  // retrograde
+
+                // Reject transfers whose heliocentric orbit can't reach the target.
+                // Cheap orbit-energy check before the more expensive computeDepartureBurn.
+                {
+                    double const energy = glm::dot(sol.v1, sol.v1) * 0.5 - GM_SUN / glm::length(r_E_dep);
+                    if (energy >= 0.0) continue;  // heliocentric escape (hyperbolic)
+                    double const a_tr = -GM_SUN / (2.0 * energy);
+                    glm::dvec3 const h_tr = glm::cross(r_E_dep, sol.v1);
+                    double const p_tr = glm::dot(h_tr, h_tr) / GM_SUN;
+                    double const e_tr = std::sqrt(std::max(0.0, 1.0 - p_tr / a_tr));
+                    if (a_tr * (1.0 + e_tr) < glm::length(r_T_arr) * 0.95) continue;
+                }
+
+                glm::dvec3 const v_inf = sol.v1 - v_E_dep;
+                DepartureOpt const opt = computeDepartureBurn(r_hat_dep, v_hat_dep, omega,
+                                                               v_circ, GM_earth, R_LEO, v_inf);
+                if (opt.dv_total < best_dv) {
+                    best_dv     = opt.dv_total;
+                    best_dep_s  = dep_s;
+                    best_tof_s  = tof_s;
+                    best_branch = pos_A;
+                    best_v_inf  = v_inf;
+                    best_opt1   = opt;
+                }
+            }
+        }
+    }
+
+    if (best_dv == std::numeric_limits<double>::max()) {
+        std::println(stderr, "ERROR: no convergent Lambert solution in search range");
+        return;
+    }
+
+    // Epoch refinement: re-solve Lambert at the actual burn epoch (departure day +
+    // intra-orbit advance) so the trajectory starts from where Earth actually is.
+    double const dep_epoch_s = best_dep_s + best_opt1.advance_s;
+
+    // Phase 2, pass 2: re-solve Lambert at the corrected departure epoch
+    auto const [r_E2, v_E2] = keplerPropagate(r_E0, v_E0, GM_SUN, dep_epoch_s);
+    glm::dvec3 const r_T2  = keplerPropagate(r_T0, v_T0, GM_SUN, dep_epoch_s + best_tof_s).first;
+
+    LambertSolution const sol2 = solveLambert(r_E2, r_T2, best_tof_s, GM_SUN, best_branch);
+    if (!sol2.converged) {
+        std::println(stderr, "ERROR: epoch-refinement Lambert solve did not converge");
+        return;
+    }
+    glm::dvec3 const v_inf2 = sol2.v1 - v_E2;
+
+    auto const [r_sc2, v_sc2] = keplerPropagate(r_rel0, v_rel0, GM_earth, dep_epoch_s);
+    DepartureOpt const opt2   = computeDepartureBurn(glm::normalize(r_sc2), glm::normalize(v_sc2),
+                                                      omega, v_circ, GM_earth, R_LEO, v_inf2);
+
+    double const total_advance_s = dep_epoch_s + opt2.advance_s;
+    double const dep_days_j2000  = (ctx.ss.elapsed_simulation_s + total_advance_s) / 86400.0;
+    double const arr_days_j2000  = dep_days_j2000 + best_tof_s / 86400.0;
+
+    std::println("PLAN_TRANSFER  target={}", target_name);
+    std::println("  dep_days_j2000      {:.4f}", dep_days_j2000);
+    std::println("  tof_days            {:.4f}", best_tof_s / 86400.0);
+    std::println("  arr_days_j2000      {:.4f}", arr_days_j2000);
+    std::println("  v_inf_km_s          {:.4f}", glm::length(v_inf2));
+    std::println("  dv_km_s             {:.4f}", opt2.dv_total);
+    std::println("  soi_radius_km       {:.1f}", ctx.ss.defs[target_idx].soi_km);
+    std::println("  ---");
+    std::println("  advance {:.1f}", total_advance_s);
+    std::println("  maneuver prograde={:.4f} radial=0.0000 normal={:.4f} t0=0",
+                 opt2.prograde_dv, opt2.normal_dv);
+    std::println("  approve_maneuver");
+}
+
 static void cmd_report_state(CliContext& ctx)
 {
     if (ctx.selected_sc < 0) {
@@ -620,6 +791,10 @@ static void cmd_report_state(CliContext& ctx)
     std::println("  velocity_km_s       ({:.6f},{:.6f},{:.6f})",
                  sc.velocity_km.x, sc.velocity_km.y, sc.velocity_km.z);
     std::println("  dominant_body       {}", dom_name);
+    std::println("  rel_position_km     ({:.3f},{:.3f},{:.3f})",
+                 r_rel.x, r_rel.y, r_rel.z);
+    std::println("  rel_velocity_km_s   ({:.6f},{:.6f},{:.6f})",
+                 v_rel.x, v_rel.y, v_rel.z);
     std::println("  semi_major_axis_km  {:.1f}", orb.a);
     std::println("  eccentricity        {:.6f}", orb.e);
     std::println("  periapsis_km        {:.1f}", orb.periapsis_km());
@@ -779,6 +954,7 @@ int main(int argc, char* argv[])
         else if (cmd == "select_spacecraft")    cmd_select_spacecraft(ctx, tokens);
         else if (cmd == "advance_to_nightside") cmd_advance_to_nightside(ctx);
         else if (cmd == "find_transfer")        cmd_find_transfer(ctx, tokens);
+        else if (cmd == "plan_transfer")        cmd_plan_transfer(ctx, tokens);
         else if (cmd == "maneuver")             cmd_maneuver(ctx, tokens);
         else if (cmd == "approve_maneuver")     cmd_approve_maneuver(ctx);
         else if (cmd == "report")               cmd_report(ctx, tokens);
