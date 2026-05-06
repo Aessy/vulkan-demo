@@ -7,6 +7,7 @@
 
 #include <array>
 #include <chrono>
+#include <format>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -986,6 +987,21 @@ void drawPlanetLabels(SolarSystem const& solar_system, Camera const& cam)
 }
 
 
+static std::string simDateString(double elapsed_s)
+{
+    int jdn = static_cast<int>(std::floor(2451545.0 + elapsed_s / 86400.0 + 0.5));
+    int a = jdn + 32044;
+    int b = (4*a + 3) / 146097;
+    int c = a - (b*146097)/4;
+    int d = (4*c + 3) / 1461;
+    int e = c - (1461*d)/4;
+    int m = (5*e + 2) / 153;
+    int day   = e - (153*m + 2)/5 + 1;
+    int month = m + 3 - 12*(m/10);
+    int year  = b*100 + d - 4800 + m/10;
+    return std::format("{:04d}-{:02d}-{:02d}", year, month, day);
+}
+
 void createSpacecraftGui(SolarSystem& ss, Camera& cam)
 {
     ImGui::SetNextWindowPos(ImVec2(10, 480), ImGuiCond_FirstUseEver);
@@ -1118,6 +1134,8 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
         double const alt_km     = dist_km - dom_radius_km;
 
         ImGui::Separator();
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f),
+            "Sim Date: %s", simDateString(ss.elapsed_simulation_s).c_str());
         ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f), "SOI: %s", dom_name);
         ImGui::Text("Distance: %.1f km", dist_km);
         ImGui::Text("Altitude: %.1f km", alt_km);
@@ -1138,6 +1156,12 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
                 ImGui::Text("Semi-major axis: %.1f km", orb.a);
                 ImGui::Text("Periapsis alt: %.1f km", peri_alt);
                 ImGui::Text("Apoapsis alt:  %.1f km", apo_alt);
+
+                double cos_nu = glm::dot(glm::normalize(r_rel), orb.e_hat);
+                cos_nu = std::clamp(cos_nu, -1.0, 1.0);
+                double nu_deg = std::acos(cos_nu) * 180.0 / M_PI;
+                if (glm::dot(r_rel, orb.q_hat) < 0.0) nu_deg = 360.0 - nu_deg;
+                ImGui::Text("True anomaly:  %.1f deg", nu_deg);
             }
             else
             {
@@ -1147,6 +1171,12 @@ void createSpacecraftGui(SolarSystem& ss, Camera& cam)
                 ImGui::Text("Eccentricity: %.4f", orb.e);
                 ImGui::Text("Closest approach: %.1f km alt", peri_alt);
             }
+
+            glm::dvec3 const pg_hat = glm::normalize(v_rel);
+            glm::dvec3 const rd_hat = glm::normalize(r_rel);
+            glm::dvec3 const nm_hat = glm::normalize(glm::cross(r_rel, v_rel));
+            ImGui::Text("PRN vel: pg %.3f  rd %.3f  nm %.3f km/s",
+                glm::dot(v_rel, pg_hat), glm::dot(v_rel, rd_hat), glm::dot(v_rel, nm_hat));
         }
         ImGui::Separator();
     }
@@ -1231,12 +1261,75 @@ static void createManeuverPlannerGui(SolarSystem& ss)
     auto const& def = ss.spacecraft_defs[ss.maneuver_sc_idx];
 
     ImGui::SetNextWindowPos(ImVec2(400, 400), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(360, 260), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(400, 440), ImGuiCond_FirstUseEver);
     bool open = true;
     if (ImGui::Begin("Maneuver Planner", &open))
     {
         ImGui::Text("Planning maneuver for: %s", def.name);
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.4f, 1.0f),
+            "Sim date: %s", simDateString(ss.elapsed_simulation_s).c_str());
         ImGui::Separator();
+
+        // Burn position at T0 (updated each frame by SolarSystemScene)
+        for (auto const& node : sc.maneuvers)
+        {
+            if (!node.approved)
+            {
+                constexpr double G_KM3  = 6.674e-20;
+                constexpr double GM_SUN = 1.32712440018e11;
+                const char* dom_name   = "Sun";
+                double      dom_radius = ss.defs[0].radius_km;
+                double      dom_GM     = GM_SUN;
+
+                if (node.burn_dominant_is_moon && node.burn_dominant_moon_idx >= 0 &&
+                    node.burn_dominant_moon_idx < static_cast<int>(ss.moon_states.size()))
+                {
+                    auto const& ms   = ss.moon_states[node.burn_dominant_moon_idx];
+                    auto const& mdef = ss.defs[ms.parent_planet_index].moons[ms.moon_index];
+                    dom_name   = mdef.name;
+                    dom_radius = mdef.radius_km;
+                    dom_GM     = G_KM3 * mdef.mass_kg;
+                }
+                else if (node.burn_dominant_body_idx > 0 &&
+                         node.burn_dominant_body_idx < static_cast<int>(ss.defs.size()))
+                {
+                    auto const bi = static_cast<std::size_t>(node.burn_dominant_body_idx);
+                    dom_name   = ss.defs[bi].name;
+                    dom_radius = ss.defs[bi].radius_km;
+                    dom_GM     = G_KM3 * ss.defs[bi].mass_kg;
+                }
+
+                double const dist = glm::length(node.burn_pos_rel);
+                double const alt  = dist - dom_radius;
+
+                ImGui::TextColored(ImVec4(0.4f, 0.9f, 1.0f, 1.0f),
+                    "At T0 — SOI: %s", dom_name);
+                ImGui::Text("Altitude: %.1f km", alt);
+                ImGui::Text("Pos: (%.0f, %.0f, %.0f) km",
+                    node.burn_pos_rel.x, node.burn_pos_rel.y, node.burn_pos_rel.z);
+
+                if (dist > 1e-6 && glm::length(node.burn_vel_rel) > 1e-15)
+                {
+                    OsculatingOrbit const orb = computeOsculatingOrbit(
+                        node.burn_pos_rel, node.burn_vel_rel, dom_GM);
+
+                    double cos_nu = glm::dot(glm::normalize(node.burn_pos_rel), orb.e_hat);
+                    cos_nu = std::clamp(cos_nu, -1.0, 1.0);
+                    double nu_deg = std::acos(cos_nu) * 180.0 / M_PI;
+                    if (glm::dot(node.burn_pos_rel, orb.q_hat) < 0.0) nu_deg = 360.0 - nu_deg;
+                    ImGui::Text("True anomaly: %.1f deg", nu_deg);
+
+                    if (orb.e < 1.0 && orb.a > 0.0)
+                    {
+                        double const pe = orb.periapsis_km() - dom_radius;
+                        double const ap = orb.apoapsis_km()  - dom_radius;
+                        ImGui::Text("Orbit: e=%.4f  pe=%.0f  ap=%.0f km alt", orb.e, pe, ap);
+                    }
+                }
+                ImGui::Separator();
+                break;
+            }
+        }
 
         float t0_min = static_cast<float>(ss.maneuver_t0_s / 60.0);
         if (ImGui::SliderFloat("T0 (sim-min)", &t0_min, 0.0f, 60.0f, "%.1f min"))

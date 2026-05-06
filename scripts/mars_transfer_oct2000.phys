@@ -1,0 +1,21 @@
+# Mars transfer — October 2000 window
+#
+# Departure:  ~2000-10-29  (J2000 day 303.01)
+# Arrival:    ~2001-06-30  (J2000 day 548.34)
+# TOF:        245 days
+# Total dV:   5.796 km/s  (prograde +5.7901, normal -0.2625)
+# Closest approach: ~335 741 km  (SOI 577 121 km — soi_entered YES)
+#
+# In the GUI: start burn 73 s before reaching burn position.
+# Burn duration ~145 s depending on engine thrust.
+# Attitude must be locked to burn direction before ignition.
+
+physics_mode patched_conic
+date 2000-01-01
+spawn_spacecraft
+select_spacecraft 0
+advance 26179870.5
+maneuver prograde=5.7901 radial=0.0000 normal=-0.2625 t0=0
+approve_maneuver
+report state
+report closest_approach Mars days=280
