@@ -8,6 +8,8 @@
 #include <array>
 #include <chrono>
 #include <format>
+#include <future>
+#include <unordered_map>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -1279,6 +1281,10 @@ static void createManeuverPlannerGui(SolarSystem& ss)
     auto& sc  = ss.spacecraft_states[ss.maneuver_sc_idx];
     auto const& def = ss.spacecraft_defs[ss.maneuver_sc_idx];
 
+    // Target selection persists across frames and is copied into the ManeuverNode at approval.
+    static int planner_target_body{-1};
+    static int planner_target_moon{-1};
+
     ImGui::SetNextWindowPos(ImVec2(400, 400), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(400, 440), ImGuiCond_FirstUseEver);
     bool open = true;
@@ -1360,17 +1366,9 @@ static void createManeuverPlannerGui(SolarSystem& ss)
         float pg = static_cast<float>(ss.maneuver_prograde);
         float rd = static_cast<float>(ss.maneuver_radial);
         float nm = static_cast<float>(ss.maneuver_normal);
-        if (ImGui::DragFloat("Prograde (km/s)", &pg, 0.001f, 0.0f, 15.0f,  "%.4f")) ss.maneuver_prograde = pg;
-        if (ImGui::DragFloat("Radial   (km/s)", &rd, 0.001f, -5.0f,  5.0f, "%.4f")) ss.maneuver_radial   = rd;
-        if (ImGui::DragFloat("Normal   (km/s)", &nm, 0.001f, -5.0f,  5.0f, "%.4f")) ss.maneuver_normal   = nm;
-
-        // Per-component burn Δv (absolute slider value minus reference at T0)
-        double const dpg = ss.maneuver_prograde - ss.maneuver_ref_prograde;
-        double const drd = ss.maneuver_radial   - ss.maneuver_ref_radial;
-        double const dnm = ss.maneuver_normal   - ss.maneuver_ref_normal;
-        ImGui::Text("  Prograde: %+.4f km/s", dpg);
-        ImGui::Text("  Radial:   %+.4f km/s", drd);
-        ImGui::Text("  Normal:   %+.4f km/s", dnm);
+        if (ImGui::DragFloat("ΔPrograde (km/s)", &pg, 0.001f, -10.0f, 10.0f, "%+.4f")) ss.maneuver_prograde = pg;
+        if (ImGui::DragFloat("ΔRadial   (km/s)", &rd, 0.001f, -10.0f, 10.0f, "%+.4f")) ss.maneuver_radial   = rd;
+        if (ImGui::DragFloat("ΔNormal   (km/s)", &nm, 0.001f, -10.0f, 10.0f, "%+.4f")) ss.maneuver_normal   = nm;
 
         // Actual |Δv| from the pending node (updated by updateSceneFromSolarSystem before GUI runs)
         double dv_mag = 0.0;
@@ -1386,10 +1384,18 @@ static void createManeuverPlannerGui(SolarSystem& ss)
         // ── Closest-approach predictor ─────────────────────────────────────
         ImGui::Separator();
         {
-            static int  target_body_idx{-1};
-            static int  target_moon_idx{-1};
+            int& target_body_idx = planner_target_body;
+            int& target_moon_idx = planner_target_moon;
             static bool has_result{false};
             static ClosestApproachResult ca_result{};
+
+            // Track previous inputs to detect changes and re-run prediction.
+            static int    prev_target_body{-2};
+            static int    prev_target_moon{-2};
+            static double prev_t0{-1e30};
+            static double prev_pg{-1e30};
+            static double prev_rd{-1e30};
+            static double prev_nm{-1e30};
 
             // Build combo label
             const char* combo_label = "— none —";
@@ -1427,43 +1433,75 @@ static void createManeuverPlannerGui(SolarSystem& ss)
                 }
                 ImGui::EndCombo();
             }
-            ImGui::SameLine();
 
             bool const can_predict = target_body_idx > 0 &&
                 ss.physics_mode == PhysicsMode::PatchedConic;
-            if (!can_predict) ImGui::BeginDisabled();
-            if (ImGui::Button("Predict"))
+
+            if (!can_predict && ss.physics_mode != PhysicsMode::PatchedConic)
             {
-                // Find pending node
-                const ManeuverNode* pending = nullptr;
-                for (auto const& n : sc.maneuvers)
-                    if (!n.approved) { pending = &n; break; }
+                ImGui::SameLine();
+                ImGui::TextDisabled("(patched conic only)");
+            }
 
-                if (pending)
+            // Auto-predict on a background thread; re-launch when inputs change.
+            static std::future<ClosestApproachResult> pred_future;
+            static bool pred_calculating{false};
+
+            // Collect completed result without blocking.
+            if (pred_calculating && pred_future.valid() &&
+                pred_future.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+            {
+                ca_result      = pred_future.get();
+                has_result     = true;
+                pred_calculating = false;
+            }
+
+            if (can_predict)
+            {
+                bool const dirty =
+                    target_body_idx      != prev_target_body ||
+                    target_moon_idx      != prev_target_moon ||
+                    ss.maneuver_t0_s     != prev_t0          ||
+                    ss.maneuver_prograde != prev_pg          ||
+                    ss.maneuver_radial   != prev_rd          ||
+                    ss.maneuver_normal   != prev_nm;
+
+                if (dirty && !pred_calculating)
                 {
-                    // Copy sim state, advance to T0, apply burn
-                    SolarSystem ss_copy = ss;
-                    if (ss.maneuver_t0_s > 0.0)
-                        updateSolarSystemPatchedConic(ss_copy,
-                            ss.maneuver_t0_s / ss_copy.time_scale);
-                    ss_copy.spacecraft_states[ss.maneuver_sc_idx].velocity_km +=
-                        pending->delta_v_world;
+                    const ManeuverNode* pending = nullptr;
+                    for (auto const& n : sc.maneuvers)
+                        if (!n.approved) { pending = &n; break; }
 
-                    ca_result  = predictClosestApproach(
-                        std::move(ss_copy), ss.maneuver_sc_idx,
-                        target_body_idx, target_moon_idx);
-                    has_result = true;
+                    if (pending)
+                    {
+                        SolarSystem ss_copy = ss;
+                        ss_copy.time_scale = 1.0;
+                        if (ss.maneuver_t0_s > 0.0)
+                            updateSolarSystemPatchedConic(ss_copy, ss.maneuver_t0_s);
+                        ss_copy.spacecraft_states[ss.maneuver_sc_idx].velocity_km +=
+                            pending->delta_v_world;
+
+                        int const sc_idx = ss.maneuver_sc_idx;
+                        int const tb     = target_body_idx;
+                        int const tm     = target_moon_idx;
+                        pred_future = std::async(std::launch::async,
+                            [ss = std::move(ss_copy), sc_idx, tb, tm]() mutable {
+                                return predictClosestApproach(std::move(ss), sc_idx, tb, tm);
+                            });
+                        pred_calculating = true;
+
+                        prev_target_body = target_body_idx;
+                        prev_target_moon = target_moon_idx;
+                        prev_t0 = ss.maneuver_t0_s;
+                        prev_pg = ss.maneuver_prograde;
+                        prev_rd = ss.maneuver_radial;
+                        prev_nm = ss.maneuver_normal;
+                    }
                 }
             }
-            if (!can_predict)
-            {
-                ImGui::EndDisabled();
-                if (ss.physics_mode != PhysicsMode::PatchedConic)
-                {
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("(patched conic only)");
-                }
-            }
+
+            if (pred_calculating)
+                ImGui::TextDisabled("calculating...");
 
             if (has_result)
             {
@@ -1491,10 +1529,12 @@ static void createManeuverPlannerGui(SolarSystem& ss)
                 {
                     node.t0_s        = ss.maneuver_t0_s;
                     node.t0_abs_s    = ss.elapsed_simulation_s + ss.maneuver_t0_s;
-                    node.prograde_dv = ss.maneuver_prograde - ss.maneuver_ref_prograde;
-                    node.radial_dv   = ss.maneuver_radial   - ss.maneuver_ref_radial;
-                    node.normal_dv   = ss.maneuver_normal   - ss.maneuver_ref_normal;
-                    node.approved    = true;
+                    node.prograde_dv     = ss.maneuver_prograde;
+                    node.radial_dv       = ss.maneuver_radial;
+                    node.normal_dv       = ss.maneuver_normal;
+                    node.target_body_idx = planner_target_body;
+                    node.target_moon_idx = planner_target_moon;
+                    node.approved        = true;
                     break;
                 }
             }
@@ -1580,6 +1620,26 @@ static void createActiveManeuversHud(SolarSystem& ss)
             ImGui::Text("  pg: %+.3f  rd: %+.3f  nm: %+.3f",
                 node.prograde_dv, node.radial_dv, node.normal_dv);
 
+            {
+                double const burn_rate   = def.thrust_N / def.mass_kg * 1e-3; // km/s²
+                double const burn_time_s = (burn_rate > 0.0) ? dv_mag / burn_rate : 0.0;
+                ImGui::Text("  Burn duration: %.1f s", burn_time_s);
+
+                if (!node.completed && node.accumulated_dv == 0.0)
+                {
+                    double const ignition_abs_s   = node.t0_abs_s - burn_time_s * 0.5;
+                    double const t_until_ignition = ignition_abs_s - ss.elapsed_simulation_s;
+                    int    const ia               = static_cast<int>(std::abs(t_until_ignition));
+                    ImVec4 const col = (t_until_ignition > 0.0 && t_until_ignition <= 60.0)
+                        ? ImVec4(1.0f, 0.5f, 0.0f, 1.0f)
+                        : ImVec4(0.8f, 0.8f, 0.8f, 1.0f);
+                    ImGui::TextColored(col, "  Ignition: T%s%02d:%02d:%02d  %s",
+                        (t_until_ignition >= 0.0 ? "-" : "+"),
+                        ia / 3600, (ia % 3600) / 60, ia % 60,
+                        simDateString(ignition_abs_s).c_str());
+                }
+            }
+
             if (!node.completed)
             {
                 if (dv_mag > 0.0 && node.accumulated_dv > 0.0)
@@ -1593,6 +1653,75 @@ static void createActiveManeuversHud(SolarSystem& ss)
                     ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.0f, 1.0f), ">>> BURN IMMINENT <<<");
                 }
                 ImGui::Checkbox("Lock attitude to burn direction", &node.lock_attitude);
+            }
+
+            // Live closest-approach prediction for the remembered target.
+            if (node.target_body_idx > 0 &&
+                ss.physics_mode == PhysicsMode::PatchedConic)
+            {
+                struct PredCache {
+                    ClosestApproachResult r{};
+                    std::future<ClosestApproachResult> fut{};
+                    bool calculating{false};
+                    int  age{9999};
+                };
+                static std::unordered_map<int, PredCache> pred_cache;
+
+                int const cache_key = j * 100 + ni;
+                auto& cache = pred_cache[cache_key];
+                cache.age++;
+
+                // Collect completed result without blocking.
+                if (cache.calculating && cache.fut.valid() &&
+                    cache.fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+                {
+                    cache.r           = cache.fut.get();
+                    cache.calculating = false;
+                    cache.age         = 0;
+                }
+
+                // Launch a fresh prediction roughly once per second.
+                if (!cache.calculating && cache.age >= 60)
+                {
+                    int const tb = node.target_body_idx;
+                    int const tm = node.target_moon_idx;
+                    SolarSystem ss_copy = ss;
+                    ss_copy.time_scale = 1.0;
+                    ss_copy.spacecraft_states[j].thrust_level = 0.0;
+                    cache.fut = std::async(std::launch::async,
+                        [ss = std::move(ss_copy), j, tb, tm]() mutable {
+                            return predictClosestApproach(std::move(ss), j, tb, tm);
+                        });
+                    cache.calculating = true;
+                }
+
+                const char* tname = "?";
+                if (node.target_moon_idx >= 0 &&
+                    node.target_body_idx < static_cast<int>(ss.defs.size()) &&
+                    node.target_moon_idx < static_cast<int>(
+                        ss.defs[node.target_body_idx].moons.size()))
+                    tname = ss.defs[node.target_body_idx].moons[node.target_moon_idx].name;
+                else if (node.target_body_idx < static_cast<int>(ss.defs.size()))
+                    tname = ss.defs[node.target_body_idx].name;
+
+                glm::dvec3 const target_pos = (node.target_moon_idx >= 0)
+                    ? ss.moon_states[node.target_moon_idx].position_km
+                    : ss.states[node.target_body_idx].position_km;
+                double const current_dist_km =
+                    glm::length(target_pos - ss.spacecraft_states[j].position_km);
+
+                ImGui::Separator();
+                ImGui::Text("Target: %s", tname);
+                ImGui::Text("  Current distance:  %.0f km", current_dist_km);
+                ImGui::Text("  Closest approach: %.0f km", cache.r.min_distance_km);
+                ImGui::Text("  SOI radius:       %.0f km", cache.r.soi_radius_km);
+                if (cache.r.soi_entered)
+                    ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.4f, 1.0f), "  SOI entered        YES");
+                else
+                    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "  SOI entered        NO");
+                ImGui::Text("  Time of flight:   %.1f days", cache.r.days_from_now);
+                ImGui::Text("  Arrival:          %s",
+                    simDateString(cache.r.elapsed_s_at_min).c_str());
             }
 
             if (ImGui::Button(node.completed ? "Remove" : "Cancel maneuver"))

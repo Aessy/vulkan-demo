@@ -26,6 +26,11 @@ struct ManeuverNode {
     int  burn_dominant_body_idx{0};
     bool burn_dominant_is_moon{false};
     int  burn_dominant_moon_idx{-1};
+
+    // Target planet/moon selected in the maneuver planner — persists into the
+    // active-maneuver HUD for live closest-approach tracking.
+    int  target_body_idx{-1};
+    int  target_moon_idx{-1};
 };
 
 // Solve Kepler's equation M = E - e*sin(E) via Newton-Raphson.

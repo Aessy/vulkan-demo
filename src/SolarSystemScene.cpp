@@ -1749,16 +1749,16 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                 ss_mut.maneuver_ref_normal   = ref_nm;
                 if (!ss_mut.maneuver_targets_initialized)
                 {
-                    ss_mut.maneuver_prograde            = ref_pg;
-                    ss_mut.maneuver_radial              = ref_rd;
-                    ss_mut.maneuver_normal              = ref_nm;
+                    ss_mut.maneuver_prograde            = 0.0;
+                    ss_mut.maneuver_radial              = 0.0;
+                    ss_mut.maneuver_normal              = 0.0;
                     ss_mut.maneuver_targets_initialized = true;
                 }
 
                 glm::dvec3 const dv = dvWorld(br, bv,
-                    ss.maneuver_prograde - ref_pg,
-                    ss.maneuver_radial   - ref_rd,
-                    ss.maneuver_normal   - ref_nm);
+                    ss.maneuver_prograde,
+                    ss.maneuver_radial,
+                    ss.maneuver_normal);
                 glm::dvec3 const bv_post = bv + dv;
 
                 if (!ss_mut.spacecraft_states[i].maneuvers.empty() &&
@@ -1928,7 +1928,14 @@ void updateSceneFromSolarSystem(Scene& scene, SolarSystem const& ss,
                     // For escape maneuvers: keep the escape arc in the path buffer,
                     // rendered in heliocentric space so it connects to the helio orbit arc.
                     // ref_pos_phys is already at burn epoch (backward-propagated above).
-                    if (aorbit.e >= 1.0 && aorbit.a < 0.0 &&
+                    //
+                    // Skip when the spacecraft has already entered a different planet's SOI:
+                    // path_obj was already set above with the correct hyperbolic approach arc
+                    // for that planet, and overwriting it with the old departure arc is wrong.
+                    bool const in_new_planet_soi = soi_changed &&
+                        saved_dom_body > 0 && !saved_dom_is_moon;
+                    if (!in_new_planet_soi &&
+                        aorbit.e >= 1.0 && aorbit.a < 0.0 &&
                         !node.burn_dominant_is_moon && node.burn_dominant_body_idx > 0)
                     {
                         auto esc_verts = buildEscapeArc(

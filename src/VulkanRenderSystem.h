@@ -47,6 +47,8 @@ struct Keyboard
     bool e_key = false; // roll CW
     bool z_key = false; // thrust increase
     bool x_key = false; // thrust decrease
+    bool full_burn_press = false;  // C: instant full thrust
+    bool full_stop_press = false;  // Shift+C: instant zero thrust
 };
 
 struct CursorPos

@@ -259,6 +259,13 @@ bool processEvent(Event const& event, App& app)
     else if (event.key == GLFW_KEY_Z && event.action == GLFW_RELEASE) { app.keyboard.z_key = false; }
     else if (event.key == GLFW_KEY_X && event.action == GLFW_PRESS)  { app.keyboard.x_key = true;  }
     else if (event.key == GLFW_KEY_X && event.action == GLFW_RELEASE) { app.keyboard.x_key = false; }
+    else if (event.key == GLFW_KEY_C && event.action == GLFW_PRESS)
+    {
+        if (app.keyboard.shift)
+            app.keyboard.full_stop_press = true;
+        else
+            app.keyboard.full_burn_press = true;
+    }
 
     return true;
 }
@@ -628,6 +635,19 @@ int main()
                     sc.thrust_level = std::max(0.0, sc.thrust_level - 0.4 * static_cast<double>(delta));
                 if (sc.thrust_level != prev_thrust)
                     solar_system.spacecraft_path_dirty = true;
+            }
+
+            if (app.keyboard.full_burn_press)
+            {
+                sc.thrust_level = 1.0;
+                app.keyboard.full_burn_press = false;
+                solar_system.spacecraft_path_dirty = true;
+            }
+            if (app.keyboard.full_stop_press)
+            {
+                sc.thrust_level = 0.0;
+                app.keyboard.full_stop_press = false;
+                solar_system.spacecraft_path_dirty = true;
             }
         }
 
