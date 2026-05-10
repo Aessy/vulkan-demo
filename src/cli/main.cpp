@@ -3,6 +3,7 @@
 #include "Maneuver.h"
 #include "PatchedConic.h"
 #include "Physics.h"
+#include "TransferPlanner.h"
 
 #include <glm/glm.hpp>
 #include <spdlog/spdlog.h>
@@ -47,93 +48,7 @@ struct CliContext {
 };
 
 // ── Lambert solver ────────────────────────────────────────────────────────────
-
-static void stumpffCS(double z, double& C, double& S)
-{
-    if (z > 1e-6) {
-        double const sqz = std::sqrt(z);
-        C = (1.0 - std::cos(sqz)) / z;
-        S = (sqz - std::sin(sqz)) / (z * sqz);
-    } else if (z < -1e-6) {
-        double const sqz = std::sqrt(-z);
-        C = (std::cosh(sqz) - 1.0) / (-z);
-        S = (std::sinh(sqz) - sqz) / ((-z) * sqz);
-    } else {
-        C = 0.5;
-        S = 1.0 / 6.0;
-    }
-}
-
-struct LambertSolution {
-    glm::dvec3 v1{};
-    glm::dvec3 v2{};
-    bool       converged{false};
-};
-
-// Solve Lambert's problem: find heliocentric velocities v1, v2 connecting r1→r2 in tof_s.
-// use_positive_A=true gives the prograde short-way (or long-way retrograde) branch;
-// use_positive_A=false gives the other branch.  Try both to find the minimum-dv solution.
-static LambertSolution solveLambert(glm::dvec3 r1, glm::dvec3 r2,
-                                     double tof_s, double mu, bool use_positive_A)
-{
-    LambertSolution sol;
-
-    double const r1m = glm::length(r1);
-    double const r2m = glm::length(r2);
-    if (r1m < 1.0 || r2m < 1.0 || tof_s <= 0.0) return sol;
-
-    double const cos_dnu = std::clamp(glm::dot(r1, r2) / (r1m * r2m), -1.0, 1.0);
-    double const A_mag   = std::sqrt(r1m * r2m * (1.0 + cos_dnu));
-    if (A_mag < 1.0) return sol;  // degenerate (Δν ≈ π)
-
-    double const A = use_positive_A ? A_mag : -A_mag;
-
-    auto y_of = [&](double z) -> double {
-        double C, S;
-        stumpffCS(z, C, S);
-        if (C < 1e-30) return -1.0;
-        return r1m + r2m + A * (z * S - 1.0) / std::sqrt(C);
-    };
-
-    double z = 0.0;
-    for (int k = 0; k < 1000 && y_of(z) <= 0.0; ++k) z += 0.1;
-    if (y_of(z) <= 0.0) return sol;
-
-    for (int iter = 0; iter < 300; ++iter) {
-        double C, S;
-        stumpffCS(z, C, S);
-        double const y = r1m + r2m + A * (z * S - 1.0) / std::sqrt(C);
-        if (y <= 0.0) { z += 0.1; continue; }
-
-        double const x = std::sqrt(y / C);
-        double const t = (x*x*x * S + A * std::sqrt(y)) / std::sqrt(mu);
-
-        if (std::abs(tof_s - t) < 1.0) {
-            double const f     = 1.0 - y / r1m;
-            double const g     = A * std::sqrt(y / mu);
-            double const gdot  = 1.0 - y / r2m;
-            if (std::abs(g) < 1e-10) break;
-            sol.v1        = (r2 - f * r1) / g;
-            sol.v2        = (gdot * r2 - r1) / g;
-            sol.converged = true;
-            return sol;
-        }
-
-        // Numerical derivative dt/dz for Newton-Raphson
-        double const h = (std::abs(z) > 1.0) ? std::abs(z) * 1e-6 : 1e-6;
-        double C2, S2;
-        stumpffCS(z + h, C2, S2);
-        double const y2 = r1m + r2m + A * ((z+h) * S2 - 1.0) / std::sqrt(C2);
-        double const x2 = std::sqrt(std::max(y2, 0.0) / C2);
-        double const t2 = (x2*x2*x2 * S2 + A * std::sqrt(std::max(y2, 0.0))) / std::sqrt(mu);
-        double const dtdz = (t2 - t) / h;
-
-        if (std::abs(dtdz) < 1e-30) break;
-        z += std::clamp((tof_s - t) / dtdz, -10.0, 10.0);
-        z  = std::clamp(z, -100.0, 200.0);
-    }
-    return sol;
-}
+// stumpffCS, solveLambert, DepartureOpt, computeDepartureBurn are in TransferPlanner.h/cpp
 
 // ── Physics helpers ───────────────────────────────────────────────────────────
 
@@ -174,6 +89,23 @@ static void dominant_body_state(CliContext const& ctx, int sc_idx,
         int mii = ss.moon_states[mi].moon_index;
         dom_GM  = G_km * ss.defs[pi].moons[mii].mass_kg;
     }
+}
+
+// ── Epoch helpers ─────────────────────────────────────────────────────────────
+
+static std::string elapsedToDate(double elapsed_s)
+{
+    // Convert seconds since J2000.0 back to a calendar date string (YYYY-MM-DD).
+    double const jd  = 2451545.0 + elapsed_s / 86400.0;
+    int    const jdn = static_cast<int>(jd + 0.5);
+    int    const f   = jdn + 1401 + (((4 * jdn + 274277) / 146097) * 3) / 4 - 38;
+    int    const e   = 4 * f + 3;
+    int    const g   = (e % 1461) / 4;
+    int    const h   = 5 * g + 2;
+    int    const day   = (h % 153) / 5 + 1;
+    int    const month = (h / 153 + 2) % 12 + 1;
+    int    const year  = e / 1461 - 4716 + (14 - month) / 12;
+    return std::format("{:04d}-{:02d}-{:02d}", year, month, day);
 }
 
 // ── String parsing helpers ────────────────────────────────────────────────────
@@ -378,84 +310,6 @@ static void cmd_advance_to_nightside(CliContext& ctx)
                  advance_s, advance_s / T_orb);
 }
 
-// Compute the optimal departure burn from a circular parking orbit to achieve
-// a given hyperbolic excess velocity v_inf (in parent-body frame).
-//
-// At periapsis of the departure hyperbola, the periapsis velocity direction is
-//   v_hat_dep = normalize(v_inf - dot(v_inf, r_hat_dep) * r_hat_dep)
-// i.e. the component of v_inf perpendicular to the current radial direction.
-// The burn dv = v_hyp*v_hat_dep - v_circ*v_hat_circ has no radial component
-// (both v_hat_dep and v_hat_circ are perpendicular to r_hat_dep).
-// We scan theta in [0, 2π) to find the periapsis angle that minimises |dv|.
-struct DepartureOpt {
-    double advance_s;
-    double prograde_dv;
-    double normal_dv;
-    double dv_total;
-};
-
-static DepartureOpt computeDepartureBurn(
-    glm::dvec3 const& r_hat_0, glm::dvec3 const& v_hat_0,
-    double omega, double v_circ, double GM_parent, double R_LEO,
-    glm::dvec3 const& v_inf)
-{
-    double const v_inf_m = glm::length(v_inf);
-    double const v_esc   = std::sqrt(2.0 * GM_parent / R_LEO);
-    double const v_hyp   = std::sqrt(v_esc*v_esc + v_inf_m*v_inf_m);
-    // Hyperbolic eccentricity: e = 1 + R_LEO*v_inf²/GM  (= v_hyp/v_esc for pure in-plane)
-    double const e       = 1.0 + R_LEO * v_inf_m * v_inf_m / GM_parent;
-    glm::dvec3 const n_orbit  = glm::normalize(glm::cross(r_hat_0, v_hat_0));
-    glm::dvec3 const v_inf_dir = v_inf / v_inf_m;
-
-    // The departure hyperbola's outgoing asymptote is at angle θ∞ = arccos(-1/e) from
-    // the periapsis direction.  For the asymptote to equal v_inf_dir we need:
-    //   dot(v_inf_dir, r_hat(θ)) = -1/e
-    // where r_hat(θ) = cos(θ)*r_hat_0 + sin(θ)*v_hat_0.
-    // This gives: c1*cos(θ) + c2*sin(θ) = -1/e  →  A*cos(θ - φ) = -1/e
-    double const c1  = glm::dot(v_inf_dir, r_hat_0);
-    double const c2  = glm::dot(v_inf_dir, v_hat_0);
-    double const A   = std::sqrt(c1*c1 + c2*c2);
-
-    auto burnAt = [&](double theta) -> DepartureOpt {
-        // theta may be any value; normalise to [0, 2π) for advance_s
-        double adv = std::fmod(theta, 2.0 * std::numbers::pi_v<double>);
-        if (adv < 0.0) adv += 2.0 * std::numbers::pi_v<double>;
-        glm::dvec3 const r_hat = std::cos(theta)*r_hat_0 + std::sin(theta)*v_hat_0;
-        glm::dvec3 const v_hat = -std::sin(theta)*r_hat_0 + std::cos(theta)*v_hat_0;
-        glm::dvec3 const v_perp = v_inf - glm::dot(v_inf, r_hat) * r_hat;
-        glm::dvec3 const dv    = v_hyp * glm::normalize(v_perp) - v_circ * v_hat;
-        DepartureOpt opt;
-        opt.advance_s   = adv / omega;
-        opt.prograde_dv = glm::dot(dv, v_hat);
-        opt.normal_dv   = glm::dot(dv, n_orbit);
-        opt.dv_total    = glm::length(dv);
-        return opt;
-    };
-
-    double const target = -1.0 / e;
-    if (A >= std::abs(target)) {
-        // Analytic solution: two candidate angles, pick the one with smaller |Δv|.
-        double const phi   = std::atan2(c2, c1);
-        double const delta = std::acos(std::clamp(target / A, -1.0, 1.0));
-        DepartureOpt o1 = burnAt(phi + delta);
-        DepartureOpt o2 = burnAt(phi - delta);
-        return (o1.dv_total <= o2.dv_total) ? o1 : o2;
-    }
-
-    // Fallback (v_inf mostly out-of-plane): scan for minimum |Δv|.
-    int const N = 3600;
-    double best_theta = 0.0, best_val = 1e30;
-    for (int k = 0; k < N; ++k) {
-        double const theta = k * 2.0 * std::numbers::pi_v<double> / N;
-        glm::dvec3 const r_h = std::cos(theta)*r_hat_0 + std::sin(theta)*v_hat_0;
-        glm::dvec3 const v_h = -std::sin(theta)*r_hat_0 + std::cos(theta)*v_hat_0;
-        glm::dvec3 const vp  = v_inf - glm::dot(v_inf, r_h) * r_h;
-        if (glm::length(vp) < 1e-10) continue;
-        double const val = glm::length(v_hyp * glm::normalize(vp) - v_circ * v_h);
-        if (val < best_val) { best_val = val; best_theta = theta; }
-    }
-    return burnAt(best_theta);
-}
 
 static void cmd_find_transfer(CliContext& ctx, std::istringstream& args)
 {
@@ -906,6 +760,91 @@ static void cmd_report_closest_approach(CliContext& ctx, std::istringstream& arg
     std::println("  soi_entered         {}", refined_dist < soi_km ? "YES" : "NO");
 }
 
+static void cmd_next_transfer(CliContext& ctx, std::istringstream& args)
+{
+    if (ctx.selected_sc < 0) {
+        std::println(stderr, "ERROR: no spacecraft selected");
+        return;
+    }
+
+    std::string target_name;
+    args >> target_name;
+
+    double dep_max_days = 730.0;
+    double tof_min_days = 100.0;
+    double tof_max_days = 600.0;
+    {
+        std::string token;
+        while (args >> token) {
+            auto const eq = token.find('=');
+            if (eq == std::string::npos) continue;
+            std::string const key = token.substr(0, eq);
+            double const val = std::stod(token.substr(eq + 1));
+            if      (key == "dep_max") dep_max_days = val;
+            else if (key == "tof_min") tof_min_days = val;
+            else if (key == "tof_max") tof_max_days = val;
+        }
+    }
+
+    int target_idx = -1;
+    for (std::size_t i = 0; i < ctx.ss.defs.size(); ++i)
+        if (ctx.ss.defs[i].name == target_name) { target_idx = static_cast<int>(i); break; }
+    if (target_idx < 0) {
+        std::println(stderr, "ERROR: planet '{}' not found", target_name);
+        return;
+    }
+
+    std::println("NEXT_TRANSFER  searching target={} dep_max={:.0f}d tof=[{:.0f},{:.0f}]d ...",
+                 target_name, dep_max_days, tof_min_days, tof_max_days);
+    std::cout.flush();
+
+    SolarSystem ss_copy = ctx.ss;
+    ss_copy.time_scale = 1.0;
+
+    auto const result = findBestTransferWindow(
+        std::move(ss_copy),
+        ctx.selected_sc,
+        target_idx,
+        dep_max_days * 86400.0,
+        tof_min_days * 86400.0,
+        tof_max_days * 86400.0);
+
+    if (!result) {
+        std::println("NEXT_TRANSFER  no window found");
+        return;
+    }
+
+    auto const& w       = *result;
+    double const dep_s  = w.departure_elapsed_s;
+    double const arr_s  = dep_s + w.tof_s;
+    double const now_s  = ctx.ss.elapsed_simulation_s;
+
+    std::println("NEXT_TRANSFER  target={}", target_name);
+    std::println("  departure_date      {}  ({:.2f} days from now)",
+                 elapsedToDate(dep_s), (dep_s - now_s) / 86400.0);
+    std::println("  arrival_date        {}", elapsedToDate(arr_s));
+    std::println("  tof_days            {:.1f}", w.tof_s / 86400.0);
+    std::println("  dep_days_j2000      {:.4f}", dep_s / 86400.0);
+    std::println("  arr_days_j2000      {:.4f}", arr_s / 86400.0);
+    std::println("  total_dv_km_s       {:.4f}", w.total_dv_km_s);
+    std::println("  prograde_dv         {:.4f}", w.prograde_dv);
+    std::println("  normal_dv           {:.4f}", w.normal_dv);
+    std::println("  soi_radius_km       {:.1f}", ctx.ss.defs[target_idx].soi_km);
+    // Diagnostic: burn state sanity check
+    double const burn_r = glm::length(w.burn_pos_rel);
+    double const burn_v = glm::length(w.burn_vel_rel);
+    double const burn_dv = glm::length(w.delta_v_world);
+    std::println("  [dbg] burn_pos_rel_km   {:.1f}  (LEO ~6771)", burn_r);
+    std::println("  [dbg] burn_vel_rel_km_s {:.4f}  (LEO ~7.7)", burn_v);
+    std::println("  [dbg] delta_v_world_km_s {:.4f}  (|dv| applied)", burn_dv);
+    std::println("  [dbg] post_burn_speed_km_s {:.4f}  (escape ~11.2)",
+                 glm::length(w.burn_vel_rel + w.delta_v_world));
+    if (w.approach_done) {
+        std::println("  closest_approach_km {:.1f}", w.approach.min_distance_km);
+        std::println("  soi_entered         {}", w.approach.soi_entered ? "YES" : "NO");
+    }
+}
+
 static void cmd_report(CliContext& ctx, std::istringstream& args)
 {
     std::string sub; args >> sub;
@@ -955,6 +894,7 @@ int main(int argc, char* argv[])
         else if (cmd == "advance_to_nightside") cmd_advance_to_nightside(ctx);
         else if (cmd == "find_transfer")        cmd_find_transfer(ctx, tokens);
         else if (cmd == "plan_transfer")        cmd_plan_transfer(ctx, tokens);
+        else if (cmd == "next_transfer")        cmd_next_transfer(ctx, tokens);
         else if (cmd == "maneuver")             cmd_maneuver(ctx, tokens);
         else if (cmd == "approve_maneuver")     cmd_approve_maneuver(ctx);
         else if (cmd == "report")               cmd_report(ctx, tokens);

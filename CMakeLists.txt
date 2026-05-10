@@ -11,6 +11,7 @@ set(PHYSICS_CORE_SRC
         src/Spacecraft.cpp
         src/Maneuver.cpp
         src/PatchedConic.cpp
+        src/TransferPlanner.cpp
         )
 
 add_library(physics_core STATIC ${PHYSICS_CORE_SRC})

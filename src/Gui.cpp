@@ -22,6 +22,7 @@
 #include "PatchedConic.h"
 
 #include "Application.h"
+#include "TransferPlanner.h"
 #include <spdlog/spdlog.h>
 
 namespace gui
@@ -1734,6 +1735,165 @@ static void createActiveManeuversHud(SolarSystem& ss)
     ImGui::End();
 }
 
+static void createTransferPlannerGui(SolarSystem& ss)
+{
+    ImGui::SetNextWindowPos(ImVec2(820, 10), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(480, 400), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Transfer Planner")) { ImGui::End(); return; }
+
+    if (ss.spacecraft_defs.empty()) {
+        ImGui::TextDisabled("No spacecraft. Spawn one first.");
+        ImGui::End();
+        return;
+    }
+    if (ss.physics_mode != PhysicsMode::PatchedConic) {
+        ImGui::TextDisabled("Requires Patched Conic physics mode.");
+        ImGui::End();
+        return;
+    }
+
+    static int   sc_idx{0};
+    static int   target_body_idx{4};
+    static float dep_max_days{730.0f};
+    static float tof_min_days{100.0f};
+    static float tof_max_days{600.0f};
+
+    static bool scanning{false};
+    static std::future<std::optional<TransferWindow>> scan_future;
+    static std::optional<TransferWindow> result;
+
+    if (sc_idx >= static_cast<int>(ss.spacecraft_defs.size())) sc_idx = 0;
+    if (target_body_idx >= static_cast<int>(ss.defs.size()))   target_body_idx = 1;
+
+    // Spacecraft selector
+    {
+        ImGui::SetNextItemWidth(160.0f);
+        if (ImGui::BeginCombo("Spacecraft##tp", ss.spacecraft_defs[sc_idx].name)) {
+            for (int i = 0; i < static_cast<int>(ss.spacecraft_defs.size()); ++i) {
+                bool sel = (sc_idx == i);
+                if (ImGui::Selectable(ss.spacecraft_defs[i].name, sel)) sc_idx = i;
+                if (sel) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+    }
+    ImGui::SameLine();
+    {
+        const char* tgt_name = (target_body_idx > 0 && target_body_idx < static_cast<int>(ss.defs.size()))
+            ? ss.defs[target_body_idx].name : "— none —";
+        ImGui::SetNextItemWidth(160.0f);
+        if (ImGui::BeginCombo("Target##tp", tgt_name)) {
+            for (int bi = 1; bi < static_cast<int>(ss.defs.size()); ++bi) {
+                bool sel = (target_body_idx == bi);
+                if (ImGui::Selectable(ss.defs[bi].name, sel)) target_body_idx = bi;
+                if (sel) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+    ImGui::SliderFloat("Search window (days)", &dep_max_days, 30.0f, 1000.0f, "%.0f d");
+    ImGui::SliderFloat("TOF min (days)",        &tof_min_days, 30.0f,  500.0f, "%.0f d");
+    ImGui::SliderFloat("TOF max (days)",        &tof_max_days, 100.0f, 1200.0f, "%.0f d");
+
+    // Poll result.
+    if (scanning && scan_future.valid() &&
+        scan_future.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+    {
+        result   = scan_future.get();
+        scanning = false;
+    }
+
+    bool const in_planet_orbit =
+        sc_idx < static_cast<int>(ss.spacecraft_states.size()) &&
+        !ss.spacecraft_states[sc_idx].dominant_is_moon &&
+        ss.spacecraft_states[sc_idx].dominant_body_idx > 0;
+
+    if (scanning) {
+        ImGui::TextDisabled("Searching...  (coarse scan + fine refinement + SOI verify)");
+    } else {
+        if (!in_planet_orbit) ImGui::BeginDisabled();
+        if (ImGui::Button("Find best window") && target_body_idx > 0) {
+            SolarSystem ss_copy = ss;
+            ss_copy.time_scale  = 1.0;
+            int const   tsc      = sc_idx;
+            int const   tgt      = target_body_idx;
+            double const dep_s   = static_cast<double>(dep_max_days) * 86400.0;
+            double const tof_min = static_cast<double>(tof_min_days) * 86400.0;
+            double const tof_max = static_cast<double>(tof_max_days) * 86400.0;
+            scan_future = std::async(std::launch::async,
+                [ss_copy = std::move(ss_copy), tsc, tgt, dep_s, tof_min, tof_max]() mutable {
+                    return findBestTransferWindow(std::move(ss_copy), tsc, tgt,
+                                                  dep_s, tof_min, tof_max);
+                });
+            scanning = true;
+            result.reset();
+        }
+        if (!in_planet_orbit) {
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextDisabled("(must be in planet orbit)");
+        }
+    }
+
+    ImGui::Separator();
+
+    if (!result.has_value() && !scanning) {
+        ImGui::TextDisabled("Press 'Find best window' to search.");
+        ImGui::End();
+        return;
+    }
+
+    if (result.has_value()) {
+        auto const& w = *result;
+
+        ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.3f, 1.0f),
+            "|Δv| %.4f km/s   TOF %.1f d", w.total_dv_km_s, w.tof_s / 86400.0);
+        ImGui::Text("Departure: %s", simDateString(w.departure_elapsed_s).c_str());
+        ImGui::Text("Arrival:   %s", simDateString(w.departure_elapsed_s + w.tof_s).c_str());
+        ImGui::Text("pg: %+.4f  nm: %+.4f  km/s", w.prograde_dv, w.normal_dv);
+
+        ImGui::Spacing();
+        ImGui::Text("Closest approach: %.0f km", w.approach.min_distance_km);
+        ImGui::Text("SOI radius:       %.0f km", w.approach.soi_radius_km);
+        if (w.approach.soi_entered)
+            ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.4f, 1.0f), "SOI entered: YES");
+        else
+            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "SOI entered: NO  (try wider TOF range)");
+        ImGui::Text("Time of flight:   %.1f days", w.approach.days_from_now);
+
+        ImGui::Spacing();
+        bool const in_future = w.departure_elapsed_s > ss.elapsed_simulation_s;
+        if (!in_future) ImGui::BeginDisabled();
+        if (ImGui::Button("Apply maneuver")) {
+            ManeuverNode node{};
+            node.t0_abs_s               = w.departure_elapsed_s;
+            node.t0_s                   = w.departure_elapsed_s - ss.elapsed_simulation_s;
+            node.prograde_dv            = w.prograde_dv;
+            node.radial_dv              = 0.0;
+            node.normal_dv              = w.normal_dv;
+            node.delta_v_world          = w.delta_v_world;
+            node.burn_pos_rel           = w.burn_pos_rel;
+            node.burn_vel_rel           = w.burn_vel_rel;
+            node.burn_dominant_body_idx = w.departure_body_idx;
+            node.burn_dominant_is_moon  = w.departure_is_moon;
+            node.burn_dominant_moon_idx = w.departure_moon_idx;
+            node.target_body_idx        = target_body_idx;
+            node.target_moon_idx        = -1;
+            node.approved               = true;
+            if (sc_idx < static_cast<int>(ss.spacecraft_states.size()))
+                ss.spacecraft_states[sc_idx].maneuvers.push_back(node);
+        }
+        if (!in_future) {
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextDisabled("(departure date is in the past)");
+        }
+    }
+
+    ImGui::End();
+}
+
 void createGui(RenderingState const& core, Application& application, SolarSystem* solar_system)
 {
     if (solar_system)
@@ -1743,6 +1903,7 @@ void createGui(RenderingState const& core, Application& application, SolarSystem
         createSpacecraftGui(*solar_system, application.scene.camera);
         createManeuverPlannerGui(*solar_system);
         createActiveManeuversHud(*solar_system);
+        createTransferPlannerGui(*solar_system);
     }
 
     ImGui::Begin("Vulkan rendering engine", nullptr, ImGuiWindowFlags_MenuBar);
