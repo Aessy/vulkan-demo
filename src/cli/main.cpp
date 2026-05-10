@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <limits>
 #include <numbers>
 #include <print>
@@ -801,46 +802,37 @@ static void cmd_next_transfer(CliContext& ctx, std::istringstream& args)
     SolarSystem ss_copy = ctx.ss;
     ss_copy.time_scale = 1.0;
 
-    auto const result = findBestTransferWindow(
-        std::move(ss_copy),
-        ctx.selected_sc,
-        target_idx,
-        dep_max_days * 86400.0,
-        tof_min_days * 86400.0,
-        tof_max_days * 86400.0);
+    auto state = std::make_shared<WindowScanState>();
+    double const end_s = ctx.ss.elapsed_simulation_s + dep_max_days * 86400.0;
+    runWindowScan(std::move(ss_copy), ctx.selected_sc, target_idx,
+                  end_s, tof_min_days * 86400.0, tof_max_days * 86400.0,
+                  2.0, state);
 
-    if (!result) {
+    if (state->results.empty()) {
         std::println("NEXT_TRANSFER  no window found");
         return;
     }
 
-    auto const& w       = *result;
-    double const dep_s  = w.departure_elapsed_s;
-    double const arr_s  = dep_s + w.tof_s;
-    double const now_s  = ctx.ss.elapsed_simulation_s;
+    double const now_s = ctx.ss.elapsed_simulation_s;
+    std::println("NEXT_TRANSFER  target={}  ({} windows found)", target_name,
+                 state->results.size());
 
-    std::println("NEXT_TRANSFER  target={}", target_name);
-    std::println("  departure_date      {}  ({:.2f} days from now)",
-                 elapsedToDate(dep_s), (dep_s - now_s) / 86400.0);
-    std::println("  arrival_date        {}", elapsedToDate(arr_s));
-    std::println("  tof_days            {:.1f}", w.tof_s / 86400.0);
-    std::println("  dep_days_j2000      {:.4f}", dep_s / 86400.0);
-    std::println("  arr_days_j2000      {:.4f}", arr_s / 86400.0);
-    std::println("  total_dv_km_s       {:.4f}", w.total_dv_km_s);
-    std::println("  prograde_dv         {:.4f}", w.prograde_dv);
-    std::println("  normal_dv           {:.4f}", w.normal_dv);
-    std::println("  soi_radius_km       {:.1f}", ctx.ss.defs[target_idx].soi_km);
-    // Diagnostic: burn state sanity check
-    double const burn_r = glm::length(w.burn_pos_rel);
-    double const burn_v = glm::length(w.burn_vel_rel);
-    double const burn_dv = glm::length(w.delta_v_world);
-    std::println("  [dbg] burn_pos_rel_km   {:.1f}  (LEO ~6771)", burn_r);
-    std::println("  [dbg] burn_vel_rel_km_s {:.4f}  (LEO ~7.7)", burn_v);
-    std::println("  [dbg] delta_v_world_km_s {:.4f}  (|dv| applied)", burn_dv);
-    std::println("  [dbg] post_burn_speed_km_s {:.4f}  (escape ~11.2)",
-                 glm::length(w.burn_vel_rel + w.delta_v_world));
-    if (w.approach_done) {
-        std::println("  closest_approach_km {:.1f}", w.approach.min_distance_km);
+    for (int wi = 0; wi < static_cast<int>(state->results.size()); ++wi) {
+        auto const& w      = state->results[wi];
+        double const dep_s = w.optimal_departure_elapsed_s;
+        double const arr_s = dep_s + w.optimal_tof_s;
+        std::println("  --- Window #{} ---", wi + 1);
+        std::println("  window_open         {}", elapsedToDate(w.window_open_elapsed_s));
+        std::println("  window_close        {}", elapsedToDate(w.window_close_elapsed_s));
+        std::println("  departure_date      {}  ({:.1f} days from now)",
+                     elapsedToDate(dep_s), (dep_s - now_s) / 86400.0);
+        std::println("  arrival_date        {}", elapsedToDate(arr_s));
+        std::println("  tof_days            {:.1f}", w.optimal_tof_s / 86400.0);
+        std::println("  total_dv_km_s       {:.4f}", w.optimal_dv_km_s);
+        std::println("  prograde_dv         {:.4f}", w.optimal_prograde_dv);
+        std::println("  normal_dv           {:.4f}", w.optimal_normal_dv);
+        std::println("  closest_approach_km {:.0f}", w.approach.min_distance_km);
+        std::println("  soi_radius_km       {:.0f}", ctx.ss.defs[target_idx].soi_km);
         std::println("  soi_entered         {}", w.approach.soi_entered ? "YES" : "NO");
     }
 }

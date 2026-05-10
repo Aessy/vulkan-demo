@@ -9,6 +9,9 @@
 #include <chrono>
 #include <format>
 #include <future>
+#include <memory>
+#include <mutex>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 #include <string>
@@ -1738,7 +1741,7 @@ static void createActiveManeuversHud(SolarSystem& ss)
 static void createTransferPlannerGui(SolarSystem& ss)
 {
     ImGui::SetNextWindowPos(ImVec2(820, 10), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(480, 400), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(700, 520), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Transfer Planner")) { ImGui::End(); return; }
 
     if (ss.spacecraft_defs.empty()) {
@@ -1754,24 +1757,28 @@ static void createTransferPlannerGui(SolarSystem& ss)
 
     static int   sc_idx{0};
     static int   target_body_idx{4};
-    static float dep_max_days{730.0f};
     static float tof_min_days{100.0f};
-    static float tof_max_days{600.0f};
+    static float tof_max_days{500.0f};
+    static float scan_days{730.0f};
+    static float near_miss_factor{2.0f};
+    static int   selected_row{-1};
 
-    static bool scanning{false};
-    static std::future<std::optional<TransferWindow>> scan_future;
-    static std::optional<TransferWindow> result;
+    static std::shared_ptr<WindowScanState> scan_state;
+    static std::future<void>                scan_future;
 
     if (sc_idx >= static_cast<int>(ss.spacecraft_defs.size())) sc_idx = 0;
     if (target_body_idx >= static_cast<int>(ss.defs.size()))   target_body_idx = 1;
 
-    // Spacecraft selector
+    // ── Inputs ──────────────────────────────────────────────────────────────────
     {
-        ImGui::SetNextItemWidth(160.0f);
+        ImGui::SetNextItemWidth(140.0f);
         if (ImGui::BeginCombo("Spacecraft##tp", ss.spacecraft_defs[sc_idx].name)) {
             for (int i = 0; i < static_cast<int>(ss.spacecraft_defs.size()); ++i) {
                 bool sel = (sc_idx == i);
-                if (ImGui::Selectable(ss.spacecraft_defs[i].name, sel)) sc_idx = i;
+                if (ImGui::Selectable(ss.spacecraft_defs[i].name, sel)) {
+                    sc_idx = i;
+                    selected_row = -1;
+                }
                 if (sel) ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
@@ -1781,97 +1788,225 @@ static void createTransferPlannerGui(SolarSystem& ss)
     {
         const char* tgt_name = (target_body_idx > 0 && target_body_idx < static_cast<int>(ss.defs.size()))
             ? ss.defs[target_body_idx].name : "— none —";
-        ImGui::SetNextItemWidth(160.0f);
+        ImGui::SetNextItemWidth(140.0f);
         if (ImGui::BeginCombo("Target##tp", tgt_name)) {
             for (int bi = 1; bi < static_cast<int>(ss.defs.size()); ++bi) {
                 bool sel = (target_body_idx == bi);
-                if (ImGui::Selectable(ss.defs[bi].name, sel)) target_body_idx = bi;
+                if (ImGui::Selectable(ss.defs[bi].name, sel)) {
+                    target_body_idx = bi;
+                    selected_row = -1;
+                }
                 if (sel) ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
         }
     }
 
-    ImGui::SliderFloat("Search window (days)", &dep_max_days, 30.0f, 1000.0f, "%.0f d");
-    ImGui::SliderFloat("TOF min (days)",        &tof_min_days, 30.0f,  500.0f, "%.0f d");
-    ImGui::SliderFloat("TOF max (days)",        &tof_max_days, 100.0f, 1200.0f, "%.0f d");
+    ImGui::SetNextItemWidth(180.0f);
+    ImGui::SliderFloat("TOF min (d)##tp", &tof_min_days, 30.0f, 500.0f, "%.0f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(180.0f);
+    ImGui::SliderFloat("TOF max (d)##tp", &tof_max_days, 100.0f, 1200.0f, "%.0f");
 
-    // Poll result.
-    if (scanning && scan_future.valid() &&
-        scan_future.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
-    {
-        result   = scan_future.get();
-        scanning = false;
-    }
+    ImGui::SetNextItemWidth(180.0f);
+    ImGui::SliderFloat("Scan (days)##tp", &scan_days, 100.0f, 3650.0f, "%.0f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(180.0f);
+    ImGui::SliderFloat("Near-miss x SOI##tp", &near_miss_factor, 1.0f, 5.0f, "%.1f");
 
     bool const in_planet_orbit =
         sc_idx < static_cast<int>(ss.spacecraft_states.size()) &&
         !ss.spacecraft_states[sc_idx].dominant_is_moon &&
         ss.spacecraft_states[sc_idx].dominant_body_idx > 0;
 
-    if (scanning) {
-        ImGui::TextDisabled("Searching...  (coarse scan + fine refinement + SOI verify)");
+    bool const currently_scanning = scan_state && scan_state->running.load();
+
+    // ── Start / Stop buttons ────────────────────────────────────────────────────
+    if (currently_scanning) {
+        if (ImGui::Button("Stop##tp")) {
+            if (scan_state) scan_state->cancel.store(true);
+        }
+        ImGui::SameLine();
+        double const days_done  = scan_state ? scan_state->days_scanned.load() : 0.0;
+        double const days_tot   = scan_state ? scan_state->days_total : 1.0;
+        int const    n_found    = scan_state ? [&]{
+            std::lock_guard lk(scan_state->results_mutex);
+            return static_cast<int>(scan_state->results.size());
+        }() : 0;
+        ImGui::ProgressBar(static_cast<float>(days_done / std::max(days_tot, 1.0)),
+                           ImVec2(180.0f, 0.0f));
+        ImGui::SameLine();
+        ImGui::Text("Day %.0f / %.0f   (%d windows)", days_done, days_tot, n_found);
     } else {
         if (!in_planet_orbit) ImGui::BeginDisabled();
-        if (ImGui::Button("Find best window") && target_body_idx > 0) {
-            SolarSystem ss_copy = ss;
-            ss_copy.time_scale  = 1.0;
-            int const   tsc      = sc_idx;
-            int const   tgt      = target_body_idx;
-            double const dep_s   = static_cast<double>(dep_max_days) * 86400.0;
-            double const tof_min = static_cast<double>(tof_min_days) * 86400.0;
-            double const tof_max = static_cast<double>(tof_max_days) * 86400.0;
+        if (ImGui::Button("Start Scan##tp") && target_body_idx > 0) {
+            // Cancel any previous scan and clear old results.
+            if (scan_state) scan_state->cancel.store(true);
+            if (scan_future.valid()) scan_future.get();  // join previous thread
+
+            scan_state = std::make_shared<WindowScanState>();
+            scan_state->days_total = static_cast<double>(scan_days);
+            selected_row = -1;
+
+            SolarSystem ss_copy   = ss;
+            ss_copy.time_scale    = 1.0;
+            double const end_s    = ss.elapsed_simulation_s + static_cast<double>(scan_days) * 86400.0;
+            double const tof_min  = static_cast<double>(tof_min_days) * 86400.0;
+            double const tof_max  = static_cast<double>(tof_max_days) * 86400.0;
+            double const nmf      = static_cast<double>(near_miss_factor);
+            int const    tsc      = sc_idx;
+            int const    tgt      = target_body_idx;
+            auto         st       = scan_state;
+
             scan_future = std::async(std::launch::async,
-                [ss_copy = std::move(ss_copy), tsc, tgt, dep_s, tof_min, tof_max]() mutable {
-                    return findBestTransferWindow(std::move(ss_copy), tsc, tgt,
-                                                  dep_s, tof_min, tof_max);
+                [ss_copy = std::move(ss_copy), tsc, tgt, end_s, tof_min, tof_max, nmf, st]() mutable {
+                    runWindowScan(std::move(ss_copy), tsc, tgt, end_s, tof_min, tof_max, nmf, st);
                 });
-            scanning = true;
-            result.reset();
         }
         if (!in_planet_orbit) {
             ImGui::EndDisabled();
             ImGui::SameLine();
             ImGui::TextDisabled("(must be in planet orbit)");
         }
+        if (scan_state && !currently_scanning) {
+            double const days_tot = scan_state->days_total;
+            double const days_done = scan_state->days_scanned.load();
+            ImGui::SameLine();
+            ImGui::TextDisabled("Done (%.0f / %.0f d)", days_done, days_tot);
+        }
     }
 
     ImGui::Separator();
 
-    if (!result.has_value() && !scanning) {
-        ImGui::TextDisabled("Press 'Find best window' to search.");
+    // ── Results table ───────────────────────────────────────────────────────────
+    if (!scan_state) {
+        ImGui::TextDisabled("Press 'Start Scan' to search for transfer windows.");
         ImGui::End();
         return;
     }
 
-    if (result.has_value()) {
-        auto const& w = *result;
+    // Snapshot results for display (under lock).
+    std::vector<TransferWindowResult> display_results;
+    {
+        std::lock_guard lk(scan_state->results_mutex);
+        display_results = scan_state->results;
+    }
+
+    if (display_results.empty()) {
+        if (currently_scanning)
+            ImGui::TextDisabled("Scanning... no windows found yet.");
+        else
+            ImGui::TextDisabled("Scan complete — no qualifying windows found.");
+        ImGui::End();
+        return;
+    }
+
+    // Clamp selection.
+    if (selected_row >= static_cast<int>(display_results.size()))
+        selected_row = static_cast<int>(display_results.size()) - 1;
+
+    // Table height: leave room for detail panel if a row is selected.
+    float const detail_height = (selected_row >= 0) ? 180.0f : 0.0f;
+    float const avail_y       = ImGui::GetContentRegionAvail().y - detail_height - 8.0f;
+
+    constexpr ImGuiTableFlags tflags =
+        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+        ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit;
+
+    if (ImGui::BeginTable("##tw_table", 8, tflags, ImVec2(0.0f, avail_y))) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("#",           ImGuiTableColumnFlags_WidthFixed,  24.0f);
+        ImGui::TableSetupColumn("Window Open", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+        ImGui::TableSetupColumn("Window Close",ImGuiTableColumnFlags_WidthFixed, 100.0f);
+        ImGui::TableSetupColumn("Best Dep",    ImGuiTableColumnFlags_WidthFixed, 100.0f);
+        ImGui::TableSetupColumn("|Dv| km/s",   ImGuiTableColumnFlags_WidthFixed,  72.0f);
+        ImGui::TableSetupColumn("TOF d",       ImGuiTableColumnFlags_WidthFixed,  50.0f);
+        ImGui::TableSetupColumn("Distance km", ImGuiTableColumnFlags_WidthFixed,  90.0f);
+        ImGui::TableSetupColumn("SOI",         ImGuiTableColumnFlags_WidthFixed,  36.0f);
+        ImGui::TableHeadersRow();
+
+        for (int i = 0; i < static_cast<int>(display_results.size()); ++i) {
+            auto const& w = display_results[i];
+            ImGui::TableNextRow();
+
+            // Row tint: green for SOI entry, yellow for near-miss.
+            if (w.approach.soi_entered)
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
+                    IM_COL32(30, 80, 30, 100));
+            else
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
+                    IM_COL32(80, 70, 10, 100));
+
+            ImGui::TableNextColumn();
+            char lbl[8];
+            std::snprintf(lbl, sizeof(lbl), "%d", i + 1);
+            bool sel = (selected_row == i);
+            if (ImGui::Selectable(lbl, sel,
+                    ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap,
+                    ImVec2(0, 0)))
+                selected_row = sel ? -1 : i;
+
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(simDateString(w.window_open_elapsed_s).c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(simDateString(w.window_close_elapsed_s).c_str());
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(simDateString(w.optimal_departure_elapsed_s).c_str());
+            ImGui::TableNextColumn();
+            ImGui::Text("%.3f", w.optimal_dv_km_s);
+            ImGui::TableNextColumn();
+            ImGui::Text("%.0f", w.optimal_tof_s / 86400.0);
+            ImGui::TableNextColumn();
+            double const dist_km = w.approach.min_distance_km;
+            if (dist_km >= 1e6)
+                ImGui::Text("%.2f M", dist_km / 1e6);
+            else
+                ImGui::Text("%.0f k", dist_km / 1e3);
+            ImGui::TableNextColumn();
+            if (w.approach.soi_entered)
+                ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.4f, 1.0f), "YES");
+            else
+                ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.2f, 1.0f), "~");
+        }
+        ImGui::EndTable();
+    }
+
+    // ── Detail panel ────────────────────────────────────────────────────────────
+    if (selected_row >= 0 && selected_row < static_cast<int>(display_results.size())) {
+        ImGui::Separator();
+        auto const& w = display_results[selected_row];
 
         ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.3f, 1.0f),
-            "|Δv| %.4f km/s   TOF %.1f d", w.total_dv_km_s, w.tof_s / 86400.0);
-        ImGui::Text("Departure: %s", simDateString(w.departure_elapsed_s).c_str());
-        ImGui::Text("Arrival:   %s", simDateString(w.departure_elapsed_s + w.tof_s).c_str());
-        ImGui::Text("pg: %+.4f  nm: %+.4f  km/s", w.prograde_dv, w.normal_dv);
+            "Window #%d   |Dv| %.4f km/s   TOF %.1f d",
+            selected_row + 1, w.optimal_dv_km_s, w.optimal_tof_s / 86400.0);
 
-        ImGui::Spacing();
-        ImGui::Text("Closest approach: %.0f km", w.approach.min_distance_km);
-        ImGui::Text("SOI radius:       %.0f km", w.approach.soi_radius_km);
+        ImGui::Text("Window:    %s  →  %s",
+            simDateString(w.window_open_elapsed_s).c_str(),
+            simDateString(w.window_close_elapsed_s).c_str());
+        ImGui::Text("Best dep:  %s    Arrival: %s",
+            simDateString(w.optimal_departure_elapsed_s).c_str(),
+            simDateString(w.optimal_departure_elapsed_s + w.optimal_tof_s).c_str());
+        ImGui::Text("pg: %+.4f   nm: %+.4f  km/s",
+            w.optimal_prograde_dv, w.optimal_normal_dv);
+        ImGui::Text("Closest: %.0f km   SOI radius: %.0f km",
+            w.approach.min_distance_km, w.approach.soi_radius_km);
         if (w.approach.soi_entered)
             ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.4f, 1.0f), "SOI entered: YES");
         else
-            ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "SOI entered: NO  (try wider TOF range)");
-        ImGui::Text("Time of flight:   %.1f days", w.approach.days_from_now);
+            ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.2f, 1.0f),
+                "SOI entered: NO  (near-miss %.1fx SOI)",
+                w.approach.min_distance_km / std::max(w.approach.soi_radius_km, 1.0));
 
         ImGui::Spacing();
-        bool const in_future = w.departure_elapsed_s > ss.elapsed_simulation_s;
+        bool const in_future = w.optimal_departure_elapsed_s > ss.elapsed_simulation_s;
         if (!in_future) ImGui::BeginDisabled();
-        if (ImGui::Button("Apply maneuver")) {
+        if (ImGui::Button("Apply maneuver##tp")) {
             ManeuverNode node{};
-            node.t0_abs_s               = w.departure_elapsed_s;
-            node.t0_s                   = w.departure_elapsed_s - ss.elapsed_simulation_s;
-            node.prograde_dv            = w.prograde_dv;
+            node.t0_abs_s               = w.optimal_departure_elapsed_s;
+            node.t0_s                   = w.optimal_departure_elapsed_s - ss.elapsed_simulation_s;
+            node.prograde_dv            = w.optimal_prograde_dv;
             node.radial_dv              = 0.0;
-            node.normal_dv              = w.normal_dv;
+            node.normal_dv              = w.optimal_normal_dv;
             node.delta_v_world          = w.delta_v_world;
             node.burn_pos_rel           = w.burn_pos_rel;
             node.burn_vel_rel           = w.burn_vel_rel;
